@@ -1,0 +1,128 @@
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --dk-canvas: #f3f5f7;
+  --dk-surface: #ffffff;
+  --dk-surface-subtle: #f6f7fa;
+  --dk-surface-raised: #ffffff;
+  --dk-surface-hover: rgba(0, 31, 92, 0.06);
+  --dk-surface-pressed: rgba(0, 31, 92, 0.1);
+  --dk-overlay: rgba(20, 22, 26, 0.56);
+  --dk-border: #eaedf2;
+  --dk-border-strong: #cfd1d6;
+
+  /* Content. Secondary and tertiary values are deliberately AA-safe on white. */
+  --dk-text: #1c1d1f;
+  --dk-text-secondary: #595d63;
+  --dk-text-tertiary: #686c72;
+  --dk-text-disabled: #929499;
+  --dk-text-inverse: #f8f9fb;
+
+  /* Actions */
+  --dk-action: #1c1d1f;
+  --dk-action-hover: #343638;
+  --dk-action-pressed: #0f1011;
+  --dk-accent: #1b6eea;
+  --dk-accent-strong: #125ac5;
+  --dk-accent-soft: #e5f2ff;
+  --dk-focus: rgba(27, 110, 234, 0.32);
+
+  /* Feedback */
+  --dk-success: #067647;
+  --dk-success-soft: #ecfdf3;
+  --dk-warning: #9b4105;
+  --dk-warning-soft: #fff6e5;
+  --dk-danger: #b42318;
+  --dk-danger-strong: #8f1c14;
+  --dk-danger-soft: #fef3f2;
+  --dk-info-soft: #edf5ff;
+
+  /* Typography */
+  --dk-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --dk-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --dk-text-xs: 12px;
+  --dk-text-sm: 13px;
+  --dk-text-md: 14px;
+  --dk-text-lg: 16px;
+  --dk-text-xl: 20px;
+  --dk-text-2xl: 28px;
+  --dk-leading-tight: 1.3;
+  --dk-leading: 1.55;
+
+  /* 4px spacing scale */
+  --dk-space-1: 4px;
+  --dk-space-2: 8px;
+  --dk-space-3: 12px;
+  --dk-space-4: 16px;
+  --dk-space-5: 20px;
+  --dk-space-6: 24px;
+  --dk-space-7: 28px;
+  --dk-space-8: 32px;
+  --dk-space-9: 36px;
+  --dk-space-10: 40px;
+  --dk-space-12: 48px;
+
+  /* Shape and elevation */
+  --dk-radius-sm: 6px;
+  --dk-radius-md: 8px;
+  --dk-radius-lg: 12px;
+  --dk-radius-pill: 999px;
+  --dk-shadow-1: 0 0 2px rgba(26, 31, 40, 0.04), 0 2px 8px rgba(26, 31, 40, 0.06);
+  --dk-shadow-2: 0 0 2px rgba(26, 31, 40, 0.08), 0 6px 24px rgba(26, 31, 40, 0.07);
+  --dk-shadow-overlay: 0 24px 64px rgba(15, 23, 42, 0.22);
+
+  /* Application layout */
+  --dk-topbar-h: 54px;
+  --dk-toolrail-w: 68px;
+  --dk-config-w: 400px;
+  --dk-control-h: 40px;
+  --dk-primary-h: 44px;
+  --dk-bottom-nav-h: 64px;
+  --dk-content-max: 1440px;
+  --dk-safe-top: env(safe-area-inset-top, 0px);
+  --dk-safe-right: env(safe-area-inset-right, 0px);
+  --dk-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --dk-safe-left: env(safe-area-inset-left, 0px);
+
+  /* Systemic layers only */
+  --dk-z-sticky: 20;
+  --dk-z-nav: 30;
+  --dk-z-overlay: 100;
+  --dk-z-toast: 120;
+  --dk-z-lightbox: 140;
+
+  /* Motion */
+  --dk-motion-fast: 120ms;
+  --dk-motion-normal: 180ms;
+  --dk-ease-out: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Legacy aliases. They intentionally point to the new semantic system. */
+  --primary: var(--dk-action);
+  --primary-hover: var(--dk-action-hover);
+  --primary-soft: var(--dk-accent-soft);
+  --danger: var(--dk-danger);
+  --danger-soft: var(--dk-danger-soft);
+  --success: var(--dk-success);
+  --success-soft: var(--dk-success-soft);
+  --warning: var(--dk-warning);
+  --warning-soft: var(--dk-warning-soft);
+  --bg: var(--dk-canvas);
+  --card: var(--dk-surface);
+  --border: var(--dk-border);
+  --text: var(--dk-text);
+  --text-2: var(--dk-text-secondary);
+  --text-3: var(--dk-text-tertiary);
+  --sidebar-bg: var(--dk-surface);
+  --sidebar-text: var(--dk-text-secondary);
+  --radius: var(--dk-radius-lg);
+  --shadow: var(--dk-shadow-1);
+  --shadow-lg: var(--dk-shadow-overlay);
+}
+
+@media (min-width: 960px) and (max-width: 1199px) {
+  :root {
+    --dk-config-w: 360px;
+  }
+}

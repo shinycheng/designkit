@@ -1,0 +1,101 @@
+.dk-settings-stack {
+  display: grid;
+  width: min(100%, 960px);
+  min-width: 0;
+  gap: var(--dk-space-4);
+  margin-inline: auto;
+}
+
+.dk-settings-section {
+  min-width: 0;
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  background: var(--dk-surface);
+  padding: var(--dk-space-5);
+}
+
+.dk-settings-section__head {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--dk-space-4);
+  border-bottom: 1px solid var(--dk-border);
+  margin-bottom: var(--dk-space-5);
+  padding-bottom: var(--dk-space-4);
+}
+
+.dk-settings-section__copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-1);
+}
+
+.dk-settings-section__copy h2,
+.dk-settings-section__copy h3 {
+  font-size: var(--dk-text-lg);
+}
+
+.dk-settings-section__copy p {
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm);
+}
+
+.dk-settings-section__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--dk-space-2);
+}
+
+.dk-settings-section__status {
+  min-height: 22px;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm);
+}
+
+.dk-settings-section__status[data-state="success"] {
+  color: var(--dk-success);
+}
+
+.dk-settings-section__status[data-state="error"] {
+  color: var(--dk-danger);
+}
+
+.dk-settings-section .dk-field-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dk-space-3) var(--dk-space-4);
+}
+
+.dk-security-note {
+  margin-bottom: var(--dk-space-4);
+}
+
+@media (max-width: 767px) {
+  .dk-settings-section__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dk-settings-section__actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .dk-settings-section__status {
+    flex-basis: 100%;
+  }
+
+  .dk-settings-section .dk-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .dk-settings-section {
+    border-radius: var(--dk-radius-md);
+    padding: var(--dk-space-4);
+  }
+}

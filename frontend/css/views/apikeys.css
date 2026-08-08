@@ -1,0 +1,239 @@
+.dk-api-layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  gap: var(--dk-space-4);
+  align-items: start;
+}
+
+.dk-key-list,
+.dk-guide-list {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-3);
+}
+
+.dk-guide-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dk-key-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  grid-template-areas:
+    "main stats"
+    "actions stats";
+  align-items: start;
+  gap: var(--dk-space-4);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface);
+  padding: var(--dk-space-4);
+}
+
+.dk-key-main {
+  display: grid;
+  min-width: 0;
+  grid-area: main;
+  align-content: center;
+  gap: var(--dk-space-1);
+}
+
+.dk-key-main code {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dk-key-stats {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--dk-space-3);
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+  grid-area: stats;
+}
+
+.dk-key-stats > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dk-key-stats dt {
+  color: var(--dk-text-tertiary);
+}
+
+.dk-key-stats dd {
+  color: var(--dk-text-secondary);
+  white-space: nowrap;
+}
+
+.dk-key-row > .dk-inline-actions {
+  grid-area: actions;
+}
+
+.dk-guide-step {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--dk-space-2);
+  border-top: 1px solid var(--dk-border);
+  padding-top: var(--dk-space-4);
+}
+
+.dk-guide-step > div:last-child {
+  min-width: 0;
+}
+
+.dk-guide-step__number {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--dk-surface-subtle);
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+  font-weight: 700;
+}
+
+.dk-guide-step h3 {
+  color: var(--dk-text);
+  font-size: var(--dk-text-sm);
+  font-weight: 650;
+}
+
+.dk-guide-step p {
+  color: var(--dk-text-secondary);
+  margin-top: 2px;
+  font-size: var(--dk-text-xs);
+}
+
+.dk-guide-step:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.dk-guide-step__title {
+  color: var(--dk-text);
+  font-size: var(--dk-text-sm);
+  font-weight: 650;
+}
+
+.dk-code-example {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #343a45;
+  border-radius: var(--dk-radius-md);
+  background: #171a1f;
+}
+
+.dk-code-example__head {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dk-space-2);
+  border-bottom: 1px solid #343a45;
+  color: #c8cdd5;
+  padding: 5px 8px 5px 14px;
+  font-size: var(--dk-text-xs);
+}
+
+.dk-code-example .code-block,
+.dk-code-example .dk-code-block {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+.secret-box,
+.dk-secret-reveal {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-3);
+  border: 1px solid #343a45;
+  border-radius: var(--dk-radius-md);
+  background: #171a1f;
+  color: #edf0f5;
+  padding: var(--dk-space-4);
+}
+
+.dk-secret-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "meta action"
+    "secret secret";
+  align-items: center;
+  gap: var(--dk-space-3);
+}
+
+.dk-secret-row > div:first-child {
+  grid-area: meta;
+}
+
+.dk-secret-row > code {
+  grid-area: secret;
+}
+
+.dk-secret-row > .dk-button {
+  grid-area: action;
+}
+
+.secret-box span,
+.dk-secret-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #edf0f5;
+  font-family: var(--dk-font-mono);
+  font-size: var(--dk-text-xs);
+}
+
+@media (max-width: 1099px) {
+  .dk-api-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .dk-key-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "main"
+      "stats"
+      "actions";
+  }
+
+  .dk-key-stats {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    justify-content: stretch;
+    gap: var(--dk-space-2) var(--dk-space-4);
+  }
+
+  .dk-secret-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "meta"
+      "secret"
+      "action";
+  }
+
+  .dk-secret-row > .dk-button {
+    justify-self: start;
+  }
+}

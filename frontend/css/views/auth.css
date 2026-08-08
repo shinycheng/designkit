@@ -1,0 +1,858 @@
+.dk-auth-page {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  height: 100dvh;
+  grid-template-columns: minmax(0, 1fr) clamp(400px, 31vw, 456px);
+  overflow: hidden;
+  background: #f4f7fb;
+  color: var(--dk-text);
+  color-scheme: light;
+}
+
+/* Component-led commerce stage ----------------------------------------- */
+.dk-auth-stage {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 52% 56%, rgba(27, 110, 234, 0.09), transparent 27%),
+    linear-gradient(#f7f9fc, #f2f5f9);
+  padding: clamp(36px, 4.5vw, 68px);
+  color: var(--dk-text);
+}
+
+.dk-auth-stage::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    linear-gradient(rgba(28, 29, 31, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 29, 31, 0.035) 1px, transparent 1px);
+  background-position: center;
+  background-size: 42px 42px;
+  mask-image: radial-gradient(circle at center, #000 0 34%, transparent 72%);
+  content: "";
+  pointer-events: none;
+}
+
+.dk-auth-stage-copy {
+  position: relative;
+  z-index: 5;
+  width: min(100%, 660px);
+}
+
+.dk-auth-stage-title {
+  max-width: 14ch;
+  margin: 0;
+  color: var(--dk-text);
+  font-size: clamp(44px, 4.4vw, 64px);
+  font-weight: 700;
+  letter-spacing: -0.048em;
+  line-height: 1.06;
+  text-wrap: balance;
+  white-space: pre-line;
+}
+
+.dk-auth-stage-subtitle {
+  max-width: 54ch;
+  margin: 14px 0 0;
+  color: var(--dk-text-secondary);
+  font-size: clamp(14px, 1.05vw, 15px);
+  line-height: 1.7;
+}
+
+/* TagCloud and Lordicon own all stage motion. CSS only lays out surfaces. */
+.dk-auth-component-scene {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: min(100%, 860px);
+  min-width: 0;
+  min-height: clamp(410px, 54vh, 560px);
+  margin: 0;
+  align-self: center;
+  justify-self: center;
+  place-items: center;
+}
+
+.dk-auth-logo-cloud {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.dk-auth-logo-cloud .tagcloud--item {
+  cursor: default;
+  outline: none;
+}
+
+.dk-auth-logo-token {
+  display: flex;
+  min-width: 54px;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #dfe5ed;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(31, 45, 61, 0.09);
+  color: #353a42;
+  padding: 9px 11px;
+  white-space: nowrap;
+}
+
+.dk-auth-logo-token--wide {
+  min-width: 92px;
+}
+
+.dk-auth-logo-token img {
+  display: block;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  object-fit: contain;
+}
+
+.dk-auth-logo-token__image--wide {
+  width: 66px !important;
+  height: 26px !important;
+  flex-basis: auto !important;
+}
+
+.dk-auth-workflow {
+  position: absolute;
+  inset: 7% 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(150px, 184px) minmax(150px, 184px);
+  grid-template-rows: auto auto;
+  align-content: space-between;
+  justify-content: space-between;
+  gap: 18px;
+  pointer-events: none;
+}
+
+.dk-auth-workflow-card {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #dde4ed;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 30px rgba(35, 48, 65, 0.085);
+  padding: 12px;
+}
+
+.dk-auth-workflow-card:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.dk-auth-workflow-card:nth-child(2) {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.dk-auth-workflow-card:nth-child(3) {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.dk-auth-workflow-card:nth-child(4) {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.dk-auth-workflow-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #dce8f9;
+  border-radius: 11px;
+  background: #f0f6ff;
+  color: var(--dk-accent-strong);
+}
+
+.dk-auth-workflow-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.dk-auth-workflow-player {
+  display: block;
+  width: 30px;
+  height: 30px;
+  --lord-icon-primary: #1b6eea;
+  --lord-icon-secondary: #1c1d1f;
+}
+
+.dk-auth-workflow-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.dk-auth-workflow-copy strong {
+  overflow: hidden;
+  color: var(--dk-text);
+  font-size: 12px;
+  font-weight: 710;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dk-auth-workflow-copy span {
+  overflow: hidden;
+  color: var(--dk-text-tertiary);
+  font-size: 10px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dk-auth-platform-note {
+  position: relative;
+  z-index: 5;
+  align-self: end;
+  margin: 0;
+  color: var(--dk-text-tertiary);
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.dk-auth-page[data-components-state="loading"] .dk-auth-logo-cloud,
+.dk-auth-page[data-components-state="fallback"] .dk-auth-logo-cloud,
+.dk-auth-page[data-components-state="static"] .dk-auth-logo-cloud {
+  position: absolute;
+  top: 50%;
+  right: 4%;
+  bottom: auto;
+  left: 4%;
+  display: flex;
+  width: auto;
+  height: auto;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  gap: 8px;
+  transform: translateY(-50%);
+}
+
+.dk-auth-page[data-components-state="loading"] .dk-auth-logo-token,
+.dk-auth-page[data-components-state="fallback"] .dk-auth-logo-token,
+.dk-auth-page[data-components-state="static"] .dk-auth-logo-token {
+  min-width: 48px;
+  min-height: 44px;
+  padding: 7px;
+}
+
+/* Architectural login rail --------------------------------------------- */
+.dk-auth-rail {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  min-width: 0;
+  min-height: 100dvh;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow-y: auto;
+  border-left: 1px solid var(--dk-border);
+  background: var(--dk-surface);
+  box-shadow: -20px 0 56px color-mix(in srgb, var(--dk-text) 8%, transparent);
+  padding: clamp(32px, 3.2vw, 48px);
+}
+
+.dk-auth-brand {
+  display: inline-flex;
+  align-items: center;
+  align-self: start;
+  justify-self: start;
+  color: var(--dk-text);
+}
+
+.dk-auth-wordmark,
+.dk-auth-brand {
+  font-size: 17px;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+.dk-auth-form-body {
+  display: grid;
+  width: min(100%, 352px);
+  min-width: 0;
+  align-self: center;
+  justify-self: center;
+  padding-block: var(--dk-space-8);
+}
+
+.dk-auth-card {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.dk-auth-heading {
+  margin-bottom: var(--dk-space-8);
+}
+
+.dk-auth-title {
+  color: var(--dk-text);
+  font-size: clamp(28px, 2.3vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.22;
+}
+
+.dk-auth-subtitle {
+  max-width: 32ch;
+  margin-top: var(--dk-space-2);
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-md);
+  line-height: 1.65;
+}
+
+.dk-form-message:empty {
+  display: none;
+}
+
+.dk-form-message:not(:empty) {
+  margin-bottom: var(--dk-space-5);
+}
+
+.dk-auth-page .field,
+.dk-auth-page .dk-field {
+  gap: var(--dk-space-2);
+  margin-bottom: var(--dk-space-5);
+}
+
+.dk-auth-page .field-label,
+.dk-auth-page .dk-field-label {
+  color: var(--dk-text);
+  font-size: var(--dk-text-sm);
+  font-weight: 650;
+}
+
+.dk-auth-page .input,
+.dk-auth-page .dk-input {
+  min-height: 50px;
+  border-color: var(--dk-border-strong);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle);
+  color: var(--dk-text);
+  padding: 10px 13px;
+  font-size: 15px;
+}
+
+.dk-auth-page .input:hover:not(:disabled),
+.dk-auth-page .dk-input:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dk-text) 32%, var(--dk-border-strong));
+  background: var(--dk-surface);
+}
+
+.dk-auth-page .input:focus,
+.dk-auth-page .dk-input:focus {
+  border-color: var(--dk-accent);
+  background: var(--dk-surface);
+  box-shadow: 0 0 0 3px var(--dk-focus);
+}
+
+.dk-auth-page .input::placeholder,
+.dk-auth-page .dk-input::placeholder {
+  color: var(--dk-text-tertiary);
+}
+
+.dk-auth-page input:-webkit-autofill,
+.dk-auth-page input:-webkit-autofill:hover,
+.dk-auth-page input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--dk-text);
+  box-shadow: 0 0 0 1000px var(--dk-surface-subtle) inset;
+  caret-color: var(--dk-text);
+}
+
+.dk-password-control {
+  position: relative;
+  min-width: 0;
+}
+
+.dk-password-control .input,
+.dk-password-control .dk-input {
+  min-height: 44px;
+  padding-right: 50px;
+}
+
+.dk-password-control .dk-password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: var(--dk-radius-md);
+  color: var(--dk-text-tertiary);
+}
+
+.dk-auth-page .dk-password-control .dk-password-toggle {
+  top: 3px;
+  right: 3px;
+}
+
+.dk-password-control .dk-password-toggle:hover {
+  background: var(--dk-surface-hover);
+  color: var(--dk-text);
+}
+
+.dk-auth-page .dk-alert--error {
+  border-color: color-mix(in srgb, var(--dk-danger) 28%, var(--dk-surface));
+  background: var(--dk-danger-soft);
+  color: var(--dk-danger-strong);
+}
+
+.dk-auth-submit {
+  min-height: 50px;
+  margin-top: var(--dk-space-1);
+  border-color: var(--dk-action);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-action);
+  box-shadow: none;
+  color: var(--dk-text-inverse);
+  font-weight: 680;
+  white-space: nowrap;
+}
+
+.dk-auth-submit:hover {
+  border-color: var(--dk-action-hover);
+  background: var(--dk-action-hover);
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+
+.dk-auth-submit:active {
+  background: var(--dk-action-pressed);
+  transform: translateY(1px) scale(0.99);
+}
+
+.dk-auth-submit:disabled {
+  border-color: var(--dk-border-strong);
+  background: var(--dk-text-tertiary);
+  box-shadow: none;
+  color: var(--dk-text-inverse);
+  opacity: 1;
+}
+
+.dk-auth-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--dk-space-2);
+  margin-top: var(--dk-space-6);
+  border-top: 1px solid var(--dk-border);
+  color: var(--dk-text-secondary);
+  padding-top: var(--dk-space-5);
+  font-size: var(--dk-text-xs);
+  line-height: 1.55;
+}
+
+.dk-auth-note svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  margin-top: 1px;
+  color: var(--dk-accent-strong);
+  stroke-width: 1.75;
+}
+
+/* Forced password change gate ------------------------------------------ */
+.dk-session-gate {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: var(--dk-space-8);
+}
+
+.dk-session-gate__content {
+  display: grid;
+  width: min(100%, 460px);
+  justify-items: center;
+  gap: var(--dk-space-3);
+  color: var(--dk-text-secondary);
+  text-align: center;
+}
+
+.dk-session-gate__content h1 {
+  color: var(--dk-text);
+  font-size: var(--dk-text-2xl);
+  letter-spacing: -0.025em;
+}
+
+.dk-session-gate__content p {
+  max-width: 34ch;
+}
+
+.dk-session-gate__icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  background: var(--dk-surface);
+  color: var(--dk-text-secondary);
+}
+
+.dk-password-change {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-4);
+}
+
+.dk-password-change .dk-field {
+  margin-bottom: 0;
+}
+
+.dk-password-requirements {
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle);
+  color: var(--dk-text-secondary);
+  padding: 9px 11px;
+  font-size: var(--dk-text-xs);
+}
+
+.dk-password-requirements[data-valid="true"] {
+  background: var(--dk-success-soft);
+  color: var(--dk-success);
+}
+
+@media (max-width: 1100px) and (min-width: 900px) {
+  .dk-auth-page {
+    grid-template-columns: minmax(0, 1fr) 400px;
+  }
+
+  .dk-auth-stage {
+    padding: 36px;
+  }
+
+  .dk-auth-stage-title {
+    font-size: clamp(42px, 5vw, 56px);
+  }
+
+  .dk-auth-component-scene {
+    min-height: 370px;
+  }
+
+  .dk-auth-workflow {
+    grid-template-columns: repeat(2, minmax(132px, 154px));
+  }
+
+  .dk-auth-logo-token {
+    min-width: 66px;
+    min-height: 48px;
+    padding: 8px 9px;
+  }
+
+  .dk-auth-rail {
+    padding: 36px;
+  }
+}
+
+@media (max-width: 899px) {
+  .dk-auth-page {
+    height: auto;
+    min-height: 100dvh;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: clamp(400px, 46dvh, 470px) minmax(0, 1fr);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .dk-auth-stage {
+    min-height: 400px;
+    grid-template-rows: auto minmax(250px, 1fr) auto;
+    padding: 28px max(28px, var(--dk-safe-right)) 22px max(28px, var(--dk-safe-left));
+  }
+
+  .dk-auth-stage-title {
+    max-width: 16ch;
+    font-size: clamp(34px, 6.2vw, 46px);
+  }
+
+  .dk-auth-stage-subtitle {
+    max-width: 54ch;
+    margin-top: 8px;
+    font-size: 13px;
+  }
+
+  .dk-auth-component-scene {
+    width: min(100%, 700px);
+    min-height: 250px;
+  }
+
+  .dk-auth-workflow {
+    inset: 7% 0;
+    grid-template-columns: repeat(2, 148px);
+  }
+
+  .dk-auth-workflow-card {
+    padding: 10px;
+  }
+
+  .dk-auth-logo-token {
+    min-width: 62px;
+    min-height: 44px;
+  }
+
+  .dk-auth-platform-note {
+    font-size: 9px;
+  }
+
+  .dk-auth-rail {
+    min-height: 0;
+    border-top: 1px solid var(--dk-border);
+    border-left: 0;
+    box-shadow: 0 -16px 40px color-mix(in srgb, var(--dk-text) 7%, transparent);
+    padding: 28px max(28px, var(--dk-safe-right)) max(28px, var(--dk-safe-bottom)) max(28px, var(--dk-safe-left));
+  }
+
+  .dk-auth-form-body {
+    width: min(100%, 420px);
+    padding-block: 28px 8px;
+  }
+}
+
+@media (max-width: 639px) {
+  .dk-auth-page {
+    grid-template-rows: clamp(350px, 44dvh, 390px) minmax(0, 1fr);
+  }
+
+  .dk-auth-stage {
+    min-height: 350px;
+    grid-template-rows: auto minmax(190px, 1fr);
+    padding: 18px max(18px, var(--dk-safe-right)) 14px max(18px, var(--dk-safe-left));
+  }
+
+  .dk-auth-stage-title {
+    max-width: 15ch;
+    font-size: clamp(28px, 8vw, 34px);
+  }
+
+  .dk-auth-stage-subtitle {
+    display: block;
+    max-width: 38ch;
+    margin-top: 6px;
+    font-size: 11.5px;
+    line-height: 1.55;
+  }
+
+  .dk-auth-component-scene {
+    min-height: 190px;
+  }
+
+  .dk-auth-workflow {
+    inset: 4% 0 2%;
+    grid-template-columns: repeat(2, minmax(82px, 108px));
+    gap: 8px;
+  }
+
+  .dk-auth-workflow-card {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 6px;
+    border-radius: 11px;
+    padding: 7px;
+  }
+
+  .dk-auth-workflow-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+
+  .dk-auth-workflow-icon svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .dk-auth-workflow-player {
+    width: 22px;
+    height: 22px;
+  }
+
+  .dk-auth-workflow-copy strong {
+    font-size: 9px;
+  }
+
+  .dk-auth-workflow-copy span {
+    display: none;
+  }
+
+  .dk-auth-logo-token {
+    min-width: 42px;
+    min-height: 42px;
+    border-radius: 11px;
+    padding: 7px;
+  }
+
+  .dk-auth-logo-token img {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+  }
+
+  .dk-auth-logo-token--wide {
+    min-width: 68px;
+  }
+
+  .dk-auth-logo-token__image--wide {
+    width: 48px !important;
+    height: 22px !important;
+  }
+
+  .dk-auth-platform-note {
+    display: none;
+  }
+
+  .dk-auth-rail {
+    padding: 22px max(20px, var(--dk-safe-right)) max(22px, var(--dk-safe-bottom)) max(20px, var(--dk-safe-left));
+  }
+
+  .dk-auth-form-body {
+    width: 100%;
+    padding-block: 24px 0;
+  }
+
+  .dk-auth-heading {
+    margin-bottom: var(--dk-space-6);
+  }
+
+  .dk-auth-title {
+    font-size: 26px;
+  }
+
+  .dk-auth-page .field,
+  .dk-auth-page .dk-field {
+    margin-bottom: var(--dk-space-4);
+  }
+
+  .dk-auth-note {
+    margin-top: var(--dk-space-5);
+    padding-top: var(--dk-space-4);
+  }
+}
+
+@media (max-width: 360px) {
+  .dk-auth-page {
+    grid-template-rows: 338px minmax(0, 1fr);
+  }
+
+  .dk-auth-stage {
+    min-height: 338px;
+    padding-inline: max(14px, var(--dk-safe-left)) max(14px, var(--dk-safe-right));
+  }
+
+  .dk-auth-stage-title {
+    font-size: 27px;
+  }
+
+  .dk-auth-workflow {
+    grid-template-columns: repeat(2, 88px);
+  }
+
+  .dk-auth-rail {
+    padding-inline: max(16px, var(--dk-safe-left)) max(16px, var(--dk-safe-right));
+  }
+
+  .dk-auth-form-body {
+    padding-top: 18px;
+  }
+}
+
+@media (max-height: 700px) and (min-width: 900px) {
+  .dk-auth-stage {
+    padding-block: 26px 22px;
+  }
+
+  .dk-auth-stage-title {
+    font-size: clamp(38px, 4.3vw, 52px);
+  }
+
+  .dk-auth-stage-subtitle {
+    margin-top: 8px;
+    font-size: 13px;
+  }
+
+  .dk-auth-component-scene {
+    min-height: 300px;
+  }
+
+  .dk-auth-workflow {
+    inset-block: 5%;
+    grid-template-columns: repeat(2, 148px);
+  }
+
+  .dk-auth-workflow-card {
+    padding: 9px;
+  }
+
+  .dk-auth-platform-note {
+    display: none;
+  }
+
+  .dk-auth-rail {
+    padding-block: 24px;
+  }
+
+  .dk-auth-form-body {
+    padding-block: 24px 0;
+  }
+
+  .dk-auth-heading {
+    margin-bottom: var(--dk-space-5);
+  }
+}
+
+@media (max-height: 650px) and (max-width: 899px) {
+  .dk-auth-page {
+    grid-template-rows: 330px minmax(0, 1fr);
+  }
+
+  .dk-auth-stage {
+    min-height: 330px;
+  }
+
+  .dk-auth-stage-title {
+    font-size: clamp(27px, 6.5vw, 34px);
+  }
+
+  .dk-auth-rail {
+    padding-block: 18px;
+  }
+
+  .dk-auth-form-body {
+    padding-top: 16px;
+  }
+
+  .dk-auth-heading {
+    margin-bottom: var(--dk-space-5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dk-auth-logo-cloud .tagcloud--item {
+    animation: none !important;
+    transition: none !important;
+  }
+}
