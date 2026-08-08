@@ -213,6 +213,10 @@ class ProviderCompatibilityTests(unittest.TestCase):
             "Unknown parameter: 'tools[0].n'.",
             "Unsupported parameter: \"n\" is not supported with this model.",
             "Invalid parameter: n",
+            # 各家网关拒绝多图的真实措辞，缺一条降级路径就对该模型形同虚设
+            "You must provide n=1 for this model.",
+            "Only n=1 is supported for gpt-image-1",
+            "n must be 1 for this model",
         ):
             self.assertTrue(provider._rejects_multi_image(message), message)
         for message in (
@@ -220,8 +224,23 @@ class ProviderCompatibilityTests(unittest.TestCase):
             "Unknown parameter: response_format",
             "Your prompt contains banned words",
             "Unsupported parameter: 'size'.",
+            "Rate limit reached, retry in 10 seconds",
+            "Image must be at least 1024 pixels",
         ):
             self.assertFalse(provider._rejects_multi_image(message), message)
+
+    def test_error_param_triggers_fallback_even_with_unfamiliar_wording(self):
+        """网关文案不认识时，OpenAI 风格的 error.param 仍应触发降级。"""
+        _FakeClient.responses = [
+            (400, {"error": {"message": "该模型一次只能出一张图", "param": "n"}}),
+            (200, {"data": [{"b64_json": base64.b64encode(b"p1").decode()}]}),
+            (200, {"data": [{"b64_json": base64.b64encode(b"p2").decode()}]}),
+        ]
+        with patch.object(provider.httpx, "Client", _FakeClient):
+            images = provider.generate_images(
+                self._openai_settings(), "prompt", [], 2, "1024x1024", None
+            )
+        self.assertEqual(images, [b"p1", b"p2"])
 
 
 if __name__ == "__main__":

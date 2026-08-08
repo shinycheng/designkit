@@ -63,6 +63,9 @@ export function configSignature(state) {
     variables: state.varValues || {},
     extra: (state.extra || '').trim(),
     uploads: uploadedItems(state).map((item) => item.id).sort(),
+    // 正在上传的图也要算进去：否则刚拖进一张图、还没传完时会被判成「配置没变」，
+    // 点下去就用不含新图的旧参数重跑了
+    pendingUploads: pendingUploadItems(state).length,
     n: state.n,
     size: state.size,
     quality: state.quality,

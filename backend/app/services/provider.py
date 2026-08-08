@@ -98,6 +98,17 @@ def _headers(settings: Dict[str, Any]) -> Dict[str, str]:
     return {"Authorization": "Bearer " + api_key}
 
 
+def _error_param(resp: httpx.Response) -> str:
+    """取 OpenAI 风格错误里的 error.param —— 比解析文案更可靠的参数名信号。"""
+    try:
+        err = resp.json().get("error")
+        if isinstance(err, dict) and err.get("param"):
+            return str(err["param"])
+    except Exception:
+        pass
+    return ""
+
+
 def _extract_error(resp: httpx.Response) -> str:
     try:
         data = resp.json()
@@ -150,6 +161,11 @@ def _rejects_multi_image(error: str) -> bool:
     low = error.lower()
     if "tools[0].n" in low:
         return True
+    # 各家网关拒绝多图的常见措辞：
+    #   dall-e-3: You must provide n=1 for this model.
+    #   其他:     Only n=1 is supported / n must be 1 for this model
+    if re.search(r"(?<![a-z0-9_])n\s*(?:=|must\s+be)\s*1(?![0-9])", low):
+        return True
     if not any(
         hint in low
         for hint in ("unknown parameter", "unsupported parameter", "invalid parameter",
@@ -170,16 +186,20 @@ def _generate_one_by_one(
 
     关键约束（都直接关系到用户的钱和等待时间）：
     - 已经拿到的图绝不丢弃：中途失败就返回已成功的部分，让上游已计费的图不白花；
-    - 整体有时间预算，不让 n 张串行请求把耗时叠成 n 倍；
+    - 有整体时间上限，避免 worker 线程被无限期占住；
     - 拿够 n 张立刻停手，不多发一次请求。
+
+    预算按「每张一份 timeout」给（而不是全部 n 张共用一份），否则正常速度的网关
+    也会在最后几张被静默截断——那等于用户花了钱却拿不到应有的张数。
     """
     single_payload = dict(payload)
     single_payload["n"] = 1
     results: List[bytes] = []
-    deadline = time.monotonic() + timeout
+    budget = timeout * n
+    deadline = time.monotonic() + budget
     for index in range(n):
         if index and time.monotonic() >= deadline:
-            logger.warning("逐张生成已达 %d 秒预算，返回已完成的 %d/%d 张", timeout, len(results), n)
+            logger.warning("逐张生成已达 %d 秒总预算，返回已完成的 %d/%d 张", budget, len(results), n)
             break
         try:
             resp, single_payload = send(single_payload)
@@ -265,7 +285,11 @@ def _openai_generate(
         resp, negotiated = _send_with_compat_retry(common)
         # 部分 OpenAI 兼容网关会把 Images API 内部转译为 Responses
         # image_generation tool，但不接受一次要多张图。此时降级为多次单图请求。
-        if resp.status_code == 400 and n > 1 and _rejects_multi_image(_extract_error(resp)):
+        rejects_multi = resp.status_code == 400 and n > 1 and (
+            _error_param(resp) in ("n", "tools[0].n")
+            or _rejects_multi_image(_extract_error(resp))
+        )
+        if rejects_multi:
             logger.warning("生图网关不支持单请求多图 n=%d，降级为逐张请求", n)
             return _generate_one_by_one(_send_with_compat_retry, negotiated, n, timeout)
     except httpx.TimeoutException:

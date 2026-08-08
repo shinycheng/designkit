@@ -69,6 +69,7 @@ export function renderGenerate(container, user) {
   let settingsTouched = false;
   let poller = null;
   let canvasRenderKey = '';
+  let lastFailedActionKey = '';
 
   const configTab = h('button', {
     class: 'dk-mobile-tab is-active',
@@ -784,6 +785,7 @@ export function renderGenerate(container, user) {
       oninput: (event) => {
         state.extra = event.target.value;
         state.submitError = '';
+        updatePrimaryAction(); // 补充要求也是配置的一部分，改了要重新判断能否重试
       },
     });
     const details = h('details', { class: 'dk-extra-requirements' },
@@ -810,9 +812,13 @@ export function renderGenerate(container, user) {
       ? `${state.n} 张 · ${formatSize(state.size)} · ${formatQuality(state.quality)}画质`
       : (derived.reason || '');
     actionError.replaceChildren(...(state.submitError ? [inlineAlert(state.submitError, 'error')] : []));
-    // 失败面板上的文案与按钮同样取决于「配置有没有改过」，配置一变要跟着刷新，
-    // 否则会出现主按钮说「生成 2 张」而面板还说「可以直接重试」的矛盾
-    if (state.job?.status === 'failed') updateCanvas(true);
+    // 失败面板的文案与按钮同样取决于「配置有没有改过」，需要跟着变化。
+    // 只在 retry/submit 真正切换时重建，否则每敲一个字都会重绘面板、丢失焦点。
+    const failedActionKey = state.job?.status === 'failed' ? `${derived.action}|${derived.label}` : '';
+    if (failedActionKey !== lastFailedActionKey) {
+      lastFailedActionKey = failedActionKey;
+      if (failedActionKey) updateCanvas(true);
+    }
   }
 
   function handlePrimaryAction() {
@@ -1203,7 +1209,16 @@ export function renderGenerate(container, user) {
       }, ...thumbnailControls)
       : null;
 
+    // 网关中途出错时可能只出了一部分图；要明确告诉用户，别让人以为本来就这么多
+    const requested = Number(state.job?.params?.n) || images.length;
+    const shortfall = requested > images.length
+      ? inlineAlert(
+        `本次只生成了 ${images.length} 张（原本请求 ${requested} 张）。生成服务中途出错，已保留成功的部分，可再生成补齐。`,
+        'warning')
+      : null;
+
     return h('div', { class: 'dk-result-state is-succeeded' },
+      shortfall,
       h('div', { class: 'dk-result-toolbar' },
         h('div', { class: 'dk-result-toolbar__copy' },
           h('strong', {}, `${images.length} 张生成结果`),

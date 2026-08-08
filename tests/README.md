@@ -14,6 +14,10 @@ rm -rf data && ./start.sh
 .venv/bin/python tests/e2e_core.py
 ```
 
+```bash
+.venv/bin/python tests/e2e_security.py
+```
+
 - `e2e_core.py` — 核心流程 26 项：登录、上传、模板变量渲染、mock 生成、
   对外 API 提交/查询、webhook 回调签名、越权拦截等
 - `e2e_security.py` — 安全与边界 27 项：首登强制改密、令牌撤销、SSRF 拦截、
