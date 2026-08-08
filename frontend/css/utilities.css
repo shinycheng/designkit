@@ -1,0 +1,100 @@
+.dk-visually-hidden,
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  clip-path: inset(50%) !important;
+  border: 0 !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  white-space: nowrap !important;
+}
+
+.dk-mobile-only {
+  display: none !important;
+}
+
+.dk-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dk-clamp-2 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.dk-scroll-region {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dk-no-page-overflow {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.dk-divider {
+  width: 100%;
+  height: 1px;
+  border: 0;
+  background: var(--dk-border);
+}
+
+.dk-grow {
+  flex: 1 1 auto;
+}
+
+.dk-full-width {
+  width: 100%;
+}
+
+.dk-text-right {
+  text-align: right;
+}
+
+@media (max-width: 959px) {
+  .dk-desktop-only {
+    display: none !important;
+  }
+
+  .dk-mobile-only {
+    display: revert !important;
+  }
+}
+
+@media print {
+  .sidebar,
+  .dk-tool-rail,
+  .dk-bottom-nav,
+  .topbar-user,
+  .dk-topbar-actions,
+  #toast-root,
+  .dk-toast-region {
+    display: none !important;
+  }
+
+  body,
+  #app,
+  .layout,
+  .dk-app-shell,
+  .main,
+  .dk-main,
+  .content,
+  .dk-content {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: var(--dk-surface) !important;
+  }
+}

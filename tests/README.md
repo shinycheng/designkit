@@ -14,6 +14,10 @@ rm -rf data && ./start.sh
 .venv/bin/python tests/e2e_core.py
 ```
 
+```bash
+.venv/bin/python tests/e2e_security.py
+```
+
 - `e2e_core.py` — 核心流程 26 项：登录、上传、模板变量渲染、mock 生成、
   对外 API 提交/查询、webhook 回调签名、越权拦截等
 - `e2e_security.py` — 安全与边界 27 项：首登强制改密、令牌撤销、SSRF 拦截、
@@ -21,3 +25,14 @@ rm -rf data && ./start.sh
   **注意**：它会把 admin 密码改成 `newpass8888`，所以要在重置数据后运行，跑完再重置
 
 全部输出 PASS 即为通过。
+
+## Provider 兼容回归
+
+这组测试使用本地假上游，不会调用真实生图服务或产生费用：
+
+```bash
+.venv/bin/python -m unittest discover -s tests -p 'test_provider_compat.py' -v
+```
+
+- `test_provider_compat.py` — 覆盖 OpenAI Images 兼容网关拒绝多图 `n`
+  参数时的单图拆分回退，并确保无关 400 不会误触发。

@@ -18,7 +18,8 @@
 **http://127.0.0.1:8787**
 
 - 初始账号：`admin`　初始密码：`admin123456`
-- 登录后请到「系统设置」页面底部**尽快修改密码**
+- **首次登录时网页会要求你设置新密码**，设置完才进入工作台（关闭该窗口会退出登录）
+- 以后想再改密码：「系统设置」页面底部的「修改密码」
 - 停止服务：在终端里按 `Ctrl + C`
 
 ## 二、怎么接入真实的生图 API
@@ -29,27 +30,26 @@
 
 1. 登录后进入「系统设置」→「生图服务」
 2. 服务模式选择「OpenAI 兼容接口」
-3. 填写三项：
+3. 填写三项（改完先点「保存」，再点「测试已保存的连接」）：
    - **API 地址**：中转平台给你的接口地址（末尾带不带 `/v1` 都可以）
    - **API Key**：中转平台给你的密钥（一般 `sk-` 开头）
    - **生图模型**：默认 `gpt-image-1`，如中转平台要求别的模型名，按它的文档填
-4. 点「保存」，再点「测试连接」确认显示 ✅
-5. 之后在「生成工作台」生成的就是真实 AI 图了
+5. 看到连接成功的提示后，「生成工作台」出的就是真实 AI 图了
 
 > 生图费用由中转平台按张收取，与本系统无关。「测试连接」不产生生图费用。
 
 ## 三、怎么导入你自己的提示词库
 
-进入「提示词模板」→「导入提示词库(JSON)」，按弹窗里展示的格式准备 JSON 文件即可，
+进入「提示词模板」→ 右上角「导入」，按下面的字段格式准备 JSON 文件即可，
 同名模板会自动覆盖更新。也可以直接把你的提示词库文件发给 AI 助手（比如 Claude），
 让它帮你转成导入格式。
 
-模板里可以用 `{变量名}` 占位（比如 `{scene}`），并在「变量定义」里配置输入框或下拉框，
+模板里可以用 `{变量名}` 占位（比如 `{scene}`），并在模板编辑弹窗的「变量」区域添加输入框或下拉框，
 使用者生成时填写即可。
 
 ## 四、ERP / 第三方系统对接
 
-1. 「API 对接」页面 →「创建密钥」，把生成的 **API Key** 和 **Webhook 签名密钥** 交给对接方
+1. 「API 对接」页面 →「创建密钥」，把生成的 **API Key** 和 **Webhook Secret** 交给对接方（两者只显示这一次，请立刻保存）
 2. 对接文档：[docs/erp-api.md](docs/erp-api.md)（可直接发给对方开发人员）
 3. 在线接口调试页面：http://127.0.0.1:8787/docs
 
@@ -79,8 +79,17 @@ docker compose up -d
 - 后端：Python 3.9+ / FastAPI / SQLAlchemy 2.0 / SQLite（WAL，可平滑换 PostgreSQL）
 - 生成任务：数据库任务队列 + 线程池 worker，重启不丢任务，失败自动重试
 - 生图：OpenAI 兼容 Images API（`/v1/images/edits` 图生图、`/v1/images/generations` 文生图），
-  base_url / key / model 均可配置，兼容国内中转平台；另有 mock 模式
+  base_url / key / model 均可配置；中转网关拒绝单请求多图时，会自动拆分为
+  多次单图请求并聚合结果；另有 mock 模式
 - 前端：无构建纯 JS SPA（`frontend/`），零 Node 依赖，由后端直接托管
 - 对外 API：`/api/v1/*`，X-API-Key 鉴权，异步任务 + HMAC-SHA256 签名回调
-- 目录结构：`backend/app/`（routers 路由 / services 业务 / models 模型），`frontend/`（页面），
-  `docs/`（对接文档），`data/`（运行数据，勿提交）
+- 目录结构：`backend/app/`（routers 路由 / services 业务 / models 模型），`frontend/`（页面：
+  `css/` 分层样式、`js/core/` 应用外壳与轮询、`js/views/` 各页面），`tests/`（回归测试），
+  `docs/`（文档），`data/`（运行数据，勿提交）
+- 文档索引：
+  - [docs/PLAN.md](docs/PLAN.md) — 项目计划与路线图
+  - [docs/erp-api.md](docs/erp-api.md) — ERP 对接接口文档
+  - [docs/UI_REFACTOR_SPEC.md](docs/UI_REFACTOR_SPEC.md) — 界面设计规范
+  - [docs/AUTH_VISUAL_ATTRIBUTIONS.md](docs/AUTH_VISUAL_ATTRIBUTIONS.md) — 登录页素材来源说明
+  - [PRODUCT.md](PRODUCT.md) — 产品定位与设计原则
+  - [tests/README.md](tests/README.md) — 怎么跑回归测试

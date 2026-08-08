@@ -32,12 +32,26 @@ def update_settings(
         raise HTTPException(
             status_code=422, detail="默认尺寸只支持 1024x1024 / 1536x1024 / 1024x1536 / auto"
         )
-    for int_key in ("worker_concurrency", "max_attempts", "request_timeout", "default_n"):
-        if int_key in updates:
-            try:
-                updates[int_key] = int(updates[int_key])
-            except (TypeError, ValueError):
-                raise HTTPException(status_code=422, detail="%s 必须是数字" % int_key)
+    # 上限不只是防呆：max_attempts 和 n 直接决定一次任务最多向生图接口发多少次
+    # 请求，填错一个数字就可能变成成倍的费用
+    int_ranges = {
+        "worker_concurrency": (1, 8, "并发生成数"),
+        "max_attempts": (1, 5, "失败重试次数"),
+        "request_timeout": (30, 900, "生图超时（秒）"),
+        "default_n": (1, 4, "默认生成张数"),
+    }
+    for int_key, (low, high, label) in int_ranges.items():
+        if int_key not in updates:
+            continue
+        try:
+            value = int(updates[int_key])
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="%s 必须是数字" % label)
+        if not low <= value <= high:
+            raise HTTPException(
+                status_code=422, detail="%s 只能填 %d 到 %d 之间" % (label, low, high)
+            )
+        updates[int_key] = value
     settings_service.set_many(db, updates)
     return settings_service.masked(settings_service.get_all(db))
 
