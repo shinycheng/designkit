@@ -1,0 +1,13 @@
+services:
+  designkit:
+    build: .
+    ports:
+      - "8787:8787"
+    volumes:
+      # 数据库、上传图、生成图都存在这里，删除容器数据也不会丢
+      - ./data:/app/data
+    env_file:
+      - path: .env
+        required: false
+    stop_grace_period: 30s
+    restart: unless-stopped
