@@ -91,7 +91,7 @@ Content-Type: application/json
 | `variables` | 模板变量取值，键为模板 `variables[].name` |
 | `image_urls` / `upload_ids` / `images_base64` | 商品图，三者可混用，合计最多 4 张。`image_urls` 必须是直链、不跟随重定向；平台默认允许内网地址（方便内部图片服务器），但云元数据等危险地址始终被拒绝。若平台在「系统设置」关闭了内网访问，则内网图片请改用上传接口或 base64 |
 | `n` | 生成张数 1-4，默认 1 |
-| `size` | `1024x1024` / `1536x1024` / `1024x1536` |
+| `size` | `1024x1024` / `1536x1024` / `1024x1536` / `auto`（其他值返回 422） |
 | `quality` | `auto` / `low` / `medium` / `high` |
 | `callback_url` | 任务完成后平台回调此地址（http/https） |
 | `external_ref` | 你方业务单号，查询与回调时原样带回，便于对账 |

@@ -78,6 +78,8 @@ export function field(labelText, control, { required = false, help = '', error =
     : control.querySelector?.('input,select,textarea,[contenteditable="true"]') || control;
   const id = labelledControl.id || nextId('field');
   labelledControl.id = id;
+  // <label for> 只对表单控件有效；容器（如一组按钮）要用 aria-labelledby 才能被读屏关联
+  const isFormControl = labelledControl.matches?.('input,select,textarea,button,[contenteditable="true"]');
   if (required) labelledControl.setAttribute('aria-required', 'true');
   const helpId = help ? `${id}-help` : '';
   const errorId = error ? `${id}-error` : '';
@@ -86,8 +88,14 @@ export function field(labelText, control, { required = false, help = '', error =
   if (error) {
     labelledControl.setAttribute('aria-invalid', 'true');
   }
+  const labelId = `${id}-label`;
+  if (!isFormControl) labelledControl.setAttribute('aria-labelledby', labelId);
   return h('div', { class: 'dk-field field', 'data-invalid': error ? 'true' : 'false' },
-    h('label', { class: 'dk-field-label field-label', for: id },
+    h(isFormControl ? 'label' : 'span', {
+      class: 'dk-field-label field-label',
+      id: labelId,
+      for: isFormControl ? id : null,
+    },
       labelText,
       required ? h('span', { class: 'dk-required req', 'aria-hidden': 'true' }, ' *') : null),
     control,

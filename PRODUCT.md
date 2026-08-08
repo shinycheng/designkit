@@ -1,8 +1,4 @@
-# Product
-
-## Register
-
-product
+# DesignKit 产品说明
 
 ## Users
 
@@ -33,4 +29,4 @@ DesignKit 是商品视觉生成与管理工作台：把商品原图、可维护�
 
 ## Accessibility & Inclusion
 
-目标为 WCAG 2.1 AA。正文与占位文本需满足对比度要求；所有关键流程支持键盘访问、可见焦点、语义标签和焦点返回；状态变化通过 live region 传达；不只依赖颜色表达状态；触控目标不小于 44×44px；响应式布局不得产生页面级横向滚动；动效必须尊重 `prefers-reduced-motion`。
+目标为 WCAG 2.2 AA（与 docs/UI_REFACTOR_SPEC.md 保持一致）。正文与占位文本需满足对比度要求；所有关键流程支持键盘访问、可见焦点、语义标签和焦点返回；状态变化通过 live region 传达；不只依赖颜色表达状态；触控目标不小于 44×44px；响应式布局不得产生页面级横向滚动；动效必须尊重 `prefers-reduced-motion`。

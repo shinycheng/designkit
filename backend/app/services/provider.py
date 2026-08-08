@@ -10,10 +10,11 @@ import hashlib
 import io
 import logging
 import mimetypes
+import re
 import textwrap
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import httpx
 from PIL import Image, ImageDraw
@@ -140,6 +141,73 @@ def _decode_response(resp: httpx.Response, timeout: int) -> List[bytes]:
     return results
 
 
+def _rejects_multi_image(error: str) -> bool:
+    """判断网关的 400 是不是在抱怨「一次要多张图」这个参数。
+
+    只在已经失败的 400 上判断，所以宁可放宽一点：判错最多多发几次同样会失败的
+    请求（失败请求不计费），判漏则用户直接拿不到图。
+    """
+    low = error.lower()
+    if "tools[0].n" in low:
+        return True
+    if not any(
+        hint in low
+        for hint in ("unknown parameter", "unsupported parameter", "invalid parameter",
+                     "unsupported value", "not supported", "unknown argument")
+    ):
+        return False
+    # 参数名 n 单独出现（含被引号包裹的形式），避免误伤 prompt 里的普通单词
+    return re.search(r"""(?<![a-z0-9_])['"`]?n['"`]?(?![a-z0-9_])""", low) is not None
+
+
+def _generate_one_by_one(
+    send: Callable[[Dict[str, Any]], Tuple[httpx.Response, Dict[str, Any]]],
+    payload: Dict[str, Any],
+    n: int,
+    timeout: int,
+) -> List[bytes]:
+    """网关不支持一次多张时，逐张请求凑够 n 张。
+
+    关键约束（都直接关系到用户的钱和等待时间）：
+    - 已经拿到的图绝不丢弃：中途失败就返回已成功的部分，让上游已计费的图不白花；
+    - 整体有时间预算，不让 n 张串行请求把耗时叠成 n 倍；
+    - 拿够 n 张立刻停手，不多发一次请求。
+    """
+    single_payload = dict(payload)
+    single_payload["n"] = 1
+    results: List[bytes] = []
+    deadline = time.monotonic() + timeout
+    for index in range(n):
+        if index and time.monotonic() >= deadline:
+            logger.warning("逐张生成已达 %d 秒预算，返回已完成的 %d/%d 张", timeout, len(results), n)
+            break
+        try:
+            resp, single_payload = send(single_payload)
+        except httpx.HTTPError as e:
+            if results:
+                logger.warning("第 %d 张请求失败（%s），返回已完成的 %d 张", index + 1, e, len(results))
+                break
+            raise
+        if resp.status_code != 200:
+            message = "生图接口报错（HTTP %d）：%s" % (resp.status_code, _extract_error(resp))
+            if results:
+                logger.warning("第 %d 张失败（%s），返回已完成的 %d 张", index + 1, message, len(results))
+                break
+            raise ProviderError(message)
+        try:
+            results.extend(_decode_response(resp, timeout))
+        except ProviderError:
+            if results:
+                logger.warning("第 %d 张解析失败，返回已完成的 %d 张", index + 1, len(results))
+                break
+            raise
+        if len(results) >= n:
+            break
+    if not results:
+        raise ProviderError("生图接口没有返回任何图片")
+    return results[:n]
+
+
 def _openai_generate(
     settings: Dict[str, Any],
     prompt: str,
@@ -177,47 +245,29 @@ def _openai_generate(
                 base + "/v1/images/generations", headers=headers, json=payload
             )
 
-    def _send_with_compat_retry(payload: Dict[str, Any]) -> httpx.Response:
+    def _send_with_compat_retry(payload: Dict[str, Any]) -> Tuple[httpx.Response, Dict[str, Any]]:
+        """发一次请求；若网关不认识 response_format 则去掉重试。
+
+        返回 (响应, 实际生效的 payload)——把协商结果交还给调用方复用，
+        否则后续每次请求都要重复踩一次必然失败的 400（费用与耗时都会翻倍）。
+        """
         resp = _send(payload)
-        # 部分中转网关不认识 response_format 参数：去掉后自动重试一次
         if (
             resp.status_code == 400
             and "response_format" in payload
             and "response_format" in _extract_error(resp)
         ):
-            retry_payload = {k: v for k, v in payload.items() if k != "response_format"}
-            resp = _send(retry_payload)
-        return resp
+            payload = {k: v for k, v in payload.items() if k != "response_format"}
+            resp = _send(payload)
+        return resp, payload
 
     try:
-        resp = _send_with_compat_retry(common)
-        error = _extract_error(resp) if resp.status_code == 400 else ""
+        resp, negotiated = _send_with_compat_retry(common)
         # 部分 OpenAI 兼容网关会把 Images API 内部转译为 Responses
-        # image_generation tool，但不接受 tools[0].n > 1。保持业务层的多图
-        # 语义，仅在网关精确拒绝该字段时降级为 n 次单图请求。
-        if (
-            resp.status_code == 400
-            and n > 1
-            and "unknown parameter" in error.lower()
-            and "tools[0].n" in error.lower()
-        ):
-            logger.warning(
-                "生图网关不支持单请求多图 n=%d，降级为 %d 次单图请求",
-                n,
-                n,
-            )
-            single_payload = dict(common)
-            single_payload["n"] = 1
-            results: List[bytes] = []
-            for _ in range(n):
-                single_resp = _send_with_compat_retry(single_payload)
-                if single_resp.status_code != 200:
-                    raise ProviderError(
-                        "生图接口报错（HTTP %d）：%s"
-                        % (single_resp.status_code, _extract_error(single_resp))
-                    )
-                results.extend(_decode_response(single_resp, timeout))
-            return results[:n]
+        # image_generation tool，但不接受一次要多张图。此时降级为多次单图请求。
+        if resp.status_code == 400 and n > 1 and _rejects_multi_image(_extract_error(resp)):
+            logger.warning("生图网关不支持单请求多图 n=%d，降级为逐张请求", n)
+            return _generate_one_by_one(_send_with_compat_retry, negotiated, n, timeout)
     except httpx.TimeoutException:
         raise ProviderError("生图接口超时（超过 %d 秒），可在系统设置里调大超时时间" % timeout)
     except httpx.HTTPError as e:

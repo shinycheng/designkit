@@ -299,7 +299,8 @@ export function renderTemplates(container, user) {
         .map(([value, label]) => h('option', { value, selected: (draft.default_params.size || '1024x1024') === value }, label)));
     const countInput = h('input', { class: 'input', type: 'number', min: 1, max: 4, value: draft.default_params.n || 1, oninput: (event) => { draft.default_params.n = Number(event.target.value) || 1; } });
     const qualityInput = h('select', { class: 'select', onchange: (event) => { draft.default_params.quality = event.target.value; } },
-      ['auto', 'high', 'medium', 'low'].map((quality) => h('option', { value: quality, selected: (draft.default_params.quality || 'high') === quality }, quality)));
+      [['auto', '自动'], ['high', '高画质'], ['medium', '中画质'], ['low', '低画质']]
+        .map(([value, label]) => h('option', { value, selected: (draft.default_params.quality || 'high') === value }, label)));
     const requiresInput = h('input', { type: 'checkbox', checked: draft.requires_input_image, onchange: (event) => { draft.requires_input_image = event.target.checked; } });
     const enabledInput = h('input', { type: 'checkbox', checked: draft.is_enabled, onchange: (event) => { draft.is_enabled = event.target.checked; } });
     const sortInput = h('input', { class: 'input', type: 'number', value: draft.sort || 0, oninput: (event) => { draft.sort = Number(event.target.value) || 0; } });

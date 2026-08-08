@@ -96,6 +96,9 @@ export function createLucideIcon(name, { size = 20, label = '', className = '' }
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('focusable', 'false');
+  // 走 CSS 变量而不是 width/height 属性：样式表里的 .dk-icon 尺寸优先级高于
+  // 属性，直接写属性会让调用方传的 size 全部失效
+  svg.style.setProperty('--dk-icon-size', `${size}px`);
   svg.classList.add('dk-icon');
   if (className) svg.classList.add(...className.split(/\s+/).filter(Boolean));
   if (label) {

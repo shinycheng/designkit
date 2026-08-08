@@ -342,7 +342,7 @@ function renderLogin() {
     submit,
     h('p', { class: 'dk-auth-note' },
       icon('shield-check', { size: 15 }),
-      h('span', {}, '首次登录后需要设置新的安全密码。')));
+      h('span', {}, '首次使用：账号 admin，初始密码 admin123456；登录后会要求你立即设置新密码。')));
 
   function workflowCard(iconComponent, title, copy) {
     return h('article', { class: 'dk-auth-workflow-card' },

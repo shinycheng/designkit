@@ -21,6 +21,7 @@ import {
   SIZE_OPTIONS,
   applyTemplateDefaults,
   buildGenerationPayload,
+  configSignature,
   deriveSubmitState,
   selectedTemplateValue,
   uploadedItems,
@@ -525,9 +526,13 @@ export function renderGenerate(container, user) {
   }
 
   function selectTemplate(template) {
+    // 再点一次当前已选中的模板不应清空用户已填好的变量与已调过的参数
+    const sameTemplate = template
+      ? state.selected && state.selected.id === template.id
+      : state.selected === template;
     state.selected = template;
     state.submitError = '';
-    if (template) applyTemplateDefaults(state, template);
+    if (template && !sameTemplate) applyTemplateDefaults(state, template);
     updateTemplateSelection();
     updateVariablesSection();
     updateSettingsControls();
@@ -800,10 +805,14 @@ export function renderGenerate(container, user) {
         className: state.submitting ? 'dk-spin' : '',
       }),
       document.createTextNode(derived.label));
+    // 不能生成时把原因显示出来，否则用户只看到一个灰按钮而不知道缺什么
     actionHint.textContent = derived.canSubmit
       ? `${state.n} 张 · ${formatSize(state.size)} · ${formatQuality(state.quality)}画质`
-      : '';
+      : (derived.reason || '');
     actionError.replaceChildren(...(state.submitError ? [inlineAlert(state.submitError, 'error')] : []));
+    // 失败面板上的文案与按钮同样取决于「配置有没有改过」，配置一变要跟着刷新，
+    // 否则会出现主按钮说「生成 2 张」而面板还说「可以直接重试」的矛盾
+    if (state.job?.status === 'failed') updateCanvas(true);
   }
 
   function handlePrimaryAction() {
@@ -830,9 +839,11 @@ export function renderGenerate(container, user) {
     updateCanvas(true);
 
     try {
+      const signature = configSignature(state);
       const job = await api.post('/api/web/generations', buildGenerationPayload(state));
       if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
       state.job = job;
+      state.submittedSignature = signature;
       state.pollError = '';
       state.selectedResultIndex = 0;
       setMobileView('result', window.matchMedia('(max-width: 959px)').matches);
@@ -1030,23 +1041,28 @@ export function renderGenerate(container, user) {
 
   function renderFailedState() {
     const error = state.job?.error || '生成服务没有返回具体原因。';
+    const derived = deriveSubmitState(state);
+    // 配置改过之后这里会变成「按新配置生成」，避免用户以为改了设置却仍重跑旧任务
+    const isRetry = derived.action === 'retry';
     return h('div', { class: 'dk-result-state is-failed' },
       h('div', { class: 'dk-result-message' },
         h('span', { class: 'dk-result-message-icon', 'aria-hidden': 'true' }, icon('circle-alert', { size: 30 })),
-        h('div', {}, h('h3', {}, '这次没有生成成功'), h('p', {}, '输入配置已保留，可以直接重试。'))),
+        h('div', {}, h('h3', {}, '这次没有生成成功'),
+          h('p', {}, isRetry ? '输入配置已保留，可以直接重试。' : '左侧配置已改动，将按新的配置重新生成。'))),
       inlineAlert(error, 'error'),
       h('ul', { class: 'dk-recovery-list' },
         h('li', {}, '检查商品图是否清晰且内容完整'),
         h('li', {}, '减少互相冲突的补充要求'),
         h('li', {}, '如果服务繁忙，请稍后重试')),
-      button(state.submitting ? '正在重新生成…' : '重新生成', {
+      button(state.submitting ? '正在提交…' : (isRetry ? '重新生成' : derived.label), {
         variant: 'primary',
         size: 'lg',
-        iconName: 'rotate-ccw',
+        iconName: isRetry ? 'rotate-ccw' : 'sparkles',
         loading: state.submitting,
-        disabled: state.submitting,
+        disabled: state.submitting || !derived.canSubmit,
+        disabledReason: derived.canSubmit ? '' : derived.reason,
         type: 'button',
-        onclick: () => void retryJob(),
+        onclick: handlePrimaryAction,
       }));
   }
 

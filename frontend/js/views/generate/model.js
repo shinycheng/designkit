@@ -54,6 +54,21 @@ export function applyTemplateDefaults(state, template) {
   }
 }
 
+export function configSignature(state) {
+  // 用于判断「失败之后配置有没有被改过」。后端的 /retry 会原样重跑旧任务的
+  // 提示词与参数，所以只有配置一字未改时重试才符合用户预期。
+  return JSON.stringify({
+    template: state.selected === null ? 'free' : (state.selected?.id ?? null),
+    prompt: state.selected === null ? (state.freePrompt || '').trim() : '',
+    variables: state.varValues || {},
+    extra: (state.extra || '').trim(),
+    uploads: uploadedItems(state).map((item) => item.id).sort(),
+    n: state.n,
+    size: state.size,
+    quality: state.quality,
+  });
+}
+
 export function deriveSubmitState(state) {
   if (state.submitting) {
     return { canSubmit: false, action: 'submit', label: '正在创建任务…', reason: '正在提交生成任务' };
@@ -63,8 +78,14 @@ export function deriveSubmitState(state) {
     return { canSubmit: false, action: 'submit', label: '任务生成中…', reason: '当前任务完成后可以再次生成' };
   }
 
-  if (state.job?.status === 'failed') {
-    return { canSubmit: true, action: 'retry', label: '重新生成', reason: '保留当前配置并重试失败任务' };
+  // 失败后配置没动过才提供「重试旧任务」；一旦改了配置就落到下面的常规校验，
+  // 按新配置创建新任务，否则用户改了模板/张数却仍按旧参数出图。
+  if (
+    state.job?.status === 'failed'
+    && state.submittedSignature
+    && state.submittedSignature === configSignature(state)
+  ) {
+    return { canSubmit: true, action: 'retry', label: '重新生成', reason: '用相同配置重试这次失败的任务' };
   }
 
   if (state.selected === undefined) {

@@ -8,6 +8,7 @@ import {
   field,
   fmtTime,
   h,
+  icon,
   inlineAlert,
   modal,
   skeleton,
@@ -163,7 +164,7 @@ export function renderApiKeys(container) {
   }
 
   function secretRow(label, value, help, successMessage) {
-    const copyButton = button('复制', { variant: 'secondary', size: 'sm', iconName: 'copy' });
+    const copyButton = button('复制', { variant: 'secondary', size: 'sm', iconName: 'copy', 'data-label': '复制' });
     copyButton.addEventListener('click', () => copyWithState(copyButton, value, successMessage));
     return h('section', { class: 'dk-secret-row' },
       h('div', {}, h('h3', {}, label), h('p', { class: 'dk-section-meta' }, help)),
@@ -174,12 +175,17 @@ export function renderApiKeys(container) {
   async function copyWithState(copyButton, value, successMessage) {
     const copied = await copyText(value, successMessage);
     if (!copied) return;
-    copyButton.textContent = '已复制';
+    // 重建「图标 + 文字」结构，直接写 textContent 会把图标和 label 节点清掉且不再恢复
+    const label = copyButton.dataset.label || '复制';
+    const paint = (iconName, text) => copyButton.replaceChildren(
+      icon(iconName), h('span', { class: 'dk-button-label' }, text),
+    );
+    paint('circle-check', '已复制');
     copyButton.setAttribute('data-state', 'success');
     clearTimeout(copyButton._resetTimer);
     copyButton._resetTimer = setTimeout(() => {
       if (!copyButton.isConnected) return;
-      copyButton.replaceChildren('复制');
+      paint('copy', label);
       copyButton.removeAttribute('data-state');
     }, 1800);
   }
@@ -246,7 +252,7 @@ export function renderApiKeys(container) {
   }
 
   function guideStep(number, title, description, code) {
-    const copyButton = button('复制代码', { variant: 'quiet', size: 'sm', iconName: 'copy' });
+    const copyButton = button('复制代码', { variant: 'quiet', size: 'sm', iconName: 'copy', 'data-label': '复制代码' });
     copyButton.addEventListener('click', () => copyWithState(copyButton, code, `${title}代码已复制`));
     return h('li', { class: 'dk-guide-step' },
       h('div', { class: 'dk-guide-step__number', 'aria-hidden': 'true' }, number),

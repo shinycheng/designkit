@@ -27,6 +27,7 @@ export function renderHistory(container) {
     q: '',
     data: null,
     stopped: false,
+    actionPending: false,
     loading: false,
     loadSequence: 0,
     pollTimer: null,
@@ -264,7 +265,12 @@ export function renderHistory(container) {
       if (state.stopped || sequence !== state.pollSequence) return;
       let needsReload = false;
       settled.forEach((result, index) => {
-        if (result.status !== 'fulfilled') return;
+        if (result.status !== 'fulfilled') {
+          // 任务被删除（可能是别的标签页或 ERP 侧删的）：重拉列表让它消失，
+          // 否则卡片会永远停在「生成中」并被无限轮询下去
+          if (result.reason?.status === 404) needsReload = true;
+          return;
+        }
         const fresh = result.value;
         const old = active[index];
         if (state.status && fresh.status !== state.status) {
@@ -362,11 +368,14 @@ export function renderHistory(container) {
         }, h('img', { src: url, alt: `商品原图 ${index + 1}`, loading: 'lazy' }))))
       : null;
 
+    const pending = Boolean(state.actionPending);
     const actions = h('div', { class: 'dk-inline-actions' },
       (job.status === 'succeeded' || job.status === 'failed')
-        ? button('重新生成', {
+        ? button(pending ? '正在提交…' : '重新生成', {
           variant: 'secondary',
           iconName: 'rotate-ccw',
+          loading: pending,
+          disabled: pending,
           onclick: () => retryJob(job),
         })
         : null,
@@ -374,6 +383,7 @@ export function renderHistory(container) {
         ? button('删除记录', {
           variant: 'danger',
           iconName: 'trash-2',
+          disabled: pending,
           onclick: () => deleteJob(job),
         })
         : null);
@@ -395,32 +405,45 @@ export function renderHistory(container) {
   }
 
   async function retryJob(job) {
+    // 防连点：重试会真实调用生图接口，连击等于重复付费
+    if (state.actionPending) return;
+    state.actionPending = true;
+    updateDetail(job);
     try {
       const fresh = await api.post('/api/web/generations/' + job.job_id + '/retry');
       toast('任务已重新排队', 'success');
       const index = state.data.items.findIndex((item) => item.job_id === job.job_id);
       if (index >= 0) state.data.items[index] = fresh;
       replaceCard(fresh);
+      state.actionPending = false;
       updateDetail(fresh);
       schedulePolling(800);
     } catch (error) {
       toast(error.message, 'error');
+      state.actionPending = false;
+      updateDetail(job);
     }
   }
 
   async function deleteJob(job) {
+    if (state.actionPending) return;
     const confirmed = await confirmDialog(
       `删除任务「${job.template_name || '自由提示词'}」？生成的图片文件也会一并删除，此操作无法撤销。`,
       { danger: true, okText: '删除任务和图片' },
     );
-    if (!confirmed) return;
+    if (!confirmed || state.actionPending) return;
+    state.actionPending = true;
+    updateDetail(job);
     try {
       await api.del('/api/web/generations/' + job.job_id);
       if (state.detailOverlay) state.detailOverlay.close();
       toast('生成记录已删除', 'success');
+      state.actionPending = false;
       await load();
     } catch (error) {
       toast(error.message, 'error');
+      state.actionPending = false;
+      updateDetail(job);
     }
   }
 

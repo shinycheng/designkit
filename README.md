@@ -18,7 +18,8 @@
 **http://127.0.0.1:8787**
 
 - 初始账号：`admin`　初始密码：`admin123456`
-- 登录后请到「系统设置」页面底部**尽快修改密码**
+- **首次登录会强制要求你设置新密码**，设置完才能进入工作台（这是安全设计，无法跳过）
+- 以后想再改密码：「系统设置」页面底部的「修改密码」
 - 停止服务：在终端里按 `Ctrl + C`
 
 ## 二、怎么接入真实的生图 API
@@ -40,7 +41,7 @@
 
 ## 三、怎么导入你自己的提示词库
 
-进入「提示词模板」→「导入提示词库(JSON)」，按弹窗里展示的格式准备 JSON 文件即可，
+进入「提示词模板」→ 右上角「导入」，按弹窗里展示的格式准备 JSON 文件即可，
 同名模板会自动覆盖更新。也可以直接把你的提示词库文件发给 AI 助手（比如 Claude），
 让它帮你转成导入格式。
 
@@ -49,7 +50,7 @@
 
 ## 四、ERP / 第三方系统对接
 
-1. 「API 对接」页面 →「创建密钥」，把生成的 **API Key** 和 **Webhook 签名密钥** 交给对接方
+1. 「API 对接」页面 →「创建密钥」，把生成的 **API Key** 和 **Webhook Secret** 交给对接方（两者只显示这一次，请立刻保存）
 2. 对接文档：[docs/erp-api.md](docs/erp-api.md)（可直接发给对方开发人员）
 3. 在线接口调试页面：http://127.0.0.1:8787/docs
 
@@ -83,5 +84,13 @@ docker compose up -d
   多次单图请求并聚合结果；另有 mock 模式
 - 前端：无构建纯 JS SPA（`frontend/`），零 Node 依赖，由后端直接托管
 - 对外 API：`/api/v1/*`，X-API-Key 鉴权，异步任务 + HMAC-SHA256 签名回调
-- 目录结构：`backend/app/`（routers 路由 / services 业务 / models 模型），`frontend/`（页面），
-  `docs/`（对接文档），`data/`（运行数据，勿提交）
+- 目录结构：`backend/app/`（routers 路由 / services 业务 / models 模型），`frontend/`（页面：
+  `css/` 分层样式、`js/core/` 应用外壳与轮询、`js/views/` 各页面），`tests/`（回归测试），
+  `docs/`（文档），`data/`（运行数据，勿提交）
+- 文档索引：
+  - [docs/PLAN.md](docs/PLAN.md) — 项目计划与路线图
+  - [docs/erp-api.md](docs/erp-api.md) — ERP 对接接口文档
+  - [docs/UI_REFACTOR_SPEC.md](docs/UI_REFACTOR_SPEC.md) — 界面设计规范
+  - [docs/AUTH_VISUAL_ATTRIBUTIONS.md](docs/AUTH_VISUAL_ATTRIBUTIONS.md) — 登录页素材来源说明
+  - [PRODUCT.md](PRODUCT.md) — 产品定位与设计原则
+  - [tests/README.md](tests/README.md) — 怎么跑回归测试
