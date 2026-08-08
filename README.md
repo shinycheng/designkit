@@ -79,7 +79,8 @@ docker compose up -d
 - 后端：Python 3.9+ / FastAPI / SQLAlchemy 2.0 / SQLite（WAL，可平滑换 PostgreSQL）
 - 生成任务：数据库任务队列 + 线程池 worker，重启不丢任务，失败自动重试
 - 生图：OpenAI 兼容 Images API（`/v1/images/edits` 图生图、`/v1/images/generations` 文生图），
-  base_url / key / model 均可配置，兼容国内中转平台；另有 mock 模式
+  base_url / key / model 均可配置；中转网关拒绝单请求多图时，会自动拆分为
+  多次单图请求并聚合结果；另有 mock 模式
 - 前端：无构建纯 JS SPA（`frontend/`），零 Node 依赖，由后端直接托管
 - 对外 API：`/api/v1/*`，X-API-Key 鉴权，异步任务 + HMAC-SHA256 签名回调
 - 目录结构：`backend/app/`（routers 路由 / services 业务 / models 模型），`frontend/`（页面），

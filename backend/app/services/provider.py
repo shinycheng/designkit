@@ -8,6 +8,7 @@ import base64
 import binascii
 import hashlib
 import io
+import logging
 import mimetypes
 import textwrap
 import time
@@ -18,6 +19,9 @@ import httpx
 from PIL import Image, ImageDraw
 
 from .storage import abs_path
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderError(Exception):
@@ -173,16 +177,47 @@ def _openai_generate(
                 base + "/v1/images/generations", headers=headers, json=payload
             )
 
-    try:
-        resp = _send(common)
+    def _send_with_compat_retry(payload: Dict[str, Any]) -> httpx.Response:
+        resp = _send(payload)
         # 部分中转网关不认识 response_format 参数：去掉后自动重试一次
         if (
             resp.status_code == 400
-            and "response_format" in common
+            and "response_format" in payload
             and "response_format" in _extract_error(resp)
         ):
-            retry_payload = {k: v for k, v in common.items() if k != "response_format"}
+            retry_payload = {k: v for k, v in payload.items() if k != "response_format"}
             resp = _send(retry_payload)
+        return resp
+
+    try:
+        resp = _send_with_compat_retry(common)
+        error = _extract_error(resp) if resp.status_code == 400 else ""
+        # 部分 OpenAI 兼容网关会把 Images API 内部转译为 Responses
+        # image_generation tool，但不接受 tools[0].n > 1。保持业务层的多图
+        # 语义，仅在网关精确拒绝该字段时降级为 n 次单图请求。
+        if (
+            resp.status_code == 400
+            and n > 1
+            and "unknown parameter" in error.lower()
+            and "tools[0].n" in error.lower()
+        ):
+            logger.warning(
+                "生图网关不支持单请求多图 n=%d，降级为 %d 次单图请求",
+                n,
+                n,
+            )
+            single_payload = dict(common)
+            single_payload["n"] = 1
+            results: List[bytes] = []
+            for _ in range(n):
+                single_resp = _send_with_compat_retry(single_payload)
+                if single_resp.status_code != 200:
+                    raise ProviderError(
+                        "生图接口报错（HTTP %d）：%s"
+                        % (single_resp.status_code, _extract_error(single_resp))
+                    )
+                results.extend(_decode_response(single_resp, timeout))
+            return results[:n]
     except httpx.TimeoutException:
         raise ProviderError("生图接口超时（超过 %d 秒），可在系统设置里调大超时时间" % timeout)
     except httpx.HTTPError as e:
