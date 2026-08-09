@@ -37,13 +37,45 @@ const UPLOAD_STATUS = {
 
 let uploadClientId = 0;
 
-export function renderGenerate(container, user) {
+const generateSessions = new Map();
+
+function cloneJson(value) {
+  if (value == null) return value;
+  try { return JSON.parse(JSON.stringify(value)); } catch { return null; }
+}
+
+function reconcileTemplateValues(template, previousValues = {}) {
+  const nextValues = {};
+  for (const variable of template?.variables || []) {
+    if (!variable?.name) continue;
+    const hasPrevious = Object.prototype.hasOwnProperty.call(previousValues, variable.name);
+    if (variable.type === 'select' && Array.isArray(variable.options) && variable.options.length) {
+      const previous = hasPrevious ? previousValues[variable.name] : undefined;
+      const preserved = hasPrevious
+        ? variable.options.find((option) => String(option) === String(previous))
+        : undefined;
+      const fallback = variable.default != null
+        ? variable.options.find((option) => String(option) === String(variable.default))
+        : undefined;
+      nextValues[variable.name] = preserved ?? fallback;
+      if (nextValues[variable.name] == null) nextValues[variable.name] = variable.options[0];
+    } else if (hasPrevious) {
+      nextValues[variable.name] = previousValues[variable.name];
+    } else if (variable.default != null) {
+      nextValues[variable.name] = variable.default;
+    }
+  }
+  return nextValues;
+}
+
+function createGenerateState(snapshot = null) {
   const state = {
     uploads: [],
     templates: [],
     categories: [],
     activeCategory: null,
     selected: undefined,
+    selectedTemplateId: null,
     varValues: {},
     freePrompt: '',
     extra: '',
@@ -54,6 +86,8 @@ export function renderGenerate(container, user) {
     jobSummary: null,
     missingJobId: '',
     selectedResultIndex: 0,
+    submittedSignature: '',
+    settingsTouched: false,
     submitting: false,
     submitError: '',
     pollError: '',
@@ -62,11 +96,228 @@ export function renderGenerate(container, user) {
     mobileView: 'config',
   };
 
+  if (!snapshot) return state;
+  state.activeCategory = snapshot.activeCategory ?? null;
+  state.selected = snapshot.selection === 'free' ? null : undefined;
+  state.selectedTemplateId = snapshot.selection === 'template' ? snapshot.templateId : null;
+  state.varValues = { ...(snapshot.varValues || {}) };
+  state.freePrompt = snapshot.freePrompt || '';
+  state.extra = snapshot.extra || '';
+  state.size = SIZE_OPTIONS.some((option) => option.value === snapshot.size) ? snapshot.size : state.size;
+  state.n = Math.max(1, Math.min(4, Number.parseInt(snapshot.n, 10) || 1));
+  state.quality = QUALITY_OPTIONS.some((option) => option.value === snapshot.quality)
+    ? snapshot.quality
+    : state.quality;
+  state.job = cloneJson(snapshot.job);
+  state.jobSummary = cloneJson(snapshot.jobSummary);
+  state.missingJobId = snapshot.missingJobId || '';
+  state.selectedResultIndex = Math.max(0, Number.parseInt(snapshot.selectedResultIndex, 10) || 0);
+  state.submittedSignature = snapshot.submittedSignature || '';
+  state.settingsTouched = Boolean(snapshot.settingsTouched);
+  state.mobileView = snapshot.mobileView === 'result' ? 'result' : 'config';
+  return state;
+}
+
+function generateSessionKey(user) {
+  return String(user?.id ?? user?.username ?? 'anonymous');
+}
+
+function getGenerateSession(user) {
+  const key = generateSessionKey(user);
+  let session = generateSessions.get(key);
+  if (!session) {
+    session = {
+      snapshot: null,
+      pendingSubmission: null,
+      uploads: [],
+      uploadRunner: null,
+      activeUpload: null,
+      uploadListeners: new Set(),
+      disposed: false,
+      epoch: 0,
+    };
+    generateSessions.set(key, session);
+  }
+  return session;
+}
+
+function releaseUploadPreview(item) {
+  if (item.objectUrl && item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+  item.objectUrl = false;
+}
+
+function notifyUploadSession(session) {
+  for (const listener of session.uploadListeners) {
+    try { listener(); } catch { /* 已卸载或异常视图不应阻塞上传队列。 */ }
+  }
+}
+
+function subscribeUploadSession(session, listener) {
+  if (session.disposed) return () => {};
+  session.uploadListeners.add(listener);
+  return () => session.uploadListeners.delete(listener);
+}
+
+function runSessionUploadQueue(session) {
+  if (session.disposed || session.uploadRunner) return session.uploadRunner;
+
+  const runnerEpoch = session.epoch;
+  const runner = (async () => {
+    while (!session.disposed && session.epoch === runnerEpoch) {
+      const item = session.uploads.find((candidate) => candidate.status === 'queued');
+      if (!item) break;
+
+      if (!item.file) {
+        item.status = 'failed';
+        item.error = '原始图片已不可用，请移除后重新选择';
+        notifyUploadSession(session);
+        continue;
+      }
+
+      const itemSequence = ++item.sequence;
+      const controller = new AbortController();
+      const activeUpload = { item, itemSequence, controller, epoch: runnerEpoch };
+      session.activeUpload = activeUpload;
+      item.status = 'uploading';
+      item.error = '';
+      notifyUploadSession(session);
+
+      const data = new FormData();
+      data.append('file', item.file);
+      try {
+        const uploaded = await api.post('/api/web/uploads', data, { signal: controller.signal });
+        if (
+          session.disposed
+          || session.epoch !== runnerEpoch
+          || session.activeUpload !== activeUpload
+          || item.sequence !== itemSequence
+          || item.status === 'removed'
+        ) continue;
+        releaseUploadPreview(item);
+        Object.assign(item, uploaded, {
+          file: null,
+          previewUrl: uploaded.url,
+          objectUrl: false,
+          status: 'uploaded',
+          error: '',
+        });
+      } catch (error) {
+        if (
+          session.disposed
+          || session.epoch !== runnerEpoch
+          || session.activeUpload !== activeUpload
+          || item.sequence !== itemSequence
+          || item.status === 'removed'
+        ) continue;
+        item.status = 'failed';
+        item.error = error?.name === 'AbortError'
+          ? '上传已取消，请重试'
+          : (error?.message || '上传失败，请重试');
+      } finally {
+        if (session.activeUpload === activeUpload) session.activeUpload = null;
+      }
+      notifyUploadSession(session);
+    }
+  })();
+
+  session.uploadRunner = runner;
+  const finishRunner = (error = null) => {
+    if (error && !session.disposed && session.activeUpload?.epoch === runnerEpoch) {
+      const { item, itemSequence } = session.activeUpload;
+      if (item.status === 'uploading' && item.sequence === itemSequence) {
+        item.status = 'failed';
+        item.error = error?.message || '上传队列异常，请重试';
+      }
+      session.activeUpload = null;
+      notifyUploadSession(session);
+    }
+    if (session.uploadRunner === runner) session.uploadRunner = null;
+    if (!session.disposed && session.uploads.some((item) => item.status === 'queued')) {
+      void runSessionUploadQueue(session);
+    }
+  };
+  void runner.then(() => finishRunner(), (error) => finishRunner(error));
+  return runner;
+}
+
+function disposeGenerateSession(session) {
+  if (session.disposed) return;
+  session.disposed = true;
+  session.epoch += 1;
+  session.activeUpload?.controller.abort();
+  session.activeUpload = null;
+  session.uploadListeners.clear();
+  for (const item of session.uploads) {
+    item.sequence += 1;
+    releaseUploadPreview(item);
+    item.file = null;
+  }
+  session.uploads.length = 0;
+  session.pendingSubmission = null;
+  session.snapshot = null;
+}
+
+function getGenerateState(user) {
+  const session = getGenerateSession(user);
+  const state = createGenerateState(session.snapshot);
+  state.uploads = session.uploads;
+  return state;
+}
+
+function saveGenerateState(user, state) {
+  const selection = state.selected === null
+    ? 'free'
+    : (state.selected?.id != null || state.selectedTemplateId != null ? 'template' : 'none');
+  getGenerateSession(user).snapshot = {
+    activeCategory: state.activeCategory,
+    selection,
+    templateId: state.selected?.id ?? state.selectedTemplateId ?? null,
+    varValues: { ...state.varValues },
+    freePrompt: state.freePrompt,
+    extra: state.extra,
+    size: state.size,
+    n: state.n,
+    quality: state.quality,
+    job: cloneJson(state.job),
+    jobSummary: cloneJson(state.jobSummary),
+    missingJobId: state.missingJobId || '',
+    selectedResultIndex: state.selectedResultIndex,
+    submittedSignature: state.submittedSignature || '',
+    settingsTouched: Boolean(state.settingsTouched),
+    mobileView: state.mobileView,
+  };
+}
+
+function setPendingSubmission(user, pendingSubmission) {
+  getGenerateSession(user).pendingSubmission = pendingSubmission;
+}
+
+function clearPendingSubmission(user, pendingSubmission) {
+  const session = generateSessions.get(generateSessionKey(user));
+  if (session?.pendingSubmission === pendingSubmission) session.pendingSubmission = null;
+}
+
+export function clearGenerateSessions() {
+  for (const session of generateSessions.values()) disposeGenerateSession(session);
+  generateSessions.clear();
+}
+
+export function renderGenerate(container, user) {
+  const session = getGenerateSession(user);
+  const state = getGenerateState(user);
+  // 这些字段属于单次视图挂载，不应在返回页面时保留旧请求或旧错误。
+  state.templates = [];
+  state.categories = [];
+  state.submitting = false;
+  state.submitError = '';
+  state.pollError = '';
+  state.templatesLoading = true;
+  state.templatesError = '';
+
   let disposed = false;
   let lifecycleSequence = 0;
   let submitSequence = 0;
-  let uploadRunnerActive = false;
-  let settingsTouched = false;
+  let unsubscribeUploads = () => {};
   let poller = null;
   let canvasRenderKey = '';
   let lastFailedActionKey = '';
@@ -161,17 +412,24 @@ export function renderGenerate(container, user) {
     'data-mobile-view': state.mobileView,
   }, mobileTabs, configPanel, resultCanvas);
   container.replaceChildren(root);
+  setMobileView(state.mobileView);
 
   setupUploadSection();
   setupTemplateSection();
   setupSettingsSection();
   setupExtraSection();
+  unsubscribeUploads = subscribeUploadSession(session, () => {
+    if (disposed) return;
+    updateUploadView();
+    updatePrimaryAction();
+  });
   applyPendingPrompt();  // 灵感库「用它生成」带过来的提示词
   updateVariablesSection();
   updatePrimaryAction();
   updateCanvas(true);
   void loadRuntimeDefaults();
   void loadTemplates();
+  void restoreJobState();
 
   function applyPendingPrompt() {
     let pending = null;
@@ -181,6 +439,7 @@ export function renderGenerate(container, user) {
     } catch { return; }
     if (!pending?.prompt) return;
     state.selected = null;  // 自由模式
+    state.selectedTemplateId = null;
     state.freePrompt = pending.prompt;
     if (pending.from) toast(`已带入灵感库提示词「${pending.from}」，可直接生成或继续修改`, 'success');
     if (pending.requiresImage) toast('这条提示词需要先上传商品/参考图', 'info', 4200);
@@ -192,7 +451,7 @@ export function renderGenerate(container, user) {
       const settings = await api.get('/api/web/settings');
       // 选了具体模板（模板默认优先）或用户手动动过设置才跳过；
       // 灵感库接力进入的自由模式（selected === null）仍应套用系统默认尺寸/张数
-      if (disposed || settingsTouched || state.selected) return;
+      if (disposed || state.settingsTouched || state.selected || state.selectedTemplateId != null) return;
       if (SIZE_OPTIONS.some((option) => option.value === settings.default_size)) {
         state.size = settings.default_size;
       }
@@ -308,52 +567,8 @@ export function renderGenerate(container, user) {
     }
 
     state.submitError = '';
-    updateUploadView();
-    updatePrimaryAction();
-    void runUploadQueue();
-  }
-
-  async function runUploadQueue() {
-    if (uploadRunnerActive || disposed) return;
-    uploadRunnerActive = true;
-    const runnerSequence = lifecycleSequence;
-
-    try {
-      while (!disposed && runnerSequence === lifecycleSequence) {
-        const item = state.uploads.find((candidate) => candidate.status === 'queued');
-        if (!item) break;
-
-        const itemSequence = ++item.sequence;
-        item.status = 'uploading';
-        item.error = '';
-        updateUploadView();
-        updatePrimaryAction();
-
-        const data = new FormData();
-        data.append('file', item.file);
-        try {
-          const uploaded = await api.post('/api/web/uploads', data);
-          if (disposed || runnerSequence !== lifecycleSequence || item.sequence !== itemSequence || item.status === 'removed') continue;
-          releaseObjectUrl(item);
-          Object.assign(item, uploaded, {
-            file: null,
-            previewUrl: uploaded.url,
-            objectUrl: false,
-            status: 'uploaded',
-            error: '',
-          });
-        } catch (error) {
-          if (disposed || runnerSequence !== lifecycleSequence || item.sequence !== itemSequence || item.status === 'removed') continue;
-          item.status = 'failed';
-          item.error = error?.message || '上传失败，请重试';
-        }
-        updateUploadView();
-        updatePrimaryAction();
-      }
-    } finally {
-      uploadRunnerActive = false;
-      if (!disposed && state.uploads.some((item) => item.status === 'queued')) void runUploadQueue();
-    }
+    notifyUploadSession(session);
+    void runSessionUploadQueue(session);
   }
 
   function retryUpload(item) {
@@ -361,22 +576,19 @@ export function renderGenerate(container, user) {
     item.sequence += 1;
     item.status = 'queued';
     item.error = '';
-    updateUploadView();
-    updatePrimaryAction();
-    void runUploadQueue();
+    notifyUploadSession(session);
+    void runSessionUploadQueue(session);
   }
 
   function removeUpload(item) {
     item.sequence += 1;
     item.status = 'removed';
-    releaseObjectUrl(item);
-    updateUploadView();
-    updatePrimaryAction();
-  }
-
-  function releaseObjectUrl(item) {
-    if (item.objectUrl && item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-    item.objectUrl = false;
+    if (session.activeUpload?.item === item) session.activeUpload.controller.abort();
+    releaseUploadPreview(item);
+    item.file = null;
+    const index = session.uploads.indexOf(item);
+    if (index >= 0) session.uploads.splice(index, 1);
+    notifyUploadSession(session);
   }
 
   function updateUploadView() {
@@ -471,8 +683,28 @@ export function renderGenerate(container, user) {
       if (disposed || sequence !== lifecycleSequence) return;
       state.templates = Array.isArray(templates) ? templates : [];
       state.categories = Array.isArray(categories) ? categories : [];
+      const selectedTemplateId = state.selected?.id ?? state.selectedTemplateId;
+      if (selectedTemplateId != null) {
+        const refreshedTemplate = state.templates.find(
+          (template) => String(template.id) === String(selectedTemplateId),
+        );
+        state.selected = refreshedTemplate;
+        state.selectedTemplateId = refreshedTemplate?.id ?? null;
+        state.varValues = refreshedTemplate
+          ? reconcileTemplateValues(refreshedTemplate, state.varValues)
+          : {};
+      }
+      if (
+        state.activeCategory != null
+        && !state.categories.some((category) => category.id === state.activeCategory)
+      ) {
+        state.activeCategory = null;
+      }
       state.templatesLoading = false;
       renderTemplateOptions();
+      updateVariablesSection();
+      updateSettingsControls();
+      updatePrimaryAction();
     } catch (error) {
       if (disposed || sequence !== lifecycleSequence) return;
       state.templatesLoading = false;
@@ -548,6 +780,7 @@ export function renderGenerate(container, user) {
       ? state.selected && state.selected.id === template.id
       : state.selected === template;
     state.selected = template;
+    state.selectedTemplateId = template?.id ?? null;
     state.submitError = '';
     if (template && !sameTemplate) applyTemplateDefaults(state, template);
     updateTemplateSelection();
@@ -722,7 +955,7 @@ export function renderGenerate(container, user) {
       'data-ratio': option.ratio,
       'aria-pressed': String(state.size === option.value),
       onclick: () => {
-        settingsTouched = true;
+        state.settingsTouched = true;
         state.size = option.value;
         state.submitError = '';
         updateSettingsControls();
@@ -771,7 +1004,7 @@ export function renderGenerate(container, user) {
   }
 
   function changeCount(delta) {
-    settingsTouched = true;
+    state.settingsTouched = true;
     state.n = Math.max(1, Math.min(4, state.n + delta));
     state.submitError = '';
     updateSettingsControls();
@@ -860,10 +1093,19 @@ export function renderGenerate(container, user) {
     updatePrimaryAction();
     updateCanvas(true);
 
+    const signature = configSignature(state);
+    const pendingSubmission = {
+      request: api.post('/api/web/generations', buildGenerationPayload(state)),
+      signature,
+      jobSummary: cloneJson(state.jobSummary),
+      failureMessage: '创建生成任务失败',
+    };
+    setPendingSubmission(user, pendingSubmission);
+
     try {
-      const signature = configSignature(state);
-      const job = await api.post('/api/web/generations', buildGenerationPayload(state));
+      const job = await pendingSubmission.request;
       if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
+      clearPendingSubmission(user, pendingSubmission);
       state.job = job;
       state.submittedSignature = signature;
       state.pollError = '';
@@ -873,6 +1115,7 @@ export function renderGenerate(container, user) {
       startPolling();
     } catch (error) {
       if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
+      clearPendingSubmission(user, pendingSubmission);
       state.submitError = error?.message || '创建生成任务失败';
       toast(state.submitError, 'error', 5000);
     } finally {
@@ -894,9 +1137,18 @@ export function renderGenerate(container, user) {
     updatePrimaryAction();
     updateCanvas(true);
 
+    const pendingSubmission = {
+      request: api.post(`/api/web/generations/${jobId}/retry`),
+      signature: state.submittedSignature,
+      jobSummary: cloneJson(state.jobSummary),
+      failureMessage: '重新生成失败',
+    };
+    setPendingSubmission(user, pendingSubmission);
+
     try {
-      const job = await api.post(`/api/web/generations/${jobId}/retry`);
+      const job = await pendingSubmission.request;
       if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
+      clearPendingSubmission(user, pendingSubmission);
       state.job = job;
       state.pollError = '';
       setMobileView('result', window.matchMedia('(max-width: 959px)').matches);
@@ -904,6 +1156,7 @@ export function renderGenerate(container, user) {
       startPolling();
     } catch (error) {
       if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
+      clearPendingSubmission(user, pendingSubmission);
       state.submitError = error?.message || '重新生成失败';
       toast(state.submitError, 'error', 5000);
     } finally {
@@ -929,6 +1182,80 @@ export function renderGenerate(container, user) {
   }
 
   // --------------------------------------------------------------- Polling
+
+  async function restoreJobState() {
+    const pendingSubmission = getGenerateSession(user).pendingSubmission;
+    if (pendingSubmission) {
+      const sequence = lifecycleSequence;
+      state.submitting = true;
+      state.jobSummary = cloneJson(pendingSubmission.jobSummary) || state.jobSummary;
+      updatePrimaryAction();
+      updateCanvas(true);
+      try {
+        const job = await pendingSubmission.request;
+        if (disposed || sequence !== lifecycleSequence) return;
+        clearPendingSubmission(user, pendingSubmission);
+        state.job = job;
+        state.submittedSignature = pendingSubmission.signature || state.submittedSignature;
+        state.missingJobId = '';
+        state.pollError = '';
+        state.selectedResultIndex = 0;
+        setMobileView('result', window.matchMedia('(max-width: 959px)').matches);
+        updateCanvas(true);
+        startPolling();
+      } catch (error) {
+        if (disposed || sequence !== lifecycleSequence) return;
+        clearPendingSubmission(user, pendingSubmission);
+        state.submitError = error?.message || pendingSubmission.failureMessage;
+        toast(state.submitError, 'error', 5000);
+      } finally {
+        if (!disposed && sequence === lifecycleSequence) {
+          state.submitting = false;
+          updatePrimaryAction();
+          updateCanvas(true);
+        }
+      }
+      return;
+    }
+
+    const jobId = state.job?.job_id;
+    if (!jobId || state.missingJobId) return;
+    const sequence = lifecycleSequence;
+    const submissionSequence = submitSequence;
+
+    try {
+      const job = await api.get(`/api/web/generations/${jobId}`);
+      if (
+        disposed
+        || sequence !== lifecycleSequence
+        || submissionSequence !== submitSequence
+        || state.job?.job_id !== jobId
+      ) return;
+      state.job = job;
+      state.missingJobId = '';
+      state.pollError = '';
+      updatePrimaryAction();
+      updateCanvas(true);
+      if (job.status === 'pending' || job.status === 'processing') startPolling();
+    } catch (error) {
+      if (
+        disposed
+        || sequence !== lifecycleSequence
+        || submissionSequence !== submitSequence
+        || state.job?.job_id !== jobId
+      ) return;
+      if (error?.status === 404) {
+        state.missingJobId = jobId;
+        state.job = null;
+        state.pollError = '';
+      } else if (error?.status !== 401) {
+        state.pollError = error?.message || '暂时无法刷新任务状态';
+        if (state.job?.status === 'pending' || state.job?.status === 'processing') startPolling();
+      }
+      updatePrimaryAction();
+      updateCanvas(true);
+    }
+  }
 
   function startPolling() {
     stopPolling();
@@ -1341,14 +1668,13 @@ export function renderGenerate(container, user) {
 
   function dispose() {
     if (disposed) return;
+    // 路由只销毁本次视图；上传队列、File 与 blob 预览由登录会话继续持有。
+    saveGenerateState(user, state);
     disposed = true;
     lifecycleSequence += 1;
     submitSequence += 1;
+    unsubscribeUploads();
     stopPolling();
-    for (const item of state.uploads) {
-      item.sequence += 1;
-      releaseObjectUrl(item);
-    }
   }
 
   return dispose;

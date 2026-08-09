@@ -3,7 +3,7 @@ import { api, clearSession, getSessionEpoch, getToken, getUser, setSession } fro
 import { renderAppShell } from './core/app-shell.js';
 import { navigate, resolveRoute } from './core/router.js';
 import { button, closeOverlays, field, h, icon, iconButton, inlineAlert, modal, toast } from './ui.js';
-import { renderGenerate } from './views/generate.js';
+import { clearGenerateSessions, renderGenerate } from './views/generate.js';
 import { renderHistory } from './views/history.js';
 import { renderTemplates } from './views/templates.js';
 import { renderInspiration } from './views/inspiration.js';
@@ -281,6 +281,7 @@ function mountLoginStage(page) {
 
 function renderLogin() {
   cleanupView();
+  clearGenerateSessions();
   document.title = '登录 · DesignKit';
   setThemeColor('#f3f5f7');
   const username = h('input', { class: 'dk-control input', autocomplete: 'username', value: 'admin' });
