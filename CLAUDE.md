@@ -14,7 +14,7 @@
 | `docs/deploy-synology.md` | 群晖 NAS 部署步骤 |
 | `docs/UI_REFACTOR_SPEC.md` | 前端界面规范 |
 | `docs/AUTH_VISUAL_ATTRIBUTIONS.md` | 登录页视觉素材出处（版权合规） |
-| `tests/README.md` | 测试怎么跑 |
+| `tests/README.md` | 测试怎么跑（新增测试文件要在这里登记，含项数） |
 | `example.env` / `.env.example` | 部署配置模板 / 本机开发配置模板 |
 | `docker-compose.yml` 的注释 | 编排里每项设置的理由 |
 

@@ -7,10 +7,18 @@ from sqlalchemy.orm import Session
 from ..deps import get_current_user, get_db, require_admin
 from ..models import PromptCategory, PromptTemplate, User
 from ..serializers import template_to_dict
-from ..services import settings_service, storage
+from ..services import settings_service, sizing, storage
 from .uploads import read_and_validate
 
 router = APIRouter(prefix="/api/web", tags=["网页-提示词模板"])
+
+
+@router.get("/size-presets")
+def list_size_presets(_: User = Depends(get_current_user)):
+    """出图比例预设。前端三处曾各自硬编码同一份清单，加一个比例要改五个地方
+    且极易漏改（表现为「设置页能选、提交时 422」）。改为统一从这里取。
+    """
+    return {"presets": sizing.presets_payload()}
 
 
 class TemplateBody(BaseModel):

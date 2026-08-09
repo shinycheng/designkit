@@ -103,6 +103,10 @@ RUNTIME_DEFAULTS = {
     # 自建网关忽略 size 参数、输出比例跟随输入图，开着才能控制出图比例；
     # 对遵循 size 的官方/中转网关同样安全（输入输出比例一致，无形变）。
     "normalize_input_ratio": os.environ.get("DESIGNKIT_NORMALIZE_INPUT_RATIO", "true").lower() in ("1", "true", "yes"),
+    # 出图底色：auto=交给模型（通常是实底）；transparent=要求输出透明底 PNG。
+    # 透明底省掉抠图这道工序（同一张图可换任意背景），但要求网关支持 background 参数；
+    # 不支持时会在生成记录里明确报出来，而不是悄悄退回不透明。
+    "image_background": os.environ.get("DESIGNKIT_IMAGE_BACKGROUND", "auto"),
     # 对外可访问的地址：生成结果的图片链接、webhook 里的 URL 都基于它拼出来
     "public_base_url": os.environ.get(
         "DESIGNKIT_PUBLIC_BASE_URL", "http://127.0.0.1:%d" % PORT

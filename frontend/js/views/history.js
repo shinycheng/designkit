@@ -1,5 +1,6 @@
 // 生成记录：可筛选的视觉画廊 + 局部轮询 + 响应式任务详情抽屉
 import { api } from '../api.js';
+import { navigate } from '../core/router.js';
 import {
   button,
   confirmDialog,
@@ -355,6 +356,24 @@ export function renderHistory(container) {
               image.url,
               `designkit_${job.job_id.slice(0, 8)}_${index + 1}.${image.format || 'png'}`,
             ),
+          }),
+          // 翻出旧图接着改是常见动作；以前只能下载到本地再拖回上传区
+          button('继续改', {
+            variant: 'quiet',
+            size: 'sm',
+            iconName: 'wand-sparkles',
+            onclick: () => {
+              try {
+                sessionStorage.setItem('dk_reuse_image', JSON.stringify({
+                  url: image.url,
+                  name: `designkit_${job.job_id.slice(0, 8)}_${index + 1}.${image.format || 'png'}`,
+                }));
+              } catch {
+                toast('当前浏览器不允许跨页传递，请在生成页手动上传', 'error');
+                return;
+              }
+              navigate('#/generate');
+            },
           }))))
       : null;
 

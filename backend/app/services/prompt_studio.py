@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from . import sizing
 from .provider import ProviderError, _api_base, _extract_error, _headers
 from .storage import abs_path
 
@@ -49,27 +50,65 @@ Rules:
 5. State that the product's real shape, colour, material and branding must be preserved.
 6. Plain English only, never any other writing system. One paragraph, under 130 words,
    no markdown, no preamble, no surrounding quotes.
+7. If a REQUIRED BACKGROUND line asks for a transparent background, describe ONLY the
+   product itself — its form, colour, material, finish and branding, plus the lighting on
+   the product. Write no scene, no surface, no table, no floor, no wall, no props,
+   no cast shadow and no reflections onto anything. Ignore any scenery in the BRIEF;
+   borrow only its lighting and colour mood.
 
 Output ONLY the prompt text."""
 
 # 网关忽略 size 参数，出图比例由「输入图比例」和「提示词里的构图措辞」共同决定，
 # 且措辞的优先级更高（实测：1:1 输入 + 「tall / upright / bursting upward」的提示词
 # → 输出 2:3 竖图）。所以把目标画幅显式写进提示词，才是可靠的比例控制手段。
-_FRAMING = {
-    "1024x1024": "a square 1:1 image",
-    "1536x1024": "a landscape 3:2 image",
-    "1024x1536": "a portrait 2:3 image",
-}
-
-
+# 措辞按尺寸「算出来」而不是查表：查表意味着每放开一个比例都要记得回来加一行，
+# 忘了加就退化成完全不约束比例——而比例失控恰恰是最难被发现的那类问题
+# （出图本身是好看的，只是尺寸不对，用户往往到上架时才发现）。
 def framing_label(size: Optional[str]) -> Optional[str]:
-    return _FRAMING.get(str(size or "").lower())
+    """例：1024x1360 → "a portrait 3:4 image"。auto 或非法尺寸返回 None。"""
+    orientation = sizing.orientation(size)
+    ratio = sizing.ratio_label(size)
+    if not orientation or not ratio:
+        return None
+    return "a %s %s image" % (orientation, ratio)
 
 
 def aspect_clause(size: Optional[str]) -> str:
     """给提示词补一句显式画幅要求；auto 或未知尺寸返回空串。"""
     label = framing_label(size)
     return (" The final image must be %s." % label) if label else ""
+
+
+# 自带模板与灵感库里大量写着 "pure seamless white background" 这类措辞。
+# 要透明底时如果不管它们，参数发了也没用——模型会照着提示词画一块白。
+_BACKDROP_WORDS = re.compile(
+    # 形容词可以连着堆好几个（"pure seamless white background"），要全部吃掉；
+    # 但**不能**把短语前面的空格算进匹配，否则替换后会和前一个词粘在一起
+    r"\b(?:(?:pure|seamless|solid|plain|clean|studio|minimal|bright|soft|neutral)\s+)*"
+    r"(?:white|off-white|light\s+gr[ae]y|gr[ae]y|beige|cream|ivory)\s+"
+    r"(?:background|backdrop|seamless(?:\s+paper)?)\b",
+    re.I,
+)
+
+_TRANSPARENT_CLAUSE = (
+    " Output the subject on a fully transparent background with an alpha channel: "
+    "no backdrop, no floor, no wall, no cast shadow onto any surface."
+)
+
+
+def enforce_transparent_background(prompt: str) -> str:
+    """把提示词改写成「要透明底」。
+
+    先删掉原文里的白底/灰底措辞再追加要求——只追加不删除的话，
+    两句互相打架，模型多半仍会画一块实底。
+    """
+    text = (prompt or "").strip()
+    text = _BACKDROP_WORDS.sub("transparent background", text)
+    if "transparent background" not in text.lower():
+        text = text.rstrip()
+    if _TRANSPARENT_CLAUSE.strip() not in text:
+        text = text.rstrip() + _TRANSPARENT_CLAUSE
+    return text
 
 
 def enforce_aspect(prompt: str, size: Optional[str]) -> str:
@@ -107,7 +146,7 @@ def _chat(settings: Dict[str, Any], messages: list) -> str:
     payload = {"model": _text_model(settings), "messages": messages}
     try:
         with httpx.Client(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
-            resp = client.post(base + "/v1/chat/completions", headers=headers, json=payload)
+            resp = client.post(base + "/chat/completions", headers=headers, json=payload)
     except httpx.TimeoutException:
         raise ProviderError("AI 写提示词超时（超过 %d 秒）" % REQUEST_TIMEOUT)
     except httpx.HTTPError as e:
@@ -144,11 +183,17 @@ def synthesize_prompt(
     brief: str,
     input_paths: Optional[List[str]] = None,
     size: Optional[str] = None,
+    transparent: bool = False,
 ) -> str:
     """看商品图 + brief（模板风格 + 用户补充要求）+ 目标画幅 → 合成最终提示词。
 
     brief 就是原本要直接发给生图模型的那段提示词；这里把它降级为「art direction」，
     真正的主体以图为准。size 决定画幅，会同时写进指令和成品提示词。
+
+    transparent=True 时必须在**合成阶段**就把要求传进去。只在事后用正则删白底措辞
+    是不够的：视觉模型会写出「大理石台面、暖调轮廓光、柔和投影」这类场景描述，
+    正则删不掉，最终提示词变成「一整段场景 + 一句别画背景」自相矛盾，
+    模型多半照样画实底——而这一次是要计费的。
     """
     brief = (brief or "").strip()
     if not brief:
@@ -158,6 +203,10 @@ def synthesize_prompt(
     label = framing_label(size)
     if label:
         content.append({"type": "text", "text": "REQUIRED OUTPUT FRAMING: %s" % label})
+    if transparent:
+        content.append({"type": "text", "text":
+            "REQUIRED BACKGROUND: fully transparent PNG with an alpha channel. "
+            "No scene, no surface, no floor, no wall, no props, no cast shadow."})
     # 只看第一张：多图会显著拖慢且第一张通常就是主体商品
     for rel in (input_paths or [])[:1]:
         part = _image_part(rel)
@@ -183,8 +232,11 @@ def synthesize_prompt(
 
     if not result:
         raise ProviderError("文本模型没有返回内容")
-    # 兜底：模型偶尔会忘记声明画幅，这里补上
-    return enforce_aspect(result, size)
+    # 兜底：模型偶尔会忘记声明画幅/背景要求，这里补上
+    result = enforce_aspect(result, size)
+    if transparent:
+        result = enforce_transparent_background(result)
+    return result
 
 
 def test_text_model(settings: Dict[str, Any]) -> str:

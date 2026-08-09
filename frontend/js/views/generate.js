@@ -3,12 +3,14 @@ import { api } from '../api.js';
 import { Poller } from '../core/poller.js';
 import {
   button,
+  closeOverlays,
   downloadUrl,
   field,
   h,
   icon,
   inlineAlert,
   lightbox,
+  modal,
   skeleton,
   statusBadge,
   toast,
@@ -19,7 +21,9 @@ import {
   MAX_UPLOADS,
   QUALITY_OPTIONS,
   SIZE_OPTIONS,
+  applySizePresets,
   applyTemplateDefaults,
+  isUsableSize,
   buildGenerationPayload,
   configSignature,
   deriveSubmitState,
@@ -27,6 +31,7 @@ import {
   uploadedItems,
   visibleUploads,
 } from './generate/model.js';
+import { FIT_MODES, PLATFORM_SIZES, loadImage, renderToBlob } from './generate/export-sizes.js';
 
 const UPLOAD_STATUS = {
   queued: '等待上传',
@@ -86,6 +91,7 @@ function createGenerateState(snapshot = null) {
     jobSummary: null,
     missingJobId: '',
     selectedResultIndex: 0,
+    carriedImages: [],
     submittedSignature: '',
     settingsTouched: false,
     submitting: false,
@@ -103,7 +109,7 @@ function createGenerateState(snapshot = null) {
   state.varValues = { ...(snapshot.varValues || {}) };
   state.freePrompt = snapshot.freePrompt || '';
   state.extra = snapshot.extra || '';
-  state.size = SIZE_OPTIONS.some((option) => option.value === snapshot.size) ? snapshot.size : state.size;
+  state.size = isUsableSize(snapshot.size) ? snapshot.size : state.size;
   state.n = Math.max(1, Math.min(4, Number.parseInt(snapshot.n, 10) || 1));
   state.quality = QUALITY_OPTIONS.some((option) => option.value === snapshot.quality)
     ? snapshot.quality
@@ -424,10 +430,13 @@ export function renderGenerate(container, user) {
     updatePrimaryAction();
   });
   applyPendingPrompt();  // 灵感库「用它生成」带过来的提示词
+  applyPendingReuse();   // 生成记录「继续改」带过来的结果图
   updateVariablesSection();
   updatePrimaryAction();
   updateCanvas(true);
-  void loadRuntimeDefaults();
+  // 必须等比例清单到位再读系统默认尺寸：loadRuntimeDefaults 会用 SIZE_OPTIONS
+  // 校验后端返回的 default_size，清单还是兜底版时会把管理员设的比例静默丢掉
+  void loadSizePresets().then(() => { if (!disposed) return loadRuntimeDefaults(); });
   void loadTemplates();
   void restoreJobState();
 
@@ -445,6 +454,17 @@ export function renderGenerate(container, user) {
     if (pending.requiresImage) toast('这条提示词需要先上传商品/参考图', 'info', 4200);
   }
 
+  /** 接住「生成记录」页点「继续改」带过来的那张结果图。 */
+  function applyPendingReuse() {
+    let pending = null;
+    try {
+      const raw = sessionStorage.getItem('dk_reuse_image');
+      if (raw) { pending = JSON.parse(raw); sessionStorage.removeItem('dk_reuse_image'); }
+    } catch { return; }
+    if (!pending?.url) return;
+    void reuseResultAsInput({ url: pending.url, format: 'png' }, null, pending.name);
+  }
+
   async function loadRuntimeDefaults() {
     if (user?.role !== 'admin') return;
     try {
@@ -452,9 +472,7 @@ export function renderGenerate(container, user) {
       // 选了具体模板（模板默认优先）或用户手动动过设置才跳过；
       // 灵感库接力进入的自由模式（selected === null）仍应套用系统默认尺寸/张数
       if (disposed || state.settingsTouched || state.selected || state.selectedTemplateId != null) return;
-      if (SIZE_OPTIONS.some((option) => option.value === settings.default_size)) {
-        state.size = settings.default_size;
-      }
+      if (isUsableSize(settings.default_size)) state.size = settings.default_size;
       const defaultCount = Number.parseInt(settings.default_n, 10);
       if (Number.isFinite(defaultCount)) state.n = Math.max(1, Math.min(4, defaultCount));
       updateSettingsControls();
@@ -948,22 +966,7 @@ export function renderGenerate(container, user) {
       class: 'dk-size-options',
       role: 'group',
       'aria-label': '图片尺寸',
-    }, ...SIZE_OPTIONS.map((option) => h('button', {
-      class: 'dk-size-option',
-      type: 'button',
-      'data-size': option.value,
-      'data-ratio': option.ratio,
-      'aria-pressed': String(state.size === option.value),
-      onclick: () => {
-        state.settingsTouched = true;
-        state.size = option.value;
-        state.submitError = '';
-        updateSettingsControls();
-        updatePrimaryAction();
-      },
-    },
-      h('span', { class: `dk-ratio-shape dk-size-option__shape is-${option.ratio.replace(':', '-')}`, 'aria-hidden': 'true' }),
-      h('span', {}, h('strong', {}, `${option.label} ${option.ratio}`), h('small', {}, option.usage)))));
+    });
 
     const countValue = h('output', { class: 'dk-count-value', for: 'dk-count-minus dk-count-plus' }, String(state.n));
     const countStepper = h('div', { class: 'dk-count-stepper', role: 'group', 'aria-label': '生成张数' },
@@ -997,6 +1000,7 @@ export function renderGenerate(container, user) {
       h('div', { class: 'dk-field-group' }, h('p', { class: 'dk-field-label' }, '图片尺寸'), sizeGroup),
       compactSettings);
     settingsSection.sizeGroup = sizeGroup;
+    renderSizeOptions();
     settingsSection.countValue = countValue;
     settingsSection.countMinus = countStepper.querySelector('#dk-count-minus');
     settingsSection.countPlus = countStepper.querySelector('#dk-count-plus');
@@ -1009,6 +1013,49 @@ export function renderGenerate(container, user) {
     state.submitError = '';
     updateSettingsControls();
     updatePrimaryAction();
+  }
+
+  // 比例选项由后端下发，所以要能重画一次——不能在建面板时一次性写死
+  function renderSizeOptions() {
+    if (!settingsSection.sizeGroup) return;
+    const options = SIZE_OPTIONS.slice();
+    // 当前尺寸不在推荐清单里时（管理员设了自定义合法尺寸），补一个临时选项，
+    // 否则一个按钮都不高亮，用户看不出现在到底是什么比例
+    if (state.size && !options.some((option) => option.value === state.size)) {
+      options.push({ value: state.size, label: '自定义', ratio: state.size, usage: '来自系统或模板设置' });
+    }
+    settingsSection.sizeGroup.replaceChildren(...options.map((option) => h('button', {
+      // 选中态在这里就地写好：本函数会在面板其余控件就绪之前被调用一次，
+      // 此时不能去碰 updateSettingsControls（它要读 countValue 等还没赋值的引用）
+      class: `dk-size-option${state.size === option.value ? ' is-selected' : ''}`,
+      type: 'button',
+      'data-size': option.value,
+      'data-ratio': option.ratio,
+      'aria-pressed': String(state.size === option.value),
+      onclick: () => {
+        state.settingsTouched = true;
+        state.size = option.value;
+        state.submitError = '';
+        updateSettingsControls();
+        updatePrimaryAction();
+      },
+    },
+      h('span', {
+        class: `dk-ratio-shape dk-size-option__shape is-${String(option.ratio).replace(':', '-')}`,
+        'aria-hidden': 'true',
+      }),
+      h('span', {}, h('strong', {}, `${option.label} ${option.ratio}`), h('small', {}, option.usage)))));
+  }
+
+  async function loadSizePresets() {
+    try {
+      const data = await api.get('/api/web/size-presets');
+      if (disposed) return;
+      applySizePresets(data?.presets);
+      renderSizeOptions();
+    } catch {
+      // 拉不到就用内置兜底清单，不影响生成
+    }
   }
 
   function updateSettingsControls() {
@@ -1106,6 +1153,7 @@ export function renderGenerate(container, user) {
       const job = await pendingSubmission.request;
       if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
       clearPendingSubmission(user, pendingSubmission);
+      state.carriedImages = [];
       state.job = job;
       state.submittedSignature = signature;
       state.pollError = '';
@@ -1149,6 +1197,7 @@ export function renderGenerate(container, user) {
       const job = await pendingSubmission.request;
       if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
       clearPendingSubmission(user, pendingSubmission);
+      state.carriedImages = [];
       state.job = job;
       state.pollError = '';
       setMobileView('result', window.matchMedia('(max-width: 959px)').matches);
@@ -1426,7 +1475,11 @@ export function renderGenerate(container, user) {
   }
 
   function renderSucceededState() {
-    const images = Array.isArray(state.job?.images) ? state.job.images : [];
+    // 补图产生的是一个新任务，但上一批已出好的图要一起显示，
+    // 否则用户会以为「补图把原来的图弄没了」，进而去重跑整单——正好是想省的那笔钱
+    const fresh = Array.isArray(state.job?.images) ? state.job.images : [];
+    const carried = Array.isArray(state.carriedImages) ? state.carriedImages : [];
+    const images = carried.length ? carried.concat(fresh) : fresh;
     if (!images.length) {
       return h('div', { class: 'dk-result-state is-missing' },
         inlineAlert('任务已完成，但没有可展示的结果图。', 'warning'),
@@ -1474,6 +1527,24 @@ export function renderGenerate(container, user) {
         toast(`已开始下载结果 ${state.selectedResultIndex + 1}`, 'success');
       },
     });
+    // 电商修图的主循环是「在满意的那一版上继续改」，不是每次从原图重赌。
+    // 没有这个入口时，用户只能下载到本地再拖回上传区，等于把上一版的构图光影全丢掉。
+    const continueEdit = button('用这张继续改', {
+      variant: 'secondary',
+      size: 'md',
+      iconName: 'wand-sparkles',
+      type: 'button',
+      onclick: () => void reuseResultAsInput(selected(), continueEdit),
+    });
+
+    const exportSized = button('导出平台尺寸', {
+      variant: 'quiet',
+      size: 'md',
+      iconName: 'grid-2x2',
+      type: 'button',
+      onclick: () => openExportDialog(selected(), state.selectedResultIndex),
+    });
+
     let thumbnailControls = [];
 
     function selectResult(index, { focus = false, announce = true } = {}) {
@@ -1554,11 +1625,22 @@ export function renderGenerate(container, user) {
 
     // 网关中途出错时可能只出了一部分图；要明确告诉用户，别让人以为本来就这么多
     const requested = Number(state.job?.params?.n) || images.length;
-    const shortfall = requested > images.length
+    const missing = Math.max(0, requested - images.length);
+    const shortfall = missing
       ? inlineAlert(
-        `本次只生成了 ${images.length} 张（原本请求 ${requested} 张）。生成服务中途出错，已保留成功的部分，可再生成补齐。`,
+        `本次只生成了 ${images.length} 张（原本请求 ${requested} 张）。生成服务中途出错，已保留成功的部分。`
+        + `点「再补 ${missing} 张」只按缺的张数出图，不会把已经出好的重跑一遍。`,
         'warning')
       : null;
+
+    // 只补缺的那几张。以前唯一的办法是「重新生成」整单——4 张里坏 1 张要花 4 张的钱
+    const supplement = button(`再补 ${missing || 1} 张`, {
+      variant: 'secondary',
+      size: 'md',
+      iconName: 'circle-plus',
+      type: 'button',
+      onclick: (event) => void supplementJob(missing || 1, event.currentTarget),
+    });
 
     return h('div', { class: 'dk-result-state is-succeeded' },
       shortfall,
@@ -1575,7 +1657,7 @@ export function renderGenerate(container, user) {
             disabled: state.submitting,
             type: 'button',
             onclick: () => void submitGeneration(),
-          }))),
+          }), supplement)),
       state.submitError ? inlineAlert(state.submitError, 'error', { className: 'dk-result-submit-error' }) : null,
       h('div', { class: 'dk-result-viewer' },
         h('section', { class: 'dk-result-stage', 'aria-label': '当前结果预览' },
@@ -1593,7 +1675,164 @@ export function renderGenerate(container, user) {
             summaryRow('生成方式', summary.templateName),
             summaryRow('图片尺寸', formatSize(summary.size)),
             summaryRow('画质', `${formatQuality(summary.quality)}画质`)),
-          h('div', { class: 'dk-result-inspector__actions' }, download))));
+          h('div', { class: 'dk-result-inspector__actions' },
+            download, continueEdit, exportSized))));
+  }
+
+  /** 在已完成的任务上只补出所缺的张数，沿用上一次的提示词。 */
+  async function supplementJob(count, trigger) {
+    const jobId = state.job?.job_id;
+    if (!jobId || state.submitting) return;
+    if (trigger) trigger.disabled = true;
+    const lifecycle = lifecycleSequence;
+    const sequence = ++submitSequence;
+    state.submitting = true;
+    state.submitError = '';
+    updatePrimaryAction();
+    updateCanvas(true);
+    try {
+      // 先把这一批已经出好的图记下来。补图会新建一个任务，state.job 被整个替换后
+      // 结果区只会显示新任务的图——刚刚还告诉用户「不会重跑已出好的」，
+      // 转头那些图就从画布上消失了，读起来就像被弄丢了
+      const carried = (state.job?.images || []).slice();
+      const job = await api.post(`/api/web/generations/${jobId}/supplement`, { n: count });
+      if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
+      state.carriedImages = carried;
+      state.job = job;
+      state.pollError = '';
+      state.missingJobId = '';
+      state.selectedResultIndex = 0;
+      setMobileView('result', window.matchMedia('(max-width: 959px)').matches);
+      updateCanvas(true);
+      startPolling();
+      toast(`已提交补图任务（${count} 张），原有 ${carried.length} 张仍会一起显示`, 'success');
+    } catch (error) {
+      if (disposed || lifecycle !== lifecycleSequence || sequence !== submitSequence) return;
+      state.submitError = error?.message || '补图失败';
+      toast(state.submitError, 'error', 5000);
+    } finally {
+      if (!disposed && lifecycle === lifecycleSequence && sequence === submitSequence) {
+        state.submitting = false;
+        updatePrimaryAction();
+        updateCanvas(true);
+      }
+      if (trigger && !disposed) trigger.disabled = false;
+    }
+  }
+
+  /** 本地把结果图裁成各平台常用尺寸并下载，全程不调用生图接口。 */
+  function openExportDialog(image, index) {
+    if (!image?.url) return;
+    let mode = 'cover';
+    let busy = false;
+
+    const hint = h('p', { class: 'dk-field-help' }, FIT_MODES[0].hint);
+    const modeGroup = h('div', { class: 'dk-filter-chips', role: 'group', 'aria-label': '填充方式' },
+      ...FIT_MODES.map((item) => h('button', {
+        class: `dk-filter-chip${item.key === mode ? ' is-selected' : ''}`,
+        type: 'button',
+        'aria-pressed': String(item.key === mode),
+        onclick: (event) => {
+          mode = item.key;
+          hint.textContent = item.hint;
+          for (const chip of modeGroup.querySelectorAll('.dk-filter-chip')) {
+            const on = chip === event.currentTarget;
+            chip.classList.toggle('is-selected', on);
+            chip.setAttribute('aria-pressed', String(on));
+          }
+        },
+      }, item.label)));
+
+    const sizeList = h('div', { class: 'dk-export-sizes', role: 'group', 'aria-label': '导出尺寸' },
+      ...PLATFORM_SIZES.map((target) => button(
+        `${target.label} ${target.width}×${target.height}`,
+        {
+          variant: 'secondary',
+          size: 'sm',
+          type: 'button',
+          onclick: async (event) => {
+            if (busy) return;
+            busy = true;
+            const trigger = event.currentTarget;
+            trigger.disabled = true;
+            try {
+              const loaded = await loadImage(image.url);
+              const blob = await renderToBlob(loaded, target, mode);
+              const objectUrl = URL.createObjectURL(blob);
+              downloadUrl(objectUrl, `designkit-${target.key}-${index + 1}.png`);
+              // 立刻回收会让部分浏览器来不及真正下载，等一拍再释放
+              setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+              toast(`已导出 ${target.label} ${target.width}×${target.height}`, 'success');
+            } catch (error) {
+              if (disposed) return;
+              toast(error?.message || '导出失败', 'error', 5000);
+            } finally {
+              busy = false;
+              trigger.disabled = false;
+            }
+          },
+        })));
+
+    modal({
+      title: '导出平台尺寸',
+      body: h('div', { class: 'dk-export-dialog' },
+        h('p', { class: 'dk-field-help' },
+          '在你的电脑本地裁切，不会重新生成、不产生费用。'),
+        field('填充方式', modeGroup, { help: '' }),
+        hint,
+        field('选择尺寸', sizeList, { help: '点一下即导出并下载' })),
+      footer: [button('完成', { variant: 'secondary', type: 'button', onclick: () => closeOverlays() })],
+    });
+  }
+
+  /** 把生成结果送回输入槽，作为下一轮的参考图。 */
+  async function reuseResultAsInput(image, trigger, overrideName = '') {
+    if (!image?.url) return;
+    if (visibleUploads(state).length >= MAX_UPLOADS) {
+      toast(`商品图已达 ${MAX_UPLOADS} 张上限，请先移除一张再继续`, 'error');
+      return;
+    }
+    if (trigger) trigger.disabled = true;
+    try {
+      // 直接取回结果图再走一遍正常上传：这样它在后端是一份独立的上传记录，
+      // 以后删掉那次生成任务也不会把这张输入图一起删掉
+      const resp = await fetch(image.url);
+      if (!resp.ok) throw new Error(`取回图片失败（HTTP ${resp.status}）`);
+      const blob = await resp.blob();
+      const name = overrideName || resultFilename(image, state.selectedResultIndex);
+      const file = new File([blob], name, { type: blob.type || 'image/png' });
+
+      const data = new FormData();
+      data.append('file', file);
+      const uploaded = await api.post('/api/web/uploads', data);
+      if (disposed) return;
+      // 上面两次 await 期间用户可能又拖了几张图进来，这里必须重新查一次上限，
+      // 否则会攒出 5 张、提交时被后端 422 挡下
+      if (visibleUploads(state).length >= MAX_UPLOADS) {
+        toast(`商品图已达 ${MAX_UPLOADS} 张上限，这张没有加入`, 'error');
+        return;
+      }
+
+      state.uploads.push({
+        clientId: `upload-reuse-${Date.now()}-${++uploadClientId}`,
+        ...uploaded,
+        file: null,
+        previewUrl: uploaded.url,
+        objectUrl: false,
+        status: 'uploaded',
+        error: '',
+        sequence: 0,
+      });
+      state.submitError = '';
+      notifyUploadSession(session);
+      setMobileView('config', window.matchMedia('(max-width: 959px)').matches);
+      toast('已放进商品图，接着描述要改成什么样', 'success', 4200);
+    } catch (error) {
+      if (disposed) return;  // 已经切走了，别在别的页面弹一条没头没尾的提示
+      toast(error?.message || '放回商品图失败，请重试', 'error', 5000);
+    } finally {
+      if (trigger && !disposed) trigger.disabled = false;
+    }
   }
 
   function effectiveJobSummary() {

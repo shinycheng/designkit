@@ -2,6 +2,31 @@
 import { api, getSessionEpoch, getUser, setSession } from '../api.js';
 import { button, field, h, inlineAlert, skeleton, toast } from '../ui.js';
 
+// 比例清单以后端 /api/web/size-presets 为准（后端拿同一份做校验）。
+// 这里的初值只是接口没返回时的兜底，拉到后整体替换。
+let SIZE_PRESETS = [
+  { value: '1024x1024', label: '方图', ratio: '1:1' },
+  { value: '1024x1360', label: '竖图', ratio: '3:4' },
+  { value: '1024x1280', label: '竖图', ratio: '4:5' },
+  { value: '1024x1536', label: '长竖图', ratio: '2:3' },
+  { value: '1024x1824', label: '超竖图', ratio: '9:16' },
+  { value: '1536x1024', label: '横图', ratio: '3:2' },
+  { value: '1360x1024', label: '横图', ratio: '4:3' },
+  { value: '1824x1024', label: '超横图', ratio: '16:9' },
+  { value: 'auto', label: '自动', ratio: '自适应' },
+];
+
+function sizeOptionLabel(item) {
+  return item.value === 'auto' ? '自动' : `${item.label} ${item.ratio} · ${item.value}`;
+}
+
+async function loadSizePresets() {
+  try {
+    const data = await api.get('/api/web/size-presets');
+    if (Array.isArray(data?.presets) && data.presets.length) SIZE_PRESETS = data.presets;
+  } catch { /* 用兜底清单 */ }
+}
+
 export function renderSettings(container) {
   const state = { settings: null, stopped: false, controllers: [] };
   const page = h('section', { class: 'dk-page dk-page--settings', 'aria-labelledby': 'settings-page-title' });
@@ -11,6 +36,9 @@ export function renderSettings(container) {
 
   async function load() {
     try {
+      // 比例清单要先到位，否则下拉会渲染成兜底的那几项，
+      // 用户看到的选项和后端实际放行的对不上
+      await loadSizePresets();
       state.settings = await api.get('/api/web/settings');
       if (!state.stopped) renderSections();
     } catch (error) {
@@ -42,7 +70,7 @@ export function renderSettings(container) {
       title: '生图服务',
       description: '配置图像生成供应商、接口地址和模型。',
       keys: ['provider', 'openai_base_url', 'openai_api_key', 'image_model',
-        'text_model', 'prompt_synthesis', 'normalize_input_ratio'],
+        'text_model', 'prompt_synthesis', 'normalize_input_ratio', 'image_background'],
       renderFields: (form) => {
         const provider = h('select', { class: 'select' },
           h('option', { value: 'mock' }, '模拟生图（验证流程）'),
@@ -53,6 +81,9 @@ export function renderSettings(container) {
         const normalize = h('input', { type: 'checkbox' });
         const textModel = h('input', { class: 'input', placeholder: 'gpt-5.6-sol' });
         const synthesis = h('input', { type: 'checkbox' });
+        const background = h('select', { class: 'select' },
+          h('option', { value: 'auto' }, '跟随模型（通常是实色底）'),
+          h('option', { value: 'transparent' }, '透明底 PNG（免抠图）'));
         form.register('provider', provider);
         form.register('openai_base_url', baseUrl);
         form.register('openai_api_key', apiKey);
@@ -60,6 +91,7 @@ export function renderSettings(container) {
         form.register('text_model', textModel);
         form.register('prompt_synthesis', synthesis, checkboxBinding(true));
         form.register('normalize_input_ratio', normalize, checkboxBinding(true));
+        form.register('image_background', background);
         mockNotice = inlineAlert('模拟模式会返回占位图，适合验证上传、队列和 ERP 回调流程，不会产生模型费用。', 'info');
         const syncModeNotice = () => { mockNotice.hidden = provider.value !== 'mock'; };
         provider.addEventListener('change', syncModeNotice);
@@ -83,8 +115,13 @@ export function renderSettings(container) {
           }),
           field('发送前按所选比例预处理商品图',
             h('label', { class: 'dk-checkbox-row' }, normalize,
-              h('span', { class: 'dk-checkbox-row__copy' }, '补白边到目标比例（不裁产品）+ 透明底合成白底 + HEIC 自动转码')),
-            { help: '自建网关会忽略 size 参数、出图比例跟随输入图，开启才能控制比例；对官方接口同样安全。' }));
+              h('span', { class: 'dk-checkbox-row__copy' }, '补边到目标比例（不裁产品）+ HEIC 自动转码；输入图的透明通道按下方「出图底色」处理')),
+            { help: '自建网关会忽略 size 参数、出图比例跟随输入图，开启才能控制比例；对官方接口同样安全。' }),
+          field('出图底色', background, {
+            help: '选「透明底」后，出图直接带透明通道，换背景不用再抠图。'
+              + '需要你的网关支持 background 参数：多数网关不支持时会直接报错，'
+              + '但也有网关会静默忽略、照常出实底图。第一次用请先出 1 张确认。',
+          }));
       },
       validate: (draft) => {
         if (!['mock', 'openai'].includes(draft.provider)) return '服务模式不受支持。';
@@ -171,11 +208,10 @@ export function renderSettings(container) {
         const concurrency = h('input', { class: 'input', type: 'number', min: 1, max: 8, inputmode: 'numeric' });
         const attempts = h('input', { class: 'input', type: 'number', min: 1, max: 5, inputmode: 'numeric' });
         const timeout = h('input', { class: 'input', type: 'number', min: 30, max: 900, inputmode: 'numeric' });
+        // 选项由后端 /api/web/size-presets 下发（见下方 loadSizePresets），
+        // 不在前端另写一份，否则加比例时必漏改
         const defaultSize = h('select', { class: 'select' },
-          h('option', { value: '1024x1024' }, '方形 · 1024 × 1024'),
-          h('option', { value: '1536x1024' }, '横幅 · 1536 × 1024'),
-          h('option', { value: '1024x1536' }, '竖幅 · 1024 × 1536'),
-          h('option', { value: 'auto' }, '自动'));
+          ...SIZE_PRESETS.map((item) => h('option', { value: item.value }, sizeOptionLabel(item))));
         const defaultCount = h('input', { class: 'input', type: 'number', min: 1, max: 4, inputmode: 'numeric' });
         const autoSync = h('input', { type: 'checkbox' });
         const syncInterval = h('input', { class: 'input', type: 'number', min: 1, max: 168, inputmode: 'numeric' });
@@ -207,7 +243,7 @@ export function renderSettings(container) {
         if (!integerBetween(draft.worker_concurrency, 1, 8)) return '并发生成数必须为 1–8 的整数。';
         if (!integerBetween(draft.max_attempts, 1, 5)) return '失败尝试次数必须为 1–5 的整数。';
         if (!integerBetween(draft.request_timeout, 30, 900)) return '生图超时必须为 30–900 秒。';
-        if (!['1024x1024', '1536x1024', '1024x1536', 'auto'].includes(draft.default_size)) return '默认尺寸不受支持。';
+        if (!SIZE_PRESETS.some((item) => item.value === draft.default_size)) return '默认尺寸不受支持。';
         if (!integerBetween(draft.default_n, 1, 4)) return '默认生成张数必须为 1–4 的整数。';
         return '';
       },

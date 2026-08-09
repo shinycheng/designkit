@@ -172,8 +172,12 @@ class GenerationWorker:
 
             # 提示词库只作参考：先让带视觉的文本模型看商品图，结合补充要求
             # 现场写出贴合这件商品的提示词。失败则沿用原提示词，不阻断出图。
+            want_transparent = str(settings.get("image_background") or "auto").lower() == "transparent"
             prompt_to_send = job.prompt_final
-            if settings.get("prompt_synthesis") and settings.get("provider") != "mock":
+            # 补图任务的 prompt_final 已经是上一批实际发出的最终提示词：
+            # 再合成一次既多花一次文本模型的钱，也会让补出来的图和上一批不是一套设定
+            reuse_prompt = bool(params.get("reuse_prompt"))
+            if not reuse_prompt and settings.get("prompt_synthesis") and settings.get("provider") != "mock":
                 base_prompt = job.prompt_final
                 job_input_paths = list(job.input_paths or [])
                 # 合成要调用视觉模型、最长可达 180 秒；先把连接还回池里，
@@ -182,7 +186,8 @@ class GenerationWorker:
                 db.close()
                 try:
                     prompt_to_send = prompt_studio.synthesize_prompt(
-                        settings, base_prompt, job_input_paths, size
+                        settings, base_prompt, job_input_paths, size,
+                        transparent=want_transparent,
                     )
                     logger.info("任务 %s 已按实际商品重写提示词", job_id)
                 except Exception as exc:
@@ -195,6 +200,11 @@ class GenerationWorker:
             # 无论是否走了 AI 合成，都把目标画幅显式写进提示词——网关忽略 size 参数，
             # 而提示词里的构图措辞对出图比例影响最大（实测可压过输入图比例）
             prompt_to_send = prompt_studio.enforce_aspect(prompt_to_send, size)
+            # 要透明底时，光发 background 参数不够——模板里的「纯白背景」措辞
+            # 会让模型照样画一块实白。合成路径已在合成阶段就带上了这个要求，
+            # 这里是兜底：覆盖关掉合成、合成失败回退、以及补图沿用旧提示词三种情况
+            if want_transparent:
+                prompt_to_send = prompt_studio.enforce_transparent_background(prompt_to_send)
             job.prompt_sent = prompt_to_send
             db.commit()
 

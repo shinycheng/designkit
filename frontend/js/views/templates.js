@@ -17,7 +17,30 @@ import {
   toast,
 } from '../ui.js';
 
-const ALLOWED_SIZES = new Set(['1024x1024', '1536x1024', '1024x1536', 'auto']);
+// 比例清单以后端 /api/web/size-presets 为准，避免和后端校验漂移。
+// 这里的初值只是接口没返回时的兜底。
+let SIZE_PRESETS = [
+  { value: '1024x1024', label: '方图', ratio: '1:1' },
+  { value: '1024x1360', label: '竖图', ratio: '3:4' },
+  { value: '1024x1280', label: '竖图', ratio: '4:5' },
+  { value: '1024x1536', label: '长竖图', ratio: '2:3' },
+  { value: '1024x1824', label: '超竖图', ratio: '9:16' },
+  { value: '1536x1024', label: '横图', ratio: '3:2' },
+  { value: '1360x1024', label: '横图', ratio: '4:3' },
+  { value: '1824x1024', label: '超横图', ratio: '16:9' },
+  { value: 'auto', label: '自动', ratio: '自适应' },
+];
+
+async function loadSizePresets() {
+  try {
+    const data = await api.get('/api/web/size-presets');
+    if (Array.isArray(data?.presets) && data.presets.length) SIZE_PRESETS = data.presets;
+  } catch { /* 用兜底清单 */ }
+}
+
+function sizeOptionLabel(item) {
+  return item.value === 'auto' ? '自动' : `${item.label} ${item.ratio} · ${item.value}`;
+}
 const ALLOWED_QUALITIES = new Set(['auto', 'high', 'medium', 'low']);
 
 export function renderTemplates(container, user) {
@@ -117,6 +140,9 @@ export function renderTemplates(container, user) {
     state.loading = true;
     content.setAttribute('aria-busy', 'true');
     try {
+      // 比例清单和模板一起拉：编辑弹窗的默认尺寸下拉与导入校验都要用它，
+      // 拉不到就退回兜底清单（loadSizePresets 内部已吞掉异常）
+      await loadSizePresets();
       const templatePath = isAdmin ? '/api/web/templates?include_disabled=true' : '/api/web/templates';
       const [templates, categories] = await Promise.all([
         api.get(templatePath),
@@ -295,8 +321,10 @@ export function renderTemplates(container, user) {
     });
     const variablesRoot = h('div', { class: 'dk-variable-list' });
     const sizeInput = h('select', { class: 'select', onchange: (event) => { draft.default_params.size = event.target.value; } },
-      [['1024x1024', '方形 · 1024 × 1024'], ['1536x1024', '横幅 · 1536 × 1024'], ['1024x1536', '竖幅 · 1024 × 1536'], ['auto', '自动']]
-        .map(([value, label]) => h('option', { value, selected: (draft.default_params.size || '1024x1024') === value }, label)));
+      SIZE_PRESETS.map((item) => h('option', {
+        value: item.value,
+        selected: (draft.default_params.size || '1024x1024') === item.value,
+      }, sizeOptionLabel(item))));
     const countInput = h('input', { class: 'input', type: 'number', min: 1, max: 4, value: draft.default_params.n || 1, oninput: (event) => { draft.default_params.n = Number(event.target.value) || 1; } });
     const qualityInput = h('select', { class: 'select', onchange: (event) => { draft.default_params.quality = event.target.value; } },
       [['auto', '自动'], ['high', '高画质'], ['medium', '中画质'], ['low', '低画质']]
@@ -750,7 +778,11 @@ export function renderTemplates(container, user) {
       const size = params.size || '1024x1024';
       const count = Number(params.n || 1);
       const quality = params.quality || 'high';
-      if (!ALLOWED_SIZES.has(size)) itemErrors.push('默认尺寸不受支持');
+      // 只做形状检查，不在前端重造护栏规则——那必然和后端漂移。
+      // 真正的合法性由后端 sizing.validate_size 判定（导入后保存时会返回 422）
+      if (size !== 'auto' && !/^\d{3,4}x\d{3,4}$/.test(String(size))) {
+        itemErrors.push('默认尺寸格式不正确，应形如 1024x1360 或 auto');
+      }
       if (!Number.isInteger(count) || count < 1 || count > 4) itemErrors.push('默认张数必须为 1–4');
       if (!ALLOWED_QUALITIES.has(quality)) itemErrors.push('默认画质不受支持');
       if (itemErrors.length) {

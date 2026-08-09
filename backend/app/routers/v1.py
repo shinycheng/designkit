@@ -37,7 +37,7 @@ class V1GenerationBody(BaseModel):
     image_urls: List[str] = Field(default=[], description="商品图的公网 URL，由本服务代为下载")
     images_base64: List[str] = Field(default=[], description="商品图 base64（不带 data: 前缀）")
     n: Optional[int] = Field(default=None, ge=1, le=4, description="生成张数 1-4")
-    size: Optional[str] = Field(default=None, description="尺寸，如 1024x1024 / 1536x1024 / 1024x1536")
+    size: Optional[str] = Field(default=None, description="形如 1024x1360 的像素串或 auto；非固定枚举，需满足：宽高为 16 的倍数、最短边≥512、最长边≤2048、长短比≤3:1")
     quality: Optional[str] = Field(default=None, description="auto / low / medium / high")
     callback_url: Optional[str] = Field(default=None, description="任务完成后的回调地址（http/https）")
     external_ref: Optional[str] = Field(default=None, max_length=128, description="对接方自己的单号，回调时原样带回")

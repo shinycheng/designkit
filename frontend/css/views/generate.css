@@ -746,14 +746,42 @@
   border-radius: 3px;
 }
 
-.dk-size-option[data-ratio="3:2"] .dk-size-option__shape {
-  width: 31px;
-  height: 21px;
+/* 每个比例都要有对应的形状：运营就是靠这个小方块认比例的，
+   缺规则会落回 25×25 正方形，「竖图 3:4」和「方图 1:1」长得一模一样，
+   选错了整批图都要重出（真金白银）。加新比例时记得同步加一条。 */
+.dk-size-option[data-ratio="3:4"] .dk-size-option__shape {
+  width: 22px;
+  height: 29px;
+}
+
+.dk-size-option[data-ratio="4:5"] .dk-size-option__shape {
+  width: 23px;
+  height: 29px;
 }
 
 .dk-size-option[data-ratio="2:3"] .dk-size-option__shape {
-  width: 21px;
+  width: 20px;
+  height: 30px;
+}
+
+.dk-size-option[data-ratio="9:16"] .dk-size-option__shape {
+  width: 17px;
   height: 31px;
+}
+
+.dk-size-option[data-ratio="3:2"] .dk-size-option__shape {
+  width: 30px;
+  height: 20px;
+}
+
+.dk-size-option[data-ratio="4:3"] .dk-size-option__shape {
+  width: 29px;
+  height: 22px;
+}
+
+.dk-size-option[data-ratio="16:9"] .dk-size-option__shape {
+  width: 31px;
+  height: 17px;
 }
 
 .dk-size-option[data-size="auto"] .dk-size-option__shape {
@@ -1491,8 +1519,21 @@
 
 .dk-result-inspector__actions {
   display: grid;
+  gap: 8px;
   min-width: 0;
   margin-top: auto;
+}
+
+/* 导出弹窗：尺寸按钮自动换行，不撑破窄屏 */
+.dk-export-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dk-export-dialog .dk-filter-chips {
+  display: flex;
+  gap: 8px;
 }
 
 .dk-result-download {

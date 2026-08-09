@@ -6,13 +6,14 @@ from sqlalchemy.orm import Session
 
 from ..models import GenerationJob, PromptTemplate, Upload
 from ..prompting import build_raw_prompt, render_template_prompt
-from . import settings_service
+from . import settings_service, sizing
 
 MAX_INPUT_IMAGES = 4
 MAX_N = 4
 ALLOWED_QUALITIES = {"auto", "low", "medium", "high"}
-# gpt-image-1 支持的尺寸；非法尺寸应同步 422 拒绝，而不是 202 受理后异步失败
-ALLOWED_SIZES = {"1024x1024", "1536x1024", "1024x1536", "auto"}
+# 尺寸不再用白名单枚举，改由 sizing.validate_size 按护栏规则判定（见该模块注释）。
+# 保留这个名字是因为对外 API 文档和前端预设都引用它，现在它只是「推荐选项」。
+ALLOWED_SIZES = {p["value"] for p in sizing.PRESETS}
 
 
 def create_job(
@@ -61,12 +62,16 @@ def create_job(
         n_val = 1
     n_val = max(1, min(MAX_N, n_val))
 
-    size_val = str(size or defaults.get("size") or settings.get("default_size") or "1024x1024")
-    if size_val not in ALLOWED_SIZES:
-        raise HTTPException(
-            status_code=422,
-            detail="尺寸只支持 1024x1024 / 1536x1024 / 1024x1536 / auto",
-        )
+    # 先归一化再校验并落库：validate_size 内部会 strip/lower，但落库的是这个变量，
+    # "1024X1024" 或带空格的值能过校验、却在几分钟后被网关 400 拒掉还白耗一次重试
+    size_val = sizing.normalize_size(
+        size or defaults.get("size") or settings.get("default_size") or "1024x1024"
+    )
+    size_error = sizing.validate_size(size_val)
+    if size_error:
+        # 非法尺寸必须在这里同步 422 拒绝，不能 202 受理后异步失败——
+        # 后者会白白占掉配额和重试次数，用户还要等几分钟才看到错
+        raise HTTPException(status_code=422, detail="尺寸不可用：%s" % size_error)
     quality_val = quality or defaults.get("quality")
     if quality_val and quality_val not in ALLOWED_QUALITIES:
         raise HTTPException(

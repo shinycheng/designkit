@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..deps import get_db, require_admin
 from ..models import User
-from ..services import jobs, prompt_studio, provider, settings_service
+from ..services import jobs, prompt_studio, provider, settings_service, sizing
 
 router = APIRouter(prefix="/api/web/settings", tags=["网页-系统设置"])
 
@@ -36,10 +36,13 @@ def update_settings(
             raise HTTPException(status_code=422, detail="%s 必须是 true 或 false" % bool_key)
     if "provider" in updates and updates["provider"] not in ("mock", "openai"):
         raise HTTPException(status_code=422, detail="provider 只能是 mock 或 openai")
-    if "default_size" in updates and updates["default_size"] not in jobs.ALLOWED_SIZES:
-        raise HTTPException(
-            status_code=422, detail="默认尺寸只支持 1024x1024 / 1536x1024 / 1024x1536 / auto"
-        )
+    if "image_background" in updates and updates["image_background"] not in ("auto", "transparent"):
+        raise HTTPException(status_code=422, detail="出图底色只能是 auto 或 transparent")
+    if "default_size" in updates:
+        updates["default_size"] = sizing.normalize_size(updates["default_size"])
+        size_error = sizing.validate_size(updates["default_size"])
+        if size_error:
+            raise HTTPException(status_code=422, detail="默认尺寸不可用：%s" % size_error)
     # 上限不只是防呆：max_attempts 和 n 直接决定一次任务最多向生图接口发多少次
     # 请求，填错一个数字就可能变成成倍的费用
     int_ranges = {

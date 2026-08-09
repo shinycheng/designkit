@@ -124,6 +124,57 @@ def retry_generation(
     return job_to_dict(job, "")  # 相对 /files 路径
 
 
+class SupplementBody(BaseModel):
+    n: int = Field(default=1, ge=1, le=4)
+
+
+@router.post("/{job_id}/supplement")
+def supplement_generation(
+    job_id: str,
+    body: SupplementBody,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """在已完成的任务上「再补几张」，而不是整单重跑。
+
+    为什么需要它：以前 4 张里坏了 1 张，只能点「重新生成」把 4 张全部重跑一遍——
+    等于为 1 张图付 4 张的钱。这里新建一个只出所缺张数的任务，并**沿用上一次
+    实际发出的提示词**（prompt_sent），所以既不用再花一次 AI 写提示词的开销，
+    出来的图也和上一批是同一套设定，能直接混在一起用。
+    """
+    source = _get_own_job(job_id, user, db)
+    if source.status != "succeeded":
+        raise HTTPException(status_code=409, detail="只有已完成的任务可以补图")
+
+    params = dict(source.params or {})
+    params["n"] = body.n
+    # 让 worker 跳过 AI 重写：prompt_final 这里放的已经是上次实际发出的最终提示词
+    params["reuse_prompt"] = True
+    params["supplement_of"] = source.id
+
+    job = GenerationJob(
+        # 一律记成网页端任务。不能继承 source="api"——那样它会在记录页被标成
+        # 「来自 ERP」，可 ERP 用自己的 Key 查它必定 404（api_key_id 没继承、
+        # 也不该继承），还不占该 Key 的配额，三方对不上账
+        source="web",
+        user_id=user.id,
+        template_id=source.template_id,
+        template_name=source.template_name,
+        prompt_final=source.prompt_sent or source.prompt_final,
+        params=params,
+        input_paths=list(source.input_paths or []),
+        status="pending",
+        # 补图是网页端动作，不继承原任务的 ERP 回调与单号，
+        # 否则对接方会收到一条它没有提交过的任务的回调
+        callback_url=None,
+        external_ref=None,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job_to_dict(job, "")  # 相对 /files 路径
+
+
 @router.delete("/{job_id}")
 def delete_generation(
     job_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)

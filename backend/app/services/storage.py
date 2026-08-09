@@ -83,7 +83,15 @@ def save_output(job_id: str, index: int, data: bytes) -> Tuple[str, Optional[str
     thumb_rel: Optional[str] = None
     try:
         with Image.open(io.BytesIO(data)) as im:
-            im = im.convert("RGB")
+            # 透明底的图直接 convert("RGB")，透明区会变成黑块——列表里看上去像出错了。
+            # 缩略图仍存 JPEG（体积小、加载快），所以这里先铺一层白再合成。
+            if im.mode in ("RGBA", "LA", "PA") or (im.mode == "P" and "transparency" in im.info):
+                rgba = im.convert("RGBA")
+                canvas = Image.new("RGB", rgba.size, (255, 255, 255))
+                canvas.paste(rgba, mask=rgba.split()[-1])
+                im = canvas
+            else:
+                im = im.convert("RGB")
             im.thumbnail((THUMB_MAX, THUMB_MAX))
             thumb_rel = "thumbnails/%s/%s_%d.jpg" % (_month_dir(), job_id, index)
             thumb_abs = abs_path(thumb_rel)

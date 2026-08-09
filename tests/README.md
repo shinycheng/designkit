@@ -1,16 +1,17 @@
 # 回归测试
 
-每次改动代码后，跑一遍**全部 5 组**测试确认没把已有功能改坏，共 93 项：
+每次改动代码后，跑一遍**全部 6 组**测试确认没把已有功能改坏，共 126 项：
 
 | 组 | 文件 | 项数 | 要不要起服务 |
 |---|---|---|---|
 | 端到端·核心流程 | `e2e_core.py` | 26 | 要 |
 | 端到端·安全边界 | `e2e_security.py` | 27 | 要 |
-| Provider 兼容 | `test_provider_compat.py` | 9 | 不要 |
+| Provider 兼容与报错可读性 | `test_provider_compat.py` | 25 | 不要 |
 | 灵感库与预处理 | `test_inspiration_convert.py` | 17 | 不要 |
 | 跨库兼容与定时同步 | `test_db_and_scheduler.py` | 14 | 不要 |
+| 出图比例护栏与画幅措辞 | `test_sizing.py` | 17 | 不要 |
 
-后三组是纯单元测试，不联网、不花钱、不用起服务，也不用重置数据。
+后四组是纯单元测试，不联网、不花钱、不用起服务，也不用重置数据。
 
 ## 端到端测试（前两组）
 
@@ -57,8 +58,10 @@ rm -rf data && ./start.sh
 .venv/bin/python -m unittest discover -s tests -p 'test_provider_compat.py' -v
 ```
 
-- `test_provider_compat.py` — 覆盖 OpenAI Images 兼容网关拒绝多图 `n`
-  参数时的单图拆分回退，并确保无关 400 不会误触发。
+- `test_provider_compat.py` — 覆盖三类问题：①网关拒绝多图 `n` 时的单图拆分回退
+  （并确保无关 400 不会误触发）；②「HTTP 200 但业务失败」的 `{code,msg}` 信封、
+  `images`/`results` 等非标准字段名、HTML 错误页的识别；③API 地址结尾拼接
+  （自带 `/api/v3` 的网关不能被拼成 `/api/v3/v1/...`）。
 
 ## 灵感库与预处理单测
 
@@ -77,3 +80,14 @@ rm -rf data && ./start.sh
 
 - `test_db_and_scheduler.py` — 用 PostgreSQL 方言静态编译全部建表与运行期 SQL
   （本机无需装 PG），并验证搜索大小写不敏感、调度器到期判断与失败退避。
+
+## 出图比例护栏与画幅措辞单测
+
+```bash
+.venv/bin/python -m unittest discover -s tests -p 'test_sizing.py' -v
+```
+
+- `test_sizing.py` — 校验尺寸护栏（16 的倍数、边长与总像素上下限、长短比 ≤3）、
+  比例反算、以及提示词里的画幅措辞是否与实际尺寸一致。
+  还验证 `enforce_aspect` / `enforce_transparent_background` 是**幂等**的——
+  补图任务会把已加工过的提示词再跑一遍，不幂等就会越叠越长。

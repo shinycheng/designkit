@@ -11,12 +11,27 @@ export function isAcceptedImageFile(file) {
   return ACCEPTED_IMAGE_EXTS.test(file.name || '');
 }
 
+// 比例清单以后端 /api/web/size-presets 为准（后端同时用它做校验，避免两边漂移）。
+// 这里的初值只是接口还没返回时的兜底，拉到之后会被整体替换。
 export const SIZE_OPTIONS = [
-  { value: '1024x1024', label: '方图', ratio: '1:1', usage: '商品主图' },
+  { value: '1024x1024', label: '方图', ratio: '1:1', usage: '淘宝/京东主图' },
+  { value: '1024x1360', label: '竖图', ratio: '3:4', usage: '详情页、小红书' },
+  { value: '1024x1280', label: '竖图', ratio: '4:5', usage: '社媒信息流' },
+  { value: '1024x1536', label: '长竖图', ratio: '2:3', usage: '长图详情' },
+  { value: '1024x1824', label: '超竖图', ratio: '9:16', usage: '抖音/快手封面' },
   { value: '1536x1024', label: '横图', ratio: '3:2', usage: '场景与横幅' },
-  { value: '1024x1536', label: '竖图', ratio: '2:3', usage: '详情与社媒' },
-  { value: 'auto', label: '自动', ratio: '自适应', usage: '交给模型选择' },
+  { value: '1360x1024', label: '横图', ratio: '4:3', usage: 'PC 端banner' },
+  { value: '1824x1024', label: '超横图', ratio: '16:9', usage: '视频封面' },
+  { value: 'auto', label: '自动', ratio: '自适应', usage: '交给模型决定' },
 ];
+
+export function applySizePresets(presets) {
+  if (!Array.isArray(presets) || !presets.length) return;
+  SIZE_OPTIONS.length = 0;
+  for (const item of presets) {
+    if (item && item.value) SIZE_OPTIONS.push(item);
+  }
+}
 
 export const QUALITY_OPTIONS = [
   { value: 'auto', label: '自动' },
@@ -45,9 +60,16 @@ export function selectedTemplateValue(variable, values) {
   return values[variable.name] ?? variable.default ?? '';
 }
 
+// 只做形状检查，不要求必须在预设清单里：管理员可以给模板设一个合法但不在
+// 推荐清单里的尺寸，用「在不在清单里」当闸门会把它静默丢掉、退回 1:1
+export function isUsableSize(value) {
+  const text = String(value || '');
+  return text === 'auto' || /^\d{3,4}x\d{3,4}$/.test(text);
+}
+
 export function applyTemplateDefaults(state, template) {
   const params = template?.default_params || {};
-  if (SIZE_OPTIONS.some((option) => option.value === params.size)) state.size = params.size;
+  if (isUsableSize(params.size)) state.size = params.size;
   if (params.n != null) state.n = Math.max(1, Math.min(4, Number.parseInt(params.n, 10) || 1));
   if (QUALITY_OPTIONS.some((option) => option.value === params.quality)) state.quality = params.quality;
 

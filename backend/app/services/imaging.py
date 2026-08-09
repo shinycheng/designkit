@@ -77,21 +77,28 @@ def flatten_alpha(im: Image.Image) -> Image.Image:
     return im.convert("RGB") if im.mode != "RGB" else im
 
 
-def pad_to_ratio(im: Image.Image, ratio: Tuple[int, int]) -> Image.Image:
-    """居中补白边到目标宽高比，不裁切、不缩放产品本身。"""
+def pad_to_ratio(im: Image.Image, ratio: Tuple[int, int], transparent: bool = False) -> Image.Image:
+    """居中补边到目标宽高比，不裁切、不缩放产品本身。
+
+    transparent=True 时补透明边而不是白边——要模型输出透明底时，
+    参考图四周若是实白，模型会把白色当成场景的一部分照着画。
+    """
     target_w, target_h = ratio
     width, height = im.size
     current = width / height
     target = target_w / target_h
     if abs(current - target) < 0.01:
         return im
+    mode, fill = ("RGBA", (255, 255, 255, 0)) if transparent else ("RGB", PAD_COLOR)
+    if transparent and im.mode != "RGBA":
+        im = im.convert("RGBA")
     if current < target:  # 图太窄 → 左右补边
         new_width = round(height * target)
-        canvas = Image.new("RGB", (new_width, height), PAD_COLOR)
+        canvas = Image.new(mode, (new_width, height), fill)
         canvas.paste(im, ((new_width - width) // 2, 0))
     else:  # 图太宽 → 上下补边
         new_height = round(width / target)
-        canvas = Image.new("RGB", (width, new_height), PAD_COLOR)
+        canvas = Image.new(mode, (width, new_height), fill)
         canvas.paste(im, (0, (new_height - height) // 2))
     return canvas
 
@@ -102,7 +109,8 @@ def _fallback(data: bytes, original_suffix: str, note: str) -> PreparedImage:
 
 
 def prepare_input_image(
-    data: bytes, size: str, normalize_ratio: bool, original_suffix: str = ".png"
+    data: bytes, size: str, normalize_ratio: bool, original_suffix: str = ".png",
+    keep_transparency: bool = False,
 ) -> PreparedImage:
     """预处理一张输入图。
 
@@ -123,14 +131,23 @@ def prepare_input_image(
                 if oriented.size != im.size:
                     notes.append("已按拍摄方向摆正")
             had_alpha = _has_alpha(oriented)
-            flattened = flatten_alpha(oriented)
-            if had_alpha:
-                notes.append("透明底已合成白底")
+            if keep_transparency:
+                # 目标是输出透明底：原本就有的透明通道必须留着。
+                # 但**没有 alpha 的图不要强转 RGBA**——那会让下面的「原样直传」失效、
+                # 把实拍 JPEG 重编码成 PNG，体积涨 3~8 倍，很容易撞网关请求体上限
+                flattened = oriented
+                if had_alpha:
+                    flattened = oriented if oriented.mode == "RGBA" else oriented.convert("RGBA")
+                    notes.append("已保留透明底")
+            else:
+                flattened = flatten_alpha(oriented)
+                if had_alpha:
+                    notes.append("透明底已合成白底")
 
             ratio = parse_ratio(size) if normalize_ratio else None
             if ratio is not None:
                 before = flattened.size
-                flattened = pad_to_ratio(flattened, ratio)
+                flattened = pad_to_ratio(flattened, ratio, transparent=keep_transparency)
                 if flattened.size != before:
                     notes.append("已按 %s 比例补边" % size)
 
@@ -142,6 +159,12 @@ def prepare_input_image(
             if not gateway_friendly:
                 notes.append("已从 %s 转码" % (source_format or "未知格式"))
 
+            # 只有图里**真的有** alpha 时才必须存 PNG（JPEG 没有透明通道）。
+            # alpha 可能来自原图，也可能来自上面按比例补的透明边。
+            needs_alpha = _has_alpha(flattened)
+            if needs_alpha and source_format != "png":
+                notes.append("已转为 PNG 以保留透明通道")
+
             if not notes and gateway_friendly:
                 # 原样直传：不重编码就不会膨胀体积、不丢任何信息
                 suffix = ".png" if source_format == "png" else ".jpg" if source_format == "jpeg" else ".webp"
@@ -149,7 +172,7 @@ def prepare_input_image(
 
             buf = io.BytesIO()
             # 实拍图（原为 JPEG）继续存 JPEG：无损 PNG 会膨胀 3~8 倍，易撞网关请求体上限
-            if source_format == "jpeg":
+            if source_format == "jpeg" and not needs_alpha:
                 flattened.save(buf, "JPEG", quality=JPEG_QUALITY)
                 return PreparedImage(buf.getvalue(), ".jpg", "image/jpeg", "；".join(notes))
             flattened.save(buf, "PNG")

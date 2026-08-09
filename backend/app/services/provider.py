@@ -82,13 +82,21 @@ def _mock_generate(prompt: str, n: int, size: str) -> List[bytes]:
 
 # ---------------------------------------------------------------- openai 兼容
 
+# 用户填的地址结尾五花八门：有人填到 /v1，有人只填域名，也有网关自带别的版本段
+# （如火山方舟的 /api/v3）。以前的做法是「剥掉 /v1 再补 /v1」，遇到 /api/v3 就会
+# 拼成 .../api/v3/v1/images/edits 直接 404，而错误只显示「连不上」，极难排查。
+# 现在统一由 _api_base 返回**已含版本段**的前缀，调用处只拼后半截路径。
+_VERSION_SUFFIXES = ("/v1", "/api/v3", "/api/plan/v3")
+
+
 def _api_base(settings: Dict[str, Any]) -> str:
+    """返回可直接拼接 /images/edits 这类路径的接口前缀。"""
     base = str(settings.get("openai_base_url") or "").strip().rstrip("/")
     if not base:
         raise ProviderError("尚未配置生图 API 地址（系统设置 → 生图服务）")
-    if base.endswith("/v1"):
-        base = base[: -len("/v1")]
-    return base
+    if any(base.endswith(suffix) for suffix in _VERSION_SUFFIXES):
+        return base
+    return base + "/v1"
 
 
 def _headers(settings: Dict[str, Any]) -> Dict[str, str]:
@@ -109,6 +117,25 @@ def _error_param(resp: httpx.Response) -> str:
     return ""
 
 
+# 网关挂掉或前面挡着反代时，返回的往往不是 JSON 而是一整页 HTML 错误页。
+# 原样贴给用户是几百字的标签噪音，得认出来并只留一句话。
+_HTML_PAGE = re.compile(r"<\s*(!doctype|html|head|body|title)\b", re.I)
+
+# 状态码兜底文案：只有当响应体里读不出业务原因时才用。
+# 写成「怎么办」而不是「哪里错」——用户是电商运营，不懂 HTTP 语义。
+_STATUS_HINTS = {
+    401: "API Key 无效或已过期（系统设置 → 生图服务）",
+    403: "API Key 没有调用该模型的权限，或套餐不支持",
+    404: "接口地址或模型名不对（检查 API 地址结尾、生图模型名称）",
+    408: "网关处理超时",
+    429: "请求太频繁或额度已用完，稍后再试或去网关那边充值",
+    500: "网关内部错误",
+    502: "网关无法连接到上游模型服务",
+    503: "网关繁忙或正在维护",
+    504: "网关等待上游超时",
+}
+
+
 def _extract_error(resp: httpx.Response) -> str:
     try:
         data = resp.json()
@@ -116,23 +143,87 @@ def _extract_error(resp: httpx.Response) -> str:
             err = data.get("error")
             if isinstance(err, dict) and err.get("message"):
                 return str(err["message"])
-            if data.get("message"):
-                return str(data["message"])
+            if isinstance(err, str) and err.strip():
+                return err.strip()
+            for key in ("message", "msg", "detail"):
+                if data.get(key):
+                    return str(data[key])
     except Exception:
         pass
-    return resp.text[:300] or ("HTTP %d" % resp.status_code)
+    text = (resp.text or "").strip()
+    if text and _HTML_PAGE.search(text[:400]):
+        return "网关返回了 HTML 错误页（多半是网关本身或它前面的反向代理挂了）"
+    return text[:300] or ("HTTP %d" % resp.status_code)
+
+
+def _friendly_error(resp: httpx.Response) -> str:
+    """把网关报错整理成一句用户能照着处理的话。
+
+    取值顺序：响应体里的业务原因 > 状态码兜底文案。反过来会把
+    「余额不足」这种最有用的信息盖成笼统的「网关内部错误」。
+    """
+    detail = _extract_error(resp)
+    hint = _STATUS_HINTS.get(resp.status_code)
+    if not hint:
+        return "生图接口报错（HTTP %d）：%s" % (resp.status_code, detail)
+    # detail 只是状态码的复述时（如纯 "HTTP 502"）就不重复贴了
+    if detail and not detail.startswith("HTTP "):
+        return "%s（HTTP %d）：%s" % (hint, resp.status_code, detail)
+    return "%s（HTTP %d）" % (hint, resp.status_code)
+
+
+def _envelope_error(payload: Any) -> Optional[str]:
+    """识别「HTTP 200 但业务失败」的国内网关信封，如 {"code":500,"msg":"余额不足"}。
+
+    只在一张图都没取到时才调用——有些网关成功时也带 code（{"code":200,"data":[...]}
+    甚至 {"code":"0"}），先按 code 判死会把已经付过钱的图直接丢掉。
+    """
+    if not isinstance(payload, dict):
+        return None
+    code = payload.get("code")
+    ok_codes = (0, 200, "0", "200", "success", "ok")
+    if code is not None and code not in ok_codes:
+        for key in ("msg", "message", "error_msg", "detail"):
+            if payload.get(key):
+                return "生图网关返回失败（code=%s）：%s" % (code, str(payload[key])[:200])
+        return "生图网关返回失败（code=%s）" % code
+    return None
 
 
 def _decode_response(resp: httpx.Response, timeout: int) -> List[bytes]:
     try:
         payload = resp.json()
     except Exception:
-        raise ProviderError("生图接口返回了无法解析的内容：%s" % resp.text[:200])
-    items = payload.get("data") or []
+        text = (resp.text or "").strip()
+        if _HTML_PAGE.search(text[:400]):
+            raise ProviderError("生图接口返回了 HTML 页面而不是数据，请检查 API 地址是否填对")
+        raise ProviderError("生图接口返回了无法解析的内容：%s" % text[:200])
+
+    # 不同网关放图的字段名不一样：OpenAI 用 data，部分中转用 images / results
+    items = []
+    if isinstance(payload, dict):
+        for key in ("data", "images", "results", "output"):
+            value = payload.get(key)
+            if isinstance(value, list) and value:
+                items = value
+                break
     if not items:
+        envelope = _envelope_error(payload)
+        if envelope:
+            raise ProviderError(envelope)
+        # 把顶层字段名列出来：遇到异步任务式网关（返回 task_id 让你去轮询）时，
+        # 这行字是唯一能看出「不是没图，是接口形态不对」的线索
+        keys = ", ".join(str(k) for k in payload.keys())[:120] if isinstance(payload, dict) else ""
+        if keys:
+            raise ProviderError("生图接口没有返回图片（返回字段：%s）" % keys)
         raise ProviderError("生图接口没有返回任何图片")
     results: List[bytes] = []
     for item in items:
+        # 少数网关直接给一串 URL 而不是对象，统一成对象再处理
+        if isinstance(item, str):
+            item = {"url": item} if item.startswith("http") else {"b64_json": item}
+        if not isinstance(item, dict):
+            continue
         if item.get("b64_json"):
             try:
                 results.append(base64.b64decode(item["b64_json"]))
@@ -150,6 +241,26 @@ def _decode_response(resp: httpx.Response, timeout: int) -> List[bytes]:
     if not results:
         raise ProviderError("生图接口返回数据里没有图片内容")
     return results
+
+
+def _rejects_background(resp: httpx.Response) -> bool:
+    """判断这个 400 是不是在抱怨 background 这个参数本身。
+
+    不能简单地判「错误文本里有 background」——透明底模式下提示词必然含有
+    "transparent background"，而很多网关会把提示词原样回显进错误体，
+    于是任何一个 400（比如内容审核不过）都会被误判成「不支持透明底」，
+    进而在逐张降级路径里把已付费的图全部丢掉。
+    """
+    if _error_param(resp) == "background":
+        return True
+    low = _extract_error(resp).lower()
+    if "background" not in low:
+        return False
+    # 必须同时出现「参数被拒」的措辞，才认定是参数问题而不是提示词被回显
+    return bool(re.search(
+        r"(unknown|unsupported|invalid|unrecognized|not\s+supported|"
+        r"unexpected)\s+(parameter|param|field|value|argument)", low
+    ))
 
 
 def _rejects_multi_image(error: str) -> bool:
@@ -203,13 +314,16 @@ def _generate_one_by_one(
             break
         try:
             resp, single_payload = send(single_payload)
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, ProviderError) as e:
+            # ProviderError 也要接住：send 内部的兼容性判定（如「网关不支持透明底」）
+            # 会抛它，若让它穿透出去，前面已经出好、已经付过钱的图会被全部丢弃，
+            # 随后 worker 还会把整单重排队再付一次
             if results:
                 logger.warning("第 %d 张请求失败（%s），返回已完成的 %d 张", index + 1, e, len(results))
                 break
             raise
         if resp.status_code != 200:
-            message = "生图接口报错（HTTP %d）：%s" % (resp.status_code, _extract_error(resp))
+            message = _friendly_error(resp)
             if results:
                 logger.warning("第 %d 张失败（%s），返回已完成的 %d 张", index + 1, message, len(results))
                 break
@@ -242,19 +356,26 @@ def _openai_generate(
     timeout = int(settings.get("request_timeout") or 360)
     normalize_ratio = bool(settings.get("normalize_input_ratio", True))
 
+    want_transparent = str(settings.get("image_background") or "auto").lower() == "transparent"
+
     common: Dict[str, Any] = {"model": model, "prompt": prompt, "n": n, "size": size}
     if quality and quality != "auto":
         common["quality"] = quality
+    # 只在真要透明底时才发这个参数：老网关不认识它会直接 400，
+    # 平时不发就不会给自己找麻烦
+    if want_transparent:
+        common["background"] = "transparent"
     # gpt-image 系列固定返回 b64；老模型（dall-e 系）需要显式要求 b64
     if not model.startswith("gpt-image"):
         common["response_format"] = "b64_json"
 
-    # 输入图只预处理一次（方向摆正、HEIC 解码、透明合白、按比例补边），重试/降级时复用
+    # 输入图只预处理一次（方向摆正、HEIC 解码、透明处理、按比例补边），重试/降级时复用
     prepared_images: List[Tuple[str, bytes, str]] = []
     for rel in input_paths:
         p: Path = abs_path(rel)
         prepared = imaging.prepare_input_image(
-            p.read_bytes(), size, normalize_ratio, original_suffix=p.suffix
+            p.read_bytes(), size, normalize_ratio, original_suffix=p.suffix,
+            keep_transparency=want_transparent,
         )
         prepared_images.append((p.stem + prepared.suffix, prepared.data, prepared.mime))
         if prepared.note != "无需处理":
@@ -270,10 +391,10 @@ def _openai_generate(
                 ]
                 data = {k: str(v) for k, v in payload.items()}
                 return client.post(
-                    base + "/v1/images/edits", headers=headers, data=data, files=files
+                    base + "/images/edits", headers=headers, data=data, files=files
                 )
             return client.post(
-                base + "/v1/images/generations", headers=headers, json=payload
+                base + "/images/generations", headers=headers, json=payload
             )
 
     def _send_with_compat_retry(payload: Dict[str, Any]) -> Tuple[httpx.Response, Dict[str, Any]]:
@@ -290,6 +411,14 @@ def _openai_generate(
         ):
             payload = {k: v for k, v in payload.items() if k != "response_format"}
             resp = _send(payload)
+        # 网关不认识 background 时**故意不静默去掉重试**：那样会出一张白底图，
+        # 用户却以为拿到了透明底，直到上架时才发现——不如当场说清楚。
+        if resp.status_code == 400 and "background" in payload and _rejects_background(resp):
+            raise ProviderError(
+                "当前生图网关不支持透明底（background 参数）。"
+                "请到「系统设置 → 生图服务」把「出图底色」改回「跟随模型」，"
+                "或换用支持该参数的模型。"
+            )
         return resp, payload
 
     try:
@@ -309,7 +438,7 @@ def _openai_generate(
         raise ProviderError("无法连接生图接口：%s" % str(e)[:200])
 
     if resp.status_code != 200:
-        raise ProviderError("生图接口报错（HTTP %d）：%s" % (resp.status_code, _extract_error(resp)))
+        raise ProviderError(_friendly_error(resp))
     return _decode_response(resp, timeout)
 
 
@@ -320,11 +449,19 @@ def test_connection(settings: Dict[str, Any]) -> str:
     base = _api_base(settings)
     headers = _headers(settings)
     try:
-        resp = httpx.get(base + "/v1/models", headers=headers, timeout=20)
+        resp = httpx.get(base + "/models", headers=headers, timeout=20)
     except httpx.HTTPError as e:
         raise ProviderError("无法连接：%s" % str(e)[:200])
     if resp.status_code == 200:
         return "连接成功，API 地址和 Key 有效"
-    if resp.status_code == 401:
-        raise ProviderError("API Key 无效（HTTP 401）")
-    raise ProviderError("连接异常（HTTP %d）：%s" % (resp.status_code, _extract_error(resp)))
+    if resp.status_code in (401, 403):
+        raise ProviderError("API Key 无效或没有权限（HTTP %d）" % resp.status_code)
+    if resp.status_code in (404, 405):
+        # 不是所有网关都提供 /models。这里既不能报「配置错误」吓唬用户，
+        # 也不能拍胸脯说「可用」——地址填错同样是 404。
+        raise ProviderError(
+            "该地址没有提供模型列表接口（HTTP %d），无法据此确认连通性。"
+            "如果你的网关本来就没有 /models，属正常现象，可直接试着生成一张图；"
+            "否则请检查 API 地址是否填对。" % resp.status_code
+        )
+    raise ProviderError(_friendly_error(resp))

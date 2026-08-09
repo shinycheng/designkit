@@ -243,5 +243,144 @@ class ProviderCompatibilityTests(unittest.TestCase):
         self.assertEqual(images, [b"p1", b"p2"])
 
 
+class GatewayErrorReadabilityTests(unittest.TestCase):
+    """网关报错要能让非技术用户看懂该怎么办，而不是「没有返回任何图片」。"""
+
+    def _resp(self, status, *, json_body=None, text=None):
+        if json_body is not None:
+            return httpx.Response(status, json=json_body,
+                                  request=httpx.Request("POST", "https://x.test"))
+        return httpx.Response(status, text=text or "",
+                              request=httpx.Request("POST", "https://x.test"))
+
+    def test_business_envelope_surfaces_real_reason(self):
+        """HTTP 200 + {code,msg} 是国内中转网关的常见形态，必须透出 msg。"""
+        resp = self._resp(200, json_body={"code": 500, "msg": "余额不足"})
+        with self.assertRaises(provider.ProviderError) as ctx:
+            provider._decode_response(resp, 5)
+        self.assertIn("余额不足", str(ctx.exception))
+
+    def test_success_envelope_with_code_is_not_treated_as_failure(self):
+        """成功响应也可能带 code=200/'0'，不能因为有 code 就把图丢掉。"""
+        payload = base64.b64encode(b"img").decode()
+        for code in (0, 200, "0", "success"):
+            resp = self._resp(200, json_body={"code": code, "data": [{"b64_json": payload}]})
+            self.assertEqual(provider._decode_response(resp, 5), [b"img"])
+
+    def test_alternate_image_field_names(self):
+        """部分网关把图放在 images / results 而不是 data。"""
+        payload = base64.b64encode(b"img").decode()
+        for key in ("images", "results", "output"):
+            resp = self._resp(200, json_body={key: [{"b64_json": payload}]})
+            self.assertEqual(provider._decode_response(resp, 5), [b"img"])
+
+    def test_unknown_shape_lists_top_level_fields(self):
+        """异步任务式网关返回 task_id：要说清是「形态不对」而非「没图」。"""
+        resp = self._resp(200, json_body={"task_id": "abc", "status": "pending"})
+        with self.assertRaises(provider.ProviderError) as ctx:
+            provider._decode_response(resp, 5)
+        message = str(ctx.exception)
+        self.assertIn("task_id", message)
+        self.assertIn("status", message)
+
+    def test_html_error_page_is_summarised(self):
+        """网关挂掉时会返回整页 HTML，不能把标签原样糊给用户。"""
+        html = "<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head><body>" + "x" * 500
+        resp = self._resp(502, text=html)
+        message = provider._friendly_error(resp)
+        self.assertNotIn("<html", message.lower())
+        self.assertIn("502", message)
+
+    def test_status_hint_is_actionable(self):
+        """401/429 要给出「去哪儿做什么」，不是只报状态码。"""
+        self.assertIn("API Key", provider._friendly_error(self._resp(401, text="")))
+        self.assertIn("额度", provider._friendly_error(self._resp(429, text="")))
+
+    def test_body_reason_outranks_status_hint(self):
+        """有业务原因时以它为准——「余额不足」比「网关内部错误」有用得多。"""
+        resp = self._resp(500, json_body={"error": {"message": "insufficient balance"}})
+        self.assertIn("insufficient balance", provider._friendly_error(resp))
+
+    def test_plain_string_urls_are_accepted(self):
+        """少数网关直接给 URL 字符串数组。"""
+        resp = self._resp(200, json_body={"data": [base64.b64encode(b"img").decode()]})
+        self.assertEqual(provider._decode_response(resp, 5), [b"img"])
+
+
+class TransparentBackgroundCompatTests(unittest.TestCase):
+    """透明底的兼容判定：判错会把已付费的图丢光，判漏会让用户以为拿到了透明底。"""
+
+    def _resp(self, status, body):
+        return httpx.Response(status, json=body,
+                              request=httpx.Request("POST", "https://x.test"))
+
+    def test_prompt_echo_is_not_mistaken_for_param_rejection(self):
+        """透明模式的提示词必然含 "transparent background"。网关把提示词回显进
+        错误体时，不能因此判定成「网关不支持 background 参数」。"""
+        resp = self._resp(400, {"error": {
+            "message": "Your prompt was rejected: 'Compose a square 1:1 image. "
+                       "A dryer on a fully transparent background ...' violates policy",
+        }})
+        self.assertFalse(provider._rejects_background(resp))
+
+    def test_real_param_rejection_is_detected(self):
+        for message in (
+            "Unknown parameter: 'background'.",
+            "Unsupported parameter: background",
+            "Invalid value for parameter background",
+        ):
+            resp = self._resp(400, {"error": {"message": message}})
+            self.assertTrue(provider._rejects_background(resp), message)
+
+    def test_error_param_field_is_authoritative(self):
+        resp = self._resp(400, {"error": {"message": "bad request", "param": "background"}})
+        self.assertTrue(provider._rejects_background(resp))
+
+    def test_partial_results_survive_a_background_rejection_mid_stream(self):
+        """逐张降级途中抛出的兼容性错误，绝不能把已经出好、已经付过钱的图丢掉。"""
+        payload = base64.b64encode(b"paid").decode()
+        _FakeClient.responses = [
+            (400, {"error": {"message": "Unknown parameter: 'tools[0].n'."}}),  # 触发逐张降级
+            (200, {"data": [{"b64_json": payload}]}),                            # 第 1 张，已计费
+            (200, {"data": [{"b64_json": payload}]}),                            # 第 2 张，已计费
+            (400, {"error": {"message": "Unknown parameter: 'background'."}}),   # 第 3 张才发现不支持
+        ]
+        settings = {
+            "provider": "openai",
+            "openai_base_url": "https://images.example.test",
+            "openai_api_key": "test-key",
+            "image_model": "gpt-image-1",
+            "request_timeout": 5,
+            "image_background": "transparent",
+        }
+        with patch.object(provider.httpx, "Client", _FakeClient):
+            images = provider.generate_images(settings, "prompt", [], 3, "1024x1024", None)
+        self.assertEqual(images, [b"paid", b"paid"], "已付费的图被丢弃了")
+
+
+class ApiBaseTests(unittest.TestCase):
+    """地址拼接：填错一个结尾就是 404，而报错只说「连不上」。"""
+
+    def _base(self, url):
+        return provider._api_base({"openai_base_url": url})
+
+    def test_appends_v1_when_missing(self):
+        self.assertEqual(self._base("https://gw.test"), "https://gw.test/v1")
+        self.assertEqual(self._base("https://gw.test/"), "https://gw.test/v1")
+
+    def test_keeps_existing_v1(self):
+        self.assertEqual(self._base("https://gw.test/v1"), "https://gw.test/v1")
+
+    def test_does_not_double_up_other_version_prefixes(self):
+        """火山方舟这类自带 /api/v3 的地址，以前会被拼成 /api/v3/v1/... 直接 404。"""
+        self.assertEqual(self._base("https://ark.test/api/v3"), "https://ark.test/api/v3")
+        self.assertEqual(self._base("https://ark.test/api/plan/v3"), "https://ark.test/api/plan/v3")
+
+    def test_missing_base_raises_actionable_error(self):
+        with self.assertRaises(provider.ProviderError) as ctx:
+            self._base("")
+        self.assertIn("系统设置", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
