@@ -73,13 +73,24 @@ def aspect_clause(size: Optional[str]) -> str:
 
 
 def enforce_aspect(prompt: str, size: Optional[str]) -> str:
-    """确保提示词末尾带有目标画幅声明（已经写过就不重复加）。"""
+    """把目标画幅同时钉在提示词的开头和结尾。
+
+    开头那句是主力：实测（乌龙茶提示词覆盖商品的那次）证明位于开头的指令效力最强，
+    足以压过正文里的构图描述；结尾再重申一次做兜底。auto 尺寸不做任何约束。
+    """
     label = framing_label(size)
     if not label:
         return prompt
-    if label in (prompt or ""):
-        return prompt
-    return (prompt or "").rstrip() + aspect_clause(size)
+
+    text = (prompt or "").strip()
+    head = "Compose %s." % label          # 例：Compose a square 1:1 image.
+    tail = aspect_clause(size).strip()    # 例：The final image must be a square 1:1 image.
+
+    if not text.startswith(head):
+        text = head + " " + text
+    if tail not in text:
+        text = text.rstrip() + " " + tail
+    return text
 
 # 偶发 token 泄漏：混入天城文/西里尔/阿拉伯/希伯来/泰文等。
 # 中日韩不拦——用户可能要求画面里出现中文。
