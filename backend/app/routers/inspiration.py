@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from ..deps import get_current_user, get_db, require_admin
 from ..models import PromptCategory, PromptTemplate, User
 from ..serializers import adapt_prompt_to_uploaded_product, template_to_dict
-from ..services import inspiration
+from ..services import inspiration, scheduler as sync_scheduler
 
 router = APIRouter(prefix="/api/web/inspiration", tags=["网页-灵感库"])
 
@@ -45,7 +45,7 @@ def browse(
         # 只看「会参照你上传的商品图」的条目——库里约九成条目自带具体商品描述，
         # 直接套用会画出它自己的商品，这个开关把它们过滤掉
         clauses = [
-            PromptTemplate.prompt_template.contains(kw, autoescape=True)
+            PromptTemplate.prompt_template.icontains(kw, autoescape=True)
             for kw in ("uploaded image", "uploaded photo", "reference image",
                        "provided image", "attached image", "input image",
                        "from the image", "the uploaded", "上传的图", "参考图")
@@ -53,11 +53,11 @@ def browse(
         query = query.filter(or_(*clauses))
     if q and q.strip():
         keyword = q.strip()
-        # contains(autoescape=True) 会转义 % 和 _，搜「100%」不会变成通配匹配
+        # icontains：转义 % 和 _，且在 SQLite/PostgreSQL 上都不区分大小写
         query = query.filter(
-            PromptTemplate.name.contains(keyword, autoescape=True)
-            | PromptTemplate.description.contains(keyword, autoescape=True)
-            | PromptTemplate.prompt_template.contains(keyword, autoescape=True)
+            PromptTemplate.name.icontains(keyword, autoescape=True)
+            | PromptTemplate.description.icontains(keyword, autoescape=True)
+            | PromptTemplate.prompt_template.icontains(keyword, autoescape=True)
         )
     total = query.count()
     rows = (
@@ -99,6 +99,7 @@ def browse(
         "items": [_to_public_dict(t, adopted_refs) for t in rows],
         "categories": facets,
         "sync": inspiration.get_status(),
+        "auto_sync": sync_scheduler.get_state(),
     }
 
 
@@ -112,7 +113,9 @@ def trigger_sync(_: User = Depends(require_admin)):
 
 @router.get("/sync_status")
 def sync_status(_: User = Depends(get_current_user)):
-    return inspiration.get_status()
+    status = dict(inspiration.get_status())
+    status["auto_sync"] = sync_scheduler.get_state()
+    return status
 
 
 @router.post("/{template_id}/adopt")

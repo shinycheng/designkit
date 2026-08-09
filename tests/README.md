@@ -45,3 +45,12 @@ rm -rf data && ./start.sh
 
 - `test_inspiration_convert.py` — YouMind `{argument}` 变量语法转换（同名复用/撞名加序号/中文变量）
   与输入图预处理（比例补边、透明合白底、坏图回退），不联网、不花钱。
+
+## 跨库兼容与定时同步单测
+
+```bash
+.venv/bin/python -m unittest discover -s tests -p 'test_db_and_scheduler.py' -v
+```
+
+- `test_db_and_scheduler.py` — 用 PostgreSQL 方言静态编译全部建表与运行期 SQL
+  （本机无需装 PG），并验证搜索大小写不敏感、调度器到期判断与失败退避。

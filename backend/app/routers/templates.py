@@ -63,8 +63,8 @@ def list_templates(
     if q:
         keyword = q.strip()
         query = query.filter(
-            PromptTemplate.name.contains(keyword, autoescape=True)
-            | PromptTemplate.description.contains(keyword, autoescape=True)
+            PromptTemplate.name.icontains(keyword, autoescape=True)
+            | PromptTemplate.description.icontains(keyword, autoescape=True)
         )
     rows = query.order_by(PromptTemplate.sort.asc(), PromptTemplate.id.desc()).all()
     public_base = ""  # 网页端用相对 /files 路径，换访问入口也不会失效

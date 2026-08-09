@@ -29,6 +29,11 @@ def update_settings(
     # 文本模型名留空会让「AI 写提示词」必然失败（每次都白等一轮再回退），提前拦住
     if "text_model" in updates and not str(updates["text_model"] or "").strip():
         raise HTTPException(status_code=422, detail="文本模型不能为空，例如 gpt-5.6-sol")
+    # 布尔开关必须是真布尔：传字符串 "false" 会被 Python 当成真值，开关名存实亡
+    for bool_key in ("prompt_synthesis", "normalize_input_ratio",
+                     "allow_internal_targets", "inspiration_auto_sync"):
+        if bool_key in updates and not isinstance(updates[bool_key], bool):
+            raise HTTPException(status_code=422, detail="%s 必须是 true 或 false" % bool_key)
     if "provider" in updates and updates["provider"] not in ("mock", "openai"):
         raise HTTPException(status_code=422, detail="provider 只能是 mock 或 openai")
     if "default_size" in updates and updates["default_size"] not in jobs.ALLOWED_SIZES:
@@ -42,6 +47,7 @@ def update_settings(
         "max_attempts": (1, 5, "失败重试次数"),
         "request_timeout": (30, 900, "生图超时（秒）"),
         "default_n": (1, 4, "默认生成张数"),
+        "inspiration_sync_interval_hours": (1, 168, "灵感库自动同步间隔（小时）"),
     }
     for int_key, (low, high, label) in int_ranges.items():
         if int_key not in updates:

@@ -187,7 +187,7 @@ async def v1_upload(
     except storage.StorageError as e:
         raise HTTPException(status_code=422, detail=str(e))
     record = Upload(
-        api_key_id=key.id, original_name=file.filename or "", path=rel,
+        api_key_id=key.id, original_name=(file.filename or "")[:250], path=rel,
         width=w, height=h, size_bytes=len(data),
     )
     db.add(record)
@@ -241,7 +241,16 @@ def v1_create_generation(
             _cleanup_stored_image(db, rel)
         raise
 
-    _consume_quota(db, key)  # 任务已建成再扣额度，原子且不会因参数报错白扣
+    # 任务已建成再扣额度：参数报错不会白扣。但额度不足时任务已经落库，
+    # 必须把它废掉，否则 worker 照样会领走去生图（ERP 收到 429 却仍被扣费）
+    try:
+        _consume_quota(db, key)
+    except HTTPException:
+        job.status = "failed"
+        job.error = "本月额度已用完，任务未执行"
+        job.finished_at = datetime.utcnow()
+        db.commit()
+        raise
     public_base = settings_service.get(db, "public_base_url")
     return job_to_dict(job, public_base, include_inputs=False)
 

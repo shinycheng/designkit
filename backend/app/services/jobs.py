@@ -77,6 +77,8 @@ def create_job(
         cb = str(callback_url).strip()
         if not (cb.startswith("http://") or cb.startswith("https://")):
             raise HTTPException(status_code=422, detail="回调地址必须是 http(s) 链接")
+        if len(cb) > 512:  # 列宽 512，PostgreSQL 会直接拒绝超长值
+            raise HTTPException(status_code=422, detail="回调地址过长（最多 512 个字符）")
         callback_url = cb
 
     job = GenerationJob(

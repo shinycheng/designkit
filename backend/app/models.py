@@ -181,3 +181,24 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON)  # {"v": ...} 包一层，兼容任意类型
+
+
+class SyncState(Base):
+    """后台定时任务的执行状态与分布式锁。
+
+    锁用「带条件的 UPDATE + rowcount」实现，SQLite 和 PostgreSQL 都适用：
+    多进程部署（gunicorn/多容器）时只有抢到锁的那个进程会真正执行同步，
+    lock_until 到期自动释放，避免进程崩溃后锁永久悬挂。
+    """
+
+    __tablename__ = "sync_state"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)  # 如 inspiration
+    lock_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 持锁者令牌：释放时校验归属，避免清掉别人的锁
+    lock_owner: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_status: Mapped[str] = mapped_column(String(16), default="idle")  # idle/running/success/failed
+    last_message: Mapped[str] = mapped_column(Text, default="")
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)

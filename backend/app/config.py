@@ -27,9 +27,34 @@ try:
 except OSError:
     pass
 
-DATABASE_URL = os.environ.get(
-    "DESIGNKIT_DATABASE_URL", "sqlite:///" + str(DATA_DIR / "designkit.db")
-)
+def _build_database_url() -> str:
+    """决定用哪个数据库。
+
+    优先级：完整连接串 > 分开的 PG 参数 > 本机 SQLite。
+    分开传参数时用 URL.create 组装——密码里有 @ % : 等字符时手工拼字符串会解析错，
+    而且报出来的是「主机连不上」这种完全看不出根因的错误。
+    """
+    explicit = os.environ.get("DESIGNKIT_DATABASE_URL")
+    if explicit:
+        return explicit
+
+    host = os.environ.get("DESIGNKIT_DB_HOST")
+    if host:
+        from sqlalchemy.engine import URL
+
+        return URL.create(
+            "postgresql+psycopg",
+            username=os.environ.get("DESIGNKIT_DB_USER") or "designkit",
+            password=os.environ.get("DESIGNKIT_DB_PASSWORD") or None,
+            host=host,
+            port=int(os.environ.get("DESIGNKIT_DB_PORT") or 5432),
+            database=os.environ.get("DESIGNKIT_DB_NAME") or "designkit",
+        ).render_as_string(hide_password=False)
+
+    return "sqlite:///" + str(DATA_DIR / "designkit.db")
+
+
+DATABASE_URL = _build_database_url()
 
 
 def _load_secret_key() -> str:
@@ -86,6 +111,9 @@ RUNTIME_DEFAULTS = {
     # 内部部署默认 True（ERP 常在内网）；转公网 SaaS 时改 False 以全面拦截私网 SSRF。
     # 无论此项如何，云元数据(169.254.x)等链路本地/保留地址始终被拦截。
     "allow_internal_targets": os.environ.get("DESIGNKIT_ALLOW_INTERNAL_TARGETS", "true").lower() in ("1", "true", "yes"),
+    # 灵感库自动同步：上游每天更新两次，默认 12 小时对齐即可
+    "inspiration_auto_sync": os.environ.get("DESIGNKIT_INSPIRATION_AUTO_SYNC", "true").lower() in ("1", "true", "yes"),
+    "inspiration_sync_interval_hours": int(os.environ.get("DESIGNKIT_INSPIRATION_SYNC_INTERVAL_HOURS", "12")),
     "worker_concurrency": int(os.environ.get("DESIGNKIT_WORKER_CONCURRENCY", "2")),
     "max_attempts": int(os.environ.get("DESIGNKIT_MAX_ATTEMPTS", "2")),
     # 自建网关实测单张 70~296 秒（多参考图更慢），默认给足

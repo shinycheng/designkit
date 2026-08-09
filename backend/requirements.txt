@@ -9,3 +9,5 @@ pillow-heif==1.1.0
 PyJWT==2.13.0
 pydantic==2.13.4
 python-dotenv==1.2.1
+# PostgreSQL 驱动（服务器部署用；本机 SQLite 不需要也无妨）
+psycopg[binary]==3.2.10

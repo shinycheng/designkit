@@ -151,7 +151,22 @@ export function renderSettings(container) {
       id: 'runtime-settings',
       title: '运行参数',
       description: '调整生成并发、重试、超时和新任务的默认输出。',
-      keys: ['worker_concurrency', 'max_attempts', 'request_timeout', 'default_size', 'default_n'],
+      keys: ['worker_concurrency', 'max_attempts', 'request_timeout', 'default_size', 'default_n',
+        'inspiration_auto_sync', 'inspiration_sync_interval_hours'],
+      validate: (draft) => {
+        const ranges = [
+          ['worker_concurrency', 1, 8, '并发生成数'],
+          ['max_attempts', 1, 5, '失败尝试次数'],
+          ['request_timeout', 30, 900, '生图超时'],
+          ['default_n', 1, 4, '默认生成张数'],
+          ['inspiration_sync_interval_hours', 1, 168, '灵感库自动同步间隔'],
+        ];
+        for (const [key, low, high, label] of ranges) {
+          const v = Number(draft[key]);
+          if (!Number.isInteger(v) || v < low || v > high) return `${label}需填 ${low}–${high} 之间的整数。`;
+        }
+        return '';
+      },
       renderFields: (form) => {
         const concurrency = h('input', { class: 'input', type: 'number', min: 1, max: 8, inputmode: 'numeric' });
         const attempts = h('input', { class: 'input', type: 'number', min: 1, max: 5, inputmode: 'numeric' });
@@ -162,11 +177,15 @@ export function renderSettings(container) {
           h('option', { value: '1024x1536' }, '竖幅 · 1024 × 1536'),
           h('option', { value: 'auto' }, '自动'));
         const defaultCount = h('input', { class: 'input', type: 'number', min: 1, max: 4, inputmode: 'numeric' });
+        const autoSync = h('input', { type: 'checkbox' });
+        const syncInterval = h('input', { class: 'input', type: 'number', min: 1, max: 168, inputmode: 'numeric' });
         form.register('worker_concurrency', concurrency, numberBinding());
         form.register('max_attempts', attempts, numberBinding());
         form.register('request_timeout', timeout, numberBinding());
         form.register('default_size', defaultSize);
         form.register('default_n', defaultCount, numberBinding());
+        form.register('inspiration_auto_sync', autoSync, checkboxBinding(true));
+        form.register('inspiration_sync_interval_hours', syncInterval, numberBinding());
         return h('div', { class: 'dk-panel-stack' },
           inlineAlert('修改并发生成数后需要重启服务才能对 worker 生效。', 'info', { title: '需要重启' }),
           h('div', { class: 'dk-field-grid' },
@@ -174,7 +193,15 @@ export function renderSettings(container) {
             field('失败尝试次数', attempts, { help: '包含首次请求，范围 1–5。' }),
             field('生图超时', timeout, { help: '单次请求最长等待秒数，范围 30–900。' }),
             field('默认输出尺寸', defaultSize),
-            field('默认生成张数', defaultCount, { help: '新任务的预设值，范围 1–4。' })));
+            field('默认生成张数', defaultCount, { help: '新任务的预设值，范围 1–4。' }),
+            field('灵感库自动同步间隔', syncInterval, { help: '每隔多少小时拉一次上游更新，范围 1–168（上游每天更新两次，建议 12）。' })),
+          field('自动同步灵感库',
+            h('label', { class: 'dk-checkbox-row' }, autoSync,
+              h('span', { class: 'dk-checkbox-row__copy' }, '按上面的间隔自动拉取上游提示词库更新',
+                h('small', { class: 'dk-checkbox-row__description' },
+                  '后台执行，不影响使用；多进程部署时只有一个进程会真正同步。'
+                  + '连续失败会自动退避重试，不会反复冲击上游。'))),
+            { help: '关闭后只能在「灵感库」页手动点「同步上游」。' }));
       },
       validate: (draft) => {
         if (!integerBetween(draft.worker_concurrency, 1, 8)) return '并发生成数必须为 1–8 的整数。';

@@ -40,7 +40,7 @@ async def upload_image(
         raise HTTPException(status_code=422, detail=str(e))
     record = Upload(
         user_id=user.id,
-        original_name=file.filename or "",
+        original_name=(file.filename or "")[:250],  # 列宽 256，PG 会严格拒绝超长
         path=rel,
         width=width,
         height=height,

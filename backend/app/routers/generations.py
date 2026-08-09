@@ -64,9 +64,11 @@ def list_generations(
     if status:
         query = query.filter(GenerationJob.status == status)
     if q:
-        like = "%%%s%%" % q.strip()
+        keyword = q.strip()
+        # icontains：转义通配符，且跨 SQLite/PostgreSQL 都不区分大小写
         query = query.filter(
-            GenerationJob.prompt_final.like(like) | GenerationJob.template_name.like(like)
+            GenerationJob.prompt_final.icontains(keyword, autoescape=True)
+            | GenerationJob.template_name.icontains(keyword, autoescape=True)
         )
     total = query.count()
     rows = (

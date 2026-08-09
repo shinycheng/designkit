@@ -1,13 +1,50 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?请在 .env 里设置 POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?请在 .env 里设置 POSTGRES_USER}
+      # 故意不给默认值：没设置就直接启动失败，避免默认弱口令被带上生产
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 里设置 POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # 必须带 -h 走 TCP：不加的话 initdb 阶段的临时本地服务也会被判为健康，
+      # 应用会在数据库真正就绪前抢跑，首次建表失败
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+    # 只在需要用外部客户端（如迁移脚本）连库时打开，且只绑本机回环
+    ports:
+      - "127.0.0.1:5432:5432"
+
   designkit:
     build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # 分开传，不拼连接串：密码里有 @ % 等字符时拼 URL 会解析错，
+      # 报的却是「主机连不上」，非常难排查。应用侧用 URL.create 组装并自动转义。
+      DESIGNKIT_DB_HOST: db
+      DESIGNKIT_DB_PORT: "5432"
+      DESIGNKIT_DB_NAME: ${POSTGRES_DB}
+      DESIGNKIT_DB_USER: ${POSTGRES_USER}
+      DESIGNKIT_DB_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "8787:8787"
+      # 只绑本机；对外提供服务请在前面加 Nginx/Caddy 并配 HTTPS，
+      # 直接把 8787 暴露到公网等于明文传输密码
+      - "127.0.0.1:8787:8787"
     volumes:
-      # 数据库、上传图、生成图都存在这里，删除容器数据也不会丢
+      # 上传图与生成图仍在文件系统里，数据库存的是相对路径
       - ./data:/app/data
     env_file:
-      - path: .env
-        required: false
+      - .env
     stop_grace_period: 30s
     restart: unless-stopped
+
+volumes:
+  pgdata:

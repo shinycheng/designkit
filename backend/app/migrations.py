@@ -16,12 +16,17 @@ _COLUMN_MIGRATIONS = [
     ("prompt_templates", "source", "VARCHAR(16) NOT NULL DEFAULT 'user'"),
     ("prompt_templates", "source_ref", "VARCHAR(64)"),
     ("generation_jobs", "prompt_sent", "TEXT"),
+    ("sync_state", "lock_owner", "VARCHAR(64)"),
 ]
 
 # 老库补索引（CREATE INDEX IF NOT EXISTS 在 SQLite 与 PostgreSQL 上都支持）
 _INDEX_MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS ix_prompt_templates_source ON prompt_templates (source)",
     "CREATE INDEX IF NOT EXISTS ix_prompt_templates_source_ref ON prompt_templates (source_ref)",
+    # 纵深防御：万一哪条同步路径漏网并发跑了，唯一索引会直接拦住重复写入，
+    # 而不是静默把上万条灵感库翻倍（source_ref 为 NULL 的自建模板不受影响）
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_prompt_templates_source_ref "
+    "ON prompt_templates (source, source_ref)",
 ]
 
 

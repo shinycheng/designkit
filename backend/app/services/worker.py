@@ -174,14 +174,24 @@ class GenerationWorker:
             # 现场写出贴合这件商品的提示词。失败则沿用原提示词，不阻断出图。
             prompt_to_send = job.prompt_final
             if settings.get("prompt_synthesis") and settings.get("provider") != "mock":
+                base_prompt = job.prompt_final
+                job_input_paths = list(job.input_paths or [])
+                # 合成要调用视觉模型、最长可达 180 秒；先把连接还回池里，
+                # 否则并发几个任务就会把连接池占满，网页请求全部卡住
+                db.commit()
+                db.close()
                 try:
                     prompt_to_send = prompt_studio.synthesize_prompt(
-                        settings, job.prompt_final, list(job.input_paths or []), size
+                        settings, base_prompt, job_input_paths, size
                     )
-                    logger.info("任务 %s 已按实际商品重写提示词", job.id)
+                    logger.info("任务 %s 已按实际商品重写提示词", job_id)
                 except Exception as exc:
-                    logger.warning("任务 %s 提示词合成失败，沿用原提示词：%s", job.id, exc)
-                    prompt_to_send = job.prompt_final
+                    logger.warning("任务 %s 提示词合成失败，沿用原提示词：%s", job_id, exc)
+                    prompt_to_send = base_prompt
+                db = SessionLocal()
+                job = db.get(GenerationJob, job_id)
+                if job is None or job.status != "processing":
+                    return  # 期间被删除或被别的进程接管
             # 无论是否走了 AI 合成，都把目标画幅显式写进提示词——网关忽略 size 参数，
             # 而提示词里的构图措辞对出图比例影响最大（实测可压过输入图比例）
             prompt_to_send = prompt_studio.enforce_aspect(prompt_to_send, size)

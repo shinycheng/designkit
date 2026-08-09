@@ -78,6 +78,10 @@ refined gold trim, TIARALEEN REPRONIZER 107D Plus branding"*，出图的金色�
   变成你自己的正式模板（可编辑，不受后续同步影响）
 - 灵感库条目不会出现在生成页的模板列表里，生成页始终只显示你的正式模板
 
+**自动更新**：上游每天更新两次，系统默认每 12 小时自动同步一次，无需手动点。
+可在「系统设置 → 运行参数」调整间隔或关闭。多进程/多容器部署时靠数据库锁保证
+只有一个进程真正同步；连续失败会自动退避（15 分钟 → 1 小时 → 6 小时），不会反复冲击上游。
+
 > 同步需要服务器能访问 GitHub（raw.githubusercontent.com）；访问受限时可配置代理后重试。
 
 ## 三、怎么导入你自己的提示词库
@@ -95,30 +99,112 @@ refined gold trim, TIARALEEN REPRONIZER 107D Plus branding"*，出图的金色�
 2. 对接文档：[docs/erp-api.md](docs/erp-api.md)（可直接发给对方开发人员）
 3. 在线接口调试页面：http://127.0.0.1:8787/docs
 
-## 五、部署到服务器（以后需要时）
+## 五、部署到服务器
 
-项目已 Docker 化，在装有 Docker 的服务器上：
+项目已 Docker 化，**服务器上用 PostgreSQL**（本机开发仍是零安装的 SQLite）。
+在装有 Docker 的服务器上：
 
 ```bash
 docker compose up -d
 ```
 
-部署后记得在「系统设置」→「对外访问地址」里填服务器的地址（如 `http://服务器IP:8787`），
-否则生成图片的链接和回调里的地址还是本机地址，外部系统打不开。
+这一条命令会同时起两个容器：PostgreSQL 数据库 + DesignKit 应用，应用会等数据库
+健康检查通过后再启动，首次会自动建表。
+
+**部署前必做**：在 `.env` 里设置数据库账号密码（**没设置容器会拒绝启动**，
+这是故意的——防止默认弱口令被带上生产）：
+
+```
+POSTGRES_DB=designkit
+POSTGRES_USER=designkit
+POSTGRES_PASSWORD=换成你自己的强密码
+```
+
+密码可以放心用特殊字符，应用会正确处理。
+
+**关于对外访问**：compose 默认只把 8787 绑在服务器本机（`127.0.0.1`），
+公网访问不到。要对外提供服务，请在前面加一层 Nginx/Caddy 并配 HTTPS——
+直接把 8787 暴露到公网意味着登录密码在网上明文传输。
+
+**部署后必做**：在「系统设置」→「对外访问地址」填实际访问地址（如 `https://你的域名`），
+否则生成图片的链接和回调里还是本机地址，外部系统打不开。
+
+### 把本机数据搬到服务器（可选，想保留本机的提示词库和记录时才做）
+
+**顺序很重要**，请照这个来：
+
+```bash
+# 1) 在服务器上起好数据库（此时先不要用应用，避免它先写入数据）
+docker compose up -d db
+
+# 2) 在本机看看会搬多少（不写入任何东西，也不需要连上服务器）
+.venv/bin/python -m backend.migrate_sqlite_to_pg --target "x" --dry-run
+
+# 3) 正式迁移。compose 已把 5432 绑到服务器本机回环，所以要么在服务器上跑这条命令，
+#    要么先开 SSH 隧道：ssh -L 5432:127.0.0.1:5432 用户@服务器IP
+.venv/bin/python -m backend.migrate_sqlite_to_pg \
+    --target "postgresql+psycopg://designkit:你的密码@127.0.0.1:5432/designkit"
+
+# 4) 把图片拷到服务器的 data/ 目录（数据库里存的是相对路径）
+rsync -av data/ 用户@服务器IP:~/designkit/data/
+
+# 5) 最后再启动应用
+docker compose up -d
+```
+
+脚本会按外键顺序搬、分批提交（带稳定排序，不会漏行），并自动把 PostgreSQL 的自增
+序列推到当前最大 id——不做这步，迁完新建记录会主键冲突。
+
+- **目标库已有数据时会直接中止**，避免误覆盖。如果是上一次迁移中途失败留下的半个库，
+  确认可以清空后加 `--truncate` 重跑（该参数会**删光目标库里这些表的全部数据**，慎用）
+- 迁移完成后，记得到「系统设置 → 对外访问地址」填服务器地址（迁移会把这项也一起搬过去，
+  所以要在迁移**之后**改）
 
 ## 六、数据在哪里 / 怎么备份
 
-所有数据都在项目的 `data/` 文件夹里（数据库 + 上传图 + 生成图）。
+数据分两部分，**两部分都要备份**：
 
-- **备份**：先停止服务（`Ctrl+C`），再复制整个 `data/` 文件夹。
-  数据库开了 WAL 模式，运行中只拷 `designkit.db` 会丢数据，必须停服后整目录一起拷，
-  或用 `sqlite3 data/designkit.db ".backup 'backup.db'"` 在线备份。
-- **迁移**：把整个 `data/` 文件夹搬到新机器同一位置即可。
-- `data/` 必须放在**本地磁盘**，不要放网络盘/云同步盘（SQLite 在网络盘上易损坏）。
+| 内容 | 本机（SQLite） | 服务器（Docker + PostgreSQL） |
+|---|---|---|
+| 数据库（模板、任务、设置） | `data/designkit.db` | **PostgreSQL 容器**（在 `pgdata` 数据卷里，**不在** `data/`） |
+| 图片（上传图、生成图） | `data/` 下的子目录 | `data/` 下的子目录 |
+
+> ⚠️ 服务器部署下只拷 `data/` **不会**备份到数据库——数据库在 Docker 数据卷里。
+
+### 本机（SQLite）
+
+```bash
+# 先停止服务（Ctrl+C），再整个 data/ 目录拷走
+cp -r data ~/designkit-backup-$(date +%Y%m%d)
+```
+
+数据库开了 WAL 模式，运行中只拷 `designkit.db` 会丢数据，必须停服后整目录一起拷，
+或用 `sqlite3 data/designkit.db ".backup 'backup.db'"` 在线备份。
+
+### 服务器（PostgreSQL）
+
+```bash
+# 1) 备份数据库（不用停服）
+docker compose exec -T db pg_dump -U designkit designkit | gzip > db-$(date +%Y%m%d).sql.gz
+
+# 2) 备份图片
+tar czf images-$(date +%Y%m%d).tar.gz data/
+```
+
+恢复：
+
+```bash
+gunzip -c db-20260809.sql.gz | docker compose exec -T db psql -U designkit -d designkit
+tar xzf images-20260809.tar.gz
+```
+
+- 建议把这两条命令加到服务器的每日定时任务里
+- `data/` 必须放在**本地磁盘**，不要放网络盘/云同步盘
 
 ## 七、技术说明（给开发者）
 
-- 后端：Python 3.9+ / FastAPI / SQLAlchemy 2.0 / SQLite（WAL，可平滑换 PostgreSQL）
+- 后端：Python 3.9+ / FastAPI / SQLAlchemy 2.0；数据库本机 SQLite（WAL）、服务器 PostgreSQL，
+  切换只改 `DESIGNKIT_DATABASE_URL`，搜索统一用 ILIKE 保证两边行为一致
 - 生成任务：数据库任务队列 + 线程池 worker，重启不丢任务，失败自动重试
 - 生图：OpenAI 兼容 Images API（`/v1/images/edits` 图生图、`/v1/images/generations` 文生图），
   base_url / key / model 均可配置；中转网关拒绝单请求多图时，会自动拆分为

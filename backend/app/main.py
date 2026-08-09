@@ -28,6 +28,7 @@ from .routers import (
     apikeys, auth, generations, inspiration, settings_router, templates, uploads, v1,
 )
 from .seed import seed
+from .services.scheduler import scheduler
 from .services.worker import worker
 
 logging.basicConfig(
@@ -45,7 +46,9 @@ async def lifespan(_app: FastAPI):
     finally:
         db.close()
     worker.start()
+    scheduler.start()
     yield
+    scheduler.stop()
     worker.stop()
 
 

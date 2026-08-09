@@ -101,9 +101,9 @@ export function renderInspiration(container, user) {
       }
       renderCats();
       renderGrid();
-      renderSyncBar(data.sync);
+      renderSyncBar(data.sync, data.auto_sync);
       // 进入页面时上游同步还在跑：接上轮询，结束后自动刷新列表
-      if (data.sync?.state === 'running') watchSync();
+      if (data.sync?.state === 'running' || data.auto_sync?.running) watchSync();
     } catch (error) {
       if (state.stopped || sequence !== state.loadSequence) return;
       grid.replaceChildren(
@@ -327,19 +327,36 @@ export function renderInspiration(container, user) {
 
   // ------------------------------------------------------------ 同步
 
-  function renderSyncBar(sync) {
-    if (!sync) { syncBar.replaceChildren(); return; }
-    if (sync.state === 'running') {
-      syncBar.replaceChildren(inlineAlert(sync.message || '正在同步…', 'info', { title: '正在同步上游' }));
-    } else if (sync.state === 'failed') {
-      syncBar.replaceChildren(inlineAlert(sync.message || '同步失败', 'error', { title: '上次同步失败' }));
-    } else if (sync.state === 'success' && sync.finished_at) {
-      syncBar.replaceChildren(h('p', { class: 'dk-section-meta' },
+  function renderSyncBar(sync, auto) {
+    // 自动同步说明：让用户知道库会自己更新、上次何时更新、下次什么时候
+    const autoLine = auto
+      ? h('p', { class: 'dk-section-meta' },
+        icon(auto.auto_sync ? 'refresh-cw' : 'circle-alert', { size: 14 }), ' ',
+        auto.auto_sync
+          ? `已开启自动更新，每 ${auto.interval_hours} 小时一次`
+            + (auto.last_success_at ? ` · 上次 ${fmtTime(auto.last_success_at)}` : '（尚未同步过）')
+            + (auto.next_due_at ? ` · 下次约 ${fmtTime(auto.next_due_at)}` : '')
+          : '自动更新已关闭，需手动点「同步上游」（可在系统设置里开启）',
+        auto.consecutive_failures
+          ? h('span', { class: 'badge amber' }, `连续失败 ${auto.consecutive_failures} 次，已自动退避重试`)
+          : null)
+      : null;
+
+    let statusNode = null;
+    if (auto?.running) {
+      statusNode = inlineAlert(sync?.message || '正在同步上游提示词库…', 'info', { title: '正在同步' });
+    } else if (sync?.state === 'running') {
+      statusNode = inlineAlert(sync.message || '正在同步…', 'info', { title: '正在同步上游' });
+    } else if (sync?.state === 'failed') {
+      statusNode = inlineAlert(sync.message || '同步失败', 'error', { title: '上次同步失败' });
+    } else if (sync?.state === 'success' && sync.finished_at) {
+      statusNode = h('p', { class: 'dk-section-meta' },
         icon('circle-check', { size: 14 }), ' ',
-        `上次同步 ${fmtTime(sync.finished_at)} · ${sync.message || ''}`));
-    } else {
-      syncBar.replaceChildren();
+        `手动同步 ${fmtTime(sync.finished_at)} · ${sync.message || ''}`);
+    } else if (auto?.last_status === 'failed' && auto.last_message) {
+      statusNode = inlineAlert(auto.last_message, 'warning', { title: '上次自动同步失败' });
     }
+    syncBar.replaceChildren(...[autoLine, statusNode].filter(Boolean));
   }
 
   async function startSync() {
@@ -362,7 +379,7 @@ export function renderInspiration(container, user) {
       try {
         const sync = await api.get('/api/web/inspiration/sync_status');
         if (state.stopped) return;
-        renderSyncBar(sync);
+        renderSyncBar(sync, sync.auto_sync);
         if (sync.state === 'running') watchSync();
         else if (sync.state === 'success') { toast('灵感库同步完成', 'success'); void load(); }
         else if (sync.state === 'failed') toast(sync.message || '同步失败', 'error');

@@ -224,6 +224,10 @@ def import_cache_to_db() -> Dict[str, int]:
             name = (_collapse(item.get("title")) or ("Prompt #%d" % pid))[:128]
             media = item.get("sourceMedia") or []
             thumb = media[0] if media and str(media[0]).startswith("http") else None
+            # 列宽 256：上游偶发的超长 URL 会让整轮同步在 PostgreSQL 上失败，
+            # 宁可这条没有缩略图，也不能拖垮全库同步
+            if thumb and len(thumb) > 256:
+                thumb = None
             description = _collapse(item.get("description"))
             attribution = "来源：YouMind 提示词库（CC BY 4.0）%s" % WEB_URL.format(id=pid)
             description = (description + "\n" + attribution) if description else attribution
@@ -274,40 +278,22 @@ def import_cache_to_db() -> Dict[str, int]:
 # ------------------------------------------------------------------ 后台同步
 
 def start_sync() -> bool:
-    """启动后台同步线程；已有同步在跑时返回 False。"""
-    with _status_lock:
-        if _status.get("state") == "running":
-            return False
-        _status.update({
-            "state": "running", "message": "准备下载…",
-            "started_at": datetime.utcnow().isoformat() + "Z",
-            "finished_at": None,
-        })
-    threading.Thread(target=_run_sync, daemon=True).start()
+    """手动触发同步。
+
+    实际执行与加锁都在 services.scheduler.run_sync 里——手动与自动必须共用同一把
+    数据库锁，否则两路会同时导入、把上万条灵感库写成重复的两份。
+    这里放在函数内导入是为了避免与 scheduler 形成模块级循环依赖。
+    """
+    from . import scheduler as _scheduler
+
+    holder = {}
+
+    def _worker():
+        holder["ran"], holder["msg"] = _scheduler.run_sync(trigger="manual")
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    thread.join(timeout=2)  # 抢锁很快，短等一下就能知道有没有抢到
+    if holder.get("ran") is False:
+        return False
     return True
-
-
-def _run_sync() -> None:
-    started = time.monotonic()
-    try:
-        manifest = fetch_to_cache()
-        _set_status(message="下载完成，正在转换入库…")
-        stats = import_cache_to_db()
-        _set_status(
-            state="success",
-            message="同步完成：新增 %d、更新 %d、未变化 %d（共 %d 条，耗时 %d 秒）" % (
-                stats["created"], stats["updated"], stats["unchanged"],
-                stats["total"], int(time.monotonic() - started),
-            ),
-            finished_at=datetime.utcnow().isoformat() + "Z",
-            upstream_updated_at=manifest.get("updatedAt"),
-            **stats,
-        )
-        logger.info("灵感库同步完成：%s", stats)
-    except Exception as exc:
-        logger.exception("灵感库同步失败")
-        _set_status(
-            state="failed",
-            message="同步失败：%s" % str(exc)[:300],
-            finished_at=datetime.utcnow().isoformat() + "Z",
-        )
