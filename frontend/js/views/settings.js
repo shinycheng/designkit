@@ -54,7 +54,7 @@ export function renderSettings(container) {
         form.register('openai_base_url', baseUrl);
         form.register('openai_api_key', apiKey);
         form.register('image_model', model);
-        form.register('normalize_input_ratio', normalize, checkboxBinding());
+        form.register('normalize_input_ratio', normalize, checkboxBinding(true));
         mockNotice = inlineAlert('模拟模式会返回占位图，适合验证上传、队列和 ERP 回调流程，不会产生模型费用。', 'info');
         const syncModeNotice = () => { mockNotice.hidden = provider.value !== 'mock'; };
         provider.addEventListener('change', syncModeNotice);
@@ -160,7 +160,7 @@ export function renderSettings(container) {
         const publicUrl = h('input', { class: 'input', type: 'url', placeholder: 'https://designkit.example.com' });
         const allowInternal = h('input', { type: 'checkbox' });
         form.register('public_base_url', publicUrl);
-        form.register('allow_internal_targets', allowInternal, checkboxBinding());
+        form.register('allow_internal_targets', allowInternal, checkboxBinding(true));
         return h('div', { class: 'dk-panel-stack' },
           field('对外访问地址', publicUrl, { required: true, help: '结果图地址和 Webhook 回调数据会使用此基础地址。' }),
           h('label', { class: 'dk-checkbox-row' },
@@ -374,10 +374,14 @@ export function renderSettings(container) {
     };
   }
 
-  function checkboxBinding() {
+  function checkboxBinding(fallback = false) {
     return {
       read: (control) => control.checked,
-      write: (control, value) => { control.checked = Boolean(value); },
+      // 后端没返回该键时用它的既定默认值，而不是一律当成未勾选——
+      // 否则用户保存一次就会把默认开启的功能悄悄关掉
+      write: (control, value) => {
+        control.checked = value === undefined || value === null ? fallback : Boolean(value);
+      },
     };
   }
 
