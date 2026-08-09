@@ -243,24 +243,34 @@ def _decode_response(resp: httpx.Response, timeout: int) -> List[bytes]:
     return results
 
 
-def _rejects_background(resp: httpx.Response) -> bool:
-    """判断这个 400 是不是在抱怨 background 这个参数本身。
+# 「网关在抱怨 background 参数」的判定。
+#
+# 不能简单地判「错误文本里有 background」：透明底模式下提示词必然含有
+# "transparent background"，而很多网关会把提示词原样回显进错误体，于是任何一个
+# 400（比如内容审核不过）都会被误判成「不支持透明底」，进而在逐张降级路径里
+# 把已付费的图全部丢掉。
+#
+# 但也不能只认 "unknown parameter" 这种标准措辞——实测用户的自建网关回的是
+# "Transparent background is not supported for this model."，一个字都不沾。
+# 折中办法：要求「拒绝措辞」和 background **挨在一起**（同一句、60 字符内）。
+# 提示词回显里 background 后面跟的是 "with an alpha channel: no backdrop…"，
+# 不会命中这些拒绝词。
+_BACKGROUND_REJECTED = re.compile(
+    r"(?:unknown|unsupported|unrecognized|invalid|unexpected|not\s+supported|"
+    r"not\s+available|does\s+not\s+support|cannot\s+support)[^.]{0,60}background"
+    r"|background[^.]{0,60}(?:is\s+)?(?:not\s+supported|unsupported|not\s+available|"
+    r"not\s+allowed|is\s+invalid|is\s+unknown|is\s+not\s+available)",
+    re.I,
+)
 
-    不能简单地判「错误文本里有 background」——透明底模式下提示词必然含有
-    "transparent background"，而很多网关会把提示词原样回显进错误体，
-    于是任何一个 400（比如内容审核不过）都会被误判成「不支持透明底」，
-    进而在逐张降级路径里把已付费的图全部丢掉。
-    """
+
+def _rejects_background(resp: httpx.Response) -> bool:
     if _error_param(resp) == "background":
         return True
-    low = _extract_error(resp).lower()
-    if "background" not in low:
+    error = _extract_error(resp)
+    if "background" not in error.lower():
         return False
-    # 必须同时出现「参数被拒」的措辞，才认定是参数问题而不是提示词被回显
-    return bool(re.search(
-        r"(unknown|unsupported|invalid|unrecognized|not\s+supported|"
-        r"unexpected)\s+(parameter|param|field|value|argument)", low
-    ))
+    return bool(_BACKGROUND_REJECTED.search(error))
 
 
 def _rejects_multi_image(error: str) -> bool:

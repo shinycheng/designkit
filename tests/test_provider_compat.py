@@ -325,9 +325,14 @@ class TransparentBackgroundCompatTests(unittest.TestCase):
 
     def test_real_param_rejection_is_detected(self):
         for message in (
+            # 第一条是 2026-08-09 从用户自建 Sub2API 网关实测到的原话：
+            # 它不含 "parameter" 字样，早先只认标准措辞的写法会漏判
+            "Transparent background is not supported for this model.",
             "Unknown parameter: 'background'.",
             "Unsupported parameter: background",
             "Invalid value for parameter background",
+            "This model does not support transparent background",
+            "background is not allowed",
         ):
             resp = self._resp(400, {"error": {"message": message}})
             self.assertTrue(provider._rejects_background(resp), message)
