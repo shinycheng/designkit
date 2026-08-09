@@ -7,10 +7,39 @@ from sqlalchemy.orm import Session
 from ..deps import get_current_user, get_db, require_admin
 from ..models import PromptCategory, PromptTemplate, User
 from ..serializers import template_to_dict
-from ..services import settings_service, sizing, storage
+from ..services import inspiration, settings_service, sizing, storage
 from .uploads import read_and_validate
 
 router = APIRouter(prefix="/api/web", tags=["网页-提示词模板"])
+
+
+@router.get("/generate-categories")
+def list_generate_categories(_: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """生成页的「生成方式」清单：直接用上游提示词库的分类。
+
+    电商用得上的排前面，其余标记 collapsed=True 由前端折叠——上游有一半分类
+    （漫画分镜、游戏素材…）拿来出商品图纯属误导。只返回真的有语料的分类。
+    """
+    items = []
+    order = inspiration.ECOMMERCE_SLUGS + [
+        s for s in inspiration.CATEGORIES if s not in inspiration.ECOMMERCE_SLUGS
+    ]
+    for slug in order:
+        count = (
+            db.query(PromptTemplate)
+            .filter(PromptTemplate.source == "youmind")
+            .filter(inspiration.slug_filter(slug))
+            .count()
+        )
+        if not count:
+            continue  # 没有语料的分类不显示，避免点进去发现是空的
+        items.append({
+            "slug": slug,
+            "name": inspiration.CATEGORIES[slug],
+            "count": count,
+            "collapsed": slug not in inspiration.ECOMMERCE_SLUGS,
+        })
+    return {"categories": items}
 
 
 @router.get("/size-presets")

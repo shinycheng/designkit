@@ -15,7 +15,7 @@ from sqlalchemy import update as sa_update
 from ..database import SessionLocal
 from ..models import ApiKey, GeneratedImage, GenerationJob
 from ..serializers import job_to_dict
-from . import prompt_studio, provider, settings_service, storage, webhook
+from . import inspiration, prompt_studio, provider, settings_service, storage, webhook
 
 logger = logging.getLogger("designkit.worker")
 
@@ -177,6 +177,28 @@ class GenerationWorker:
             # 补图任务的 prompt_final 已经是上一批实际发出的最终提示词：
             # 再合成一次既多花一次文本模型的钱，也会让补出来的图和上一批不是一套设定
             reuse_prompt = bool(params.get("reuse_prompt"))
+            # 按分类生成时，先从该分类的语料里抽一批候选，交给文本模型自己挑最贴合的。
+            # 种子固定为「输入图 + 分类 + 补充要求」的哈希：同样的输入拿到同样的候选，
+            # 批量出图时风格才可复现。
+            references = []
+            category_slug = params.get("category_slug")
+            if category_slug and not reuse_prompt and settings.get("provider") != "mock":
+                # 两段式：先让模型通览该分类的全部标题挑出风格最搭的几条，
+                # 再取这几条的**全文**交给合成环节。只发标题是为了省 token——
+                # 一个分类的正文全给要几十万 token，而挑选阶段只需要知道是什么风格。
+                digest = inspiration.category_digest(db, category_slug)
+                try:
+                    picked = prompt_studio.pick_references(
+                        settings, digest, list(job.input_paths or [])
+                    )
+                    references = inspiration.fetch_references(db, picked)
+                    logger.info("任务 %s 从 %d 条「%s」里挑出 %d 条参考",
+                                job_id, len(digest), category_slug, len(references))
+                except Exception as exc:
+                    # 挑选失败不该挡住出图：退回「只按补充要求写」，画质会差一点但仍能出
+                    logger.warning("任务 %s 挑选风格参考失败，改为只按补充要求出图：%s",
+                                   job_id, exc)
+
             if not reuse_prompt and settings.get("prompt_synthesis") and settings.get("provider") != "mock":
                 base_prompt = job.prompt_final
                 job_input_paths = list(job.input_paths or [])
@@ -187,7 +209,7 @@ class GenerationWorker:
                 try:
                     prompt_to_send = prompt_studio.synthesize_prompt(
                         settings, base_prompt, job_input_paths, size,
-                        transparent=want_transparent,
+                        transparent=want_transparent, references=references,
                     )
                     logger.info("任务 %s 已按实际商品重写提示词", job_id)
                 except Exception as exc:

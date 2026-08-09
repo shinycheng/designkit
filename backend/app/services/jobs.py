@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..models import GenerationJob, PromptTemplate, Upload
 from ..prompting import build_raw_prompt, render_template_prompt
-from . import settings_service, sizing
+from . import inspiration, settings_service, sizing
 
 MAX_INPUT_IMAGES = 4
 MAX_N = 4
@@ -23,6 +23,7 @@ def create_job(
     user_id: Optional[int] = None,
     api_key_id: Optional[int] = None,
     template_id: Optional[int] = None,
+    category_slug: Optional[str] = None,
     prompt: Optional[str] = None,
     variables: Optional[Dict[str, Any]] = None,
     extra_instructions: Optional[str] = None,
@@ -37,20 +38,42 @@ def create_job(
     if len(input_paths) > MAX_INPUT_IMAGES:
         raise HTTPException(status_code=422, detail="最多支持 %d 张商品图" % MAX_INPUT_IMAGES)
 
+    # 按分类生成：不选具体模板，只选一个分类。真正的提示词在 worker 里由
+    # 文本模型现场合成——它会看商品图，再从该分类的语料里挑几条当风格参考。
+    # 这样 1.4 万条提示词全部可用，而不必先一条条「采用为模板」。
+    category_name = ""
+    if category_slug is not None:
+        category_name = inspiration.CATEGORIES.get(category_slug) or ""
+        if not category_name:
+            raise HTTPException(status_code=422, detail="分类不存在：%s" % category_slug)
+        if template_id is not None or prompt:
+            raise HTTPException(
+                status_code=422, detail="分类、模板、自定义提示词三者只能选其一"
+            )
+
     template: Optional[PromptTemplate] = None
     if template_id is not None:
         template = db.get(PromptTemplate, template_id)
         if template is None or not template.is_enabled:
             raise HTTPException(status_code=404, detail="提示词模板不存在或已停用")
 
-    if template is not None:
+    if category_slug is not None:
+        if not input_paths:
+            raise HTTPException(status_code=422, detail="按分类生成需要先上传商品图")
+        # prompt_final 只是「配置产物」的快照；按分类走时它记录用户的补充要求，
+        # 合成失败时也能拿它兜底出图
+        final_prompt = build_raw_prompt(
+            "Professional e-commerce product photography of the uploaded product.",
+            extra_instructions,
+        )
+    elif template is not None:
         if template.requires_input_image and not input_paths:
             raise HTTPException(status_code=422, detail="该模板需要先上传商品图")
         final_prompt = render_template_prompt(template, variables, extra_instructions)
     else:
         final_prompt = build_raw_prompt(prompt or "", extra_instructions)
     if not final_prompt:
-        raise HTTPException(status_code=422, detail="请选择提示词模板或填写提示词")
+        raise HTTPException(status_code=422, detail="请选择分类或填写提示词")
 
     defaults = (template.default_params if template is not None else None) or {}
     settings = settings_service.get_all(db)
@@ -91,9 +114,12 @@ def create_job(
         user_id=user_id,
         api_key_id=api_key_id,
         template_id=template.id if template is not None else None,
-        template_name=template.name if template is not None else "",
+        template_name=template.name if template is not None else category_name,
         prompt_final=final_prompt,
-        params={"n": n_val, "size": size_val, "quality": quality_val or "auto"},
+        params={
+            "n": n_val, "size": size_val, "quality": quality_val or "auto",
+            **({"category_slug": category_slug} if category_slug else {}),
+        },
         input_paths=input_paths,
         status="pending",
         callback_url=callback_url,

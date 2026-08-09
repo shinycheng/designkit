@@ -15,6 +15,7 @@ logger = logging.getLogger("designkit.migrations")
 _COLUMN_MIGRATIONS = [
     ("prompt_templates", "source", "VARCHAR(16) NOT NULL DEFAULT 'user'"),
     ("prompt_templates", "source_ref", "VARCHAR(64)"),
+    ("prompt_templates", "source_slugs", "TEXT"),
     ("generation_jobs", "prompt_sent", "TEXT"),
     ("sync_state", "lock_owner", "VARCHAR(64)"),
 ]

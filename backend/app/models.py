@@ -85,6 +85,9 @@ class PromptTemplate(Base):
     source: Mapped[str] = mapped_column(String(16), default="user", index=True)
     # 外部来源标识，如 youmind:29918；同步时按它幂等更新，采用的副本也带上它用于标记「已采用」
     source_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    # 上游的全部分类标签（JSON 数组）。一条提示词常同时属于多个分类，
+    # 只记一个会让「电商主图」这类分类看起来几乎是空的（实测 416 条只剩 18 条）
+    source_slugs: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     category_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("prompt_categories.id", ondelete="SET NULL"), nullable=True
     )

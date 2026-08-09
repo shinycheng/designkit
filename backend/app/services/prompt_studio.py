@@ -30,9 +30,10 @@ REQUEST_TIMEOUT = 180  # 视觉识别实测约 36 秒，给足余量
 
 _SYSTEM_PROMPT = """You write image-generation prompts for e-commerce product photography.
 
-You receive a photo of the user's ACTUAL product, a BRIEF (desired style, scene and the
-user's own requirements), and a required OUTPUT FRAMING. Write ONE prompt for an image
-model that will re-photograph THIS EXACT product.
+You receive a photo of the user's ACTUAL product, a BRIEF (the user's own requirements),
+a required OUTPUT FRAMING, and sometimes a numbered list of REFERENCE STYLES sampled
+from a prompt library. Write ONE prompt for an image model that will re-photograph
+THIS EXACT product.
 
 Rules:
 1. The product in the supplied photo is the only subject. Describe it accurately —
@@ -48,9 +49,14 @@ Rules:
    multi-section layouts or detail pages. Those words describe the FRAME, not the product;
    you may still describe the product's own proportions.
 5. State that the product's real shape, colour, material and branding must be preserved.
-6. Plain English only, never any other writing system. One paragraph, under 130 words,
+6. When REFERENCE STYLES are supplied, first decide which 2-4 of them suit THIS product
+   best, then borrow only their staging, lighting, camera angle, colour mood and
+   composition. Ignore whatever product, person, brand or text those references depict —
+   they are style samples, not subjects. Do not mention the references in your output.
+   If none of them fit the product, ignore all of them and follow the BRIEF alone.
+7. Plain English only, never any other writing system. One paragraph, under 130 words,
    no markdown, no preamble, no surrounding quotes.
-7. If a REQUIRED BACKGROUND line asks for a transparent background, describe ONLY the
+8. If a REQUIRED BACKGROUND line asks for a transparent background, describe ONLY the
    product itself — its form, colour, material, finish and branding, plus the lighting on
    the product. Write no scene, no surface, no table, no floor, no wall, no props,
    no cast shadow and no reflections onto anything. Ignore any scenery in the BRIEF;
@@ -178,12 +184,63 @@ def _image_part(rel_path: str) -> Optional[dict]:
         return None
 
 
+_PICK_PROMPT = """You browse a numbered catalogue of prompt titles and pick the ones whose
+photographic STYLE would suit the product in the supplied photo.
+
+Judge only by staging, lighting, mood and composition implied by the title. Ignore what
+product, person or brand each title mentions — you are choosing a look, not a subject.
+
+Reply with ONLY the numbers of the {count} best matches, comma-separated, best first
+(e.g. "42, 7, 118"). No words, no explanation. If nothing fits, reply "none"."""
+
+_ID_RE = re.compile(r"\d+")
+
+
+def pick_references(
+    settings: Dict[str, Any],
+    digest: List[dict],
+    input_paths: Optional[List[str]] = None,
+    count: int = 4,
+) -> List[int]:
+    """第一段：让模型通览该分类的全部标题，挑出风格最搭的几条，返回它们的 id。
+
+    只发标题不发正文——正文全给要几十万 token，而挑选阶段只需要知道「是什么风格」。
+    选中的那几条随后才取全文（fetch_references），交给第二段照着写。
+    """
+    if not digest:
+        return []
+    listing = "\n".join("%d. %s" % (item["id"], item["title"]) for item in digest)
+    content: List[dict] = []
+    for rel in (input_paths or [])[:1]:
+        part = _image_part(rel)
+        if part:
+            content.append({"type": "text", "text": "The product to shoot:"})
+            content.append(part)
+    content.append({"type": "text", "text": "CATALOGUE:\n" + listing})
+
+    reply = _chat(settings, [
+        {"role": "system", "content": _PICK_PROMPT.format(count=count)},
+        {"role": "user", "content": content},
+    ])
+    valid = {item["id"] for item in digest}
+    picked, seen = [], set()
+    for token in _ID_RE.findall(reply or ""):
+        pid = int(token)
+        if pid in valid and pid not in seen:
+            seen.add(pid)
+            picked.append(pid)
+        if len(picked) >= count:
+            break
+    return picked
+
+
 def synthesize_prompt(
     settings: Dict[str, Any],
     brief: str,
     input_paths: Optional[List[str]] = None,
     size: Optional[str] = None,
     transparent: bool = False,
+    references: Optional[List[dict]] = None,
 ) -> str:
     """看商品图 + brief（模板风格 + 用户补充要求）+ 目标画幅 → 合成最终提示词。
 
@@ -207,6 +264,14 @@ def synthesize_prompt(
         content.append({"type": "text", "text":
             "REQUIRED BACKGROUND: fully transparent PNG with an alpha channel. "
             "No scene, no surface, no floor, no wall, no props, no cast shadow."})
+    if references:
+        # 只给标题 + 摘要：这些提示词开头就是布景/光线/构图的核心，
+        # 给全文会让单次调用涨到 2 万 token 以上，而对风格判断毫无增益
+        listing = "\n\n".join(
+            "%d. %s\n%s" % (i + 1, r.get("title") or "(untitled)", r.get("excerpt") or "")
+            for i, r in enumerate(references)
+        )
+        content.append({"type": "text", "text": "REFERENCE STYLES:\n" + listing})
     # 只看第一张：多图会显著拖慢且第一张通常就是主体商品
     for rel in (input_paths or [])[:1]:
         part = _image_part(rel)

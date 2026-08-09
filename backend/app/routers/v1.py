@@ -20,7 +20,7 @@ from ..config import ALLOWED_IMAGE_EXTS, MAX_UPLOAD_MB
 from ..deps import get_api_client, get_db
 from ..models import ApiKey, GenerationJob, PromptTemplate, Upload
 from ..serializers import job_to_dict, template_to_dict, upload_to_dict
-from ..services import net_guard, settings_service, storage
+from ..services import inspiration, net_guard, settings_service, storage
 from ..services.jobs import MAX_INPUT_IMAGES, create_job, resolve_upload_paths
 
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
@@ -29,8 +29,13 @@ router = APIRouter(prefix="/api/v1", tags=["对外API-ERP对接"])
 
 
 class V1GenerationBody(BaseModel):
-    template_id: Optional[int] = Field(default=None, description="提示词模板 id（与 prompt 二选一）")
-    prompt: Optional[str] = Field(default=None, description="自定义提示词（与 template_id 二选一）")
+    category_slug: Optional[str] = Field(
+        default=None,
+        description="提示词库分类（推荐）：平台会看商品图、从该分类里挑风格参考并现场写提示词。"
+                    "可选值见 GET /api/v1/categories",
+    )
+    template_id: Optional[int] = Field(default=None, description="提示词模板 id（三者选一）")
+    prompt: Optional[str] = Field(default=None, description="自定义提示词（三者选一）")
     variables: Dict[str, Any] = Field(default={}, description="模板变量取值，如 {\"scene\": \"现代客厅\"}")
     extra_instructions: Optional[str] = Field(default=None, description="追加的补充要求")
     upload_ids: List[int] = Field(default=[], description="先调 /api/v1/uploads 上传得到的图片 id")
@@ -156,6 +161,34 @@ def ping(key: ApiKey = Depends(get_api_client)):
     return {"ok": True, "key_name": key.name, "message": "API Key 有效"}
 
 
+@router.get("/categories")
+def v1_list_categories(key: ApiKey = Depends(get_api_client), db: Session = Depends(get_db)):
+    """可用的提示词库分类。提交任务时把 slug 放进 category_slug 即可。
+
+    这是推荐的用法：不必自己挑提示词，平台会看商品图、从该分类里挑风格参考、
+    再结合你的 extra_instructions 现场写提示词。
+    """
+    items = []
+    order = inspiration.ECOMMERCE_SLUGS + [
+        s for s in inspiration.CATEGORIES if s not in inspiration.ECOMMERCE_SLUGS
+    ]
+    for slug in order:
+        count = (
+            db.query(PromptTemplate)
+            .filter(PromptTemplate.source == "youmind")
+            .filter(inspiration.slug_filter(slug))
+            .count()
+        )
+        if count:
+            items.append({
+                "slug": slug,
+                "name": inspiration.CATEGORIES[slug],
+                "count": count,
+                "recommended_for_ecommerce": slug in inspiration.ECOMMERCE_SLUGS,
+            })
+    return items
+
+
 @router.get("/templates")
 def v1_list_templates(key: ApiKey = Depends(get_api_client), db: Session = Depends(get_db)):
     rows = (
@@ -226,6 +259,7 @@ def v1_create_generation(
             source="api",
             api_key_id=key.id,
             template_id=body.template_id,
+            category_slug=body.category_slug,
             prompt=body.prompt,
             variables=body.variables,
             extra_instructions=body.extra_instructions,

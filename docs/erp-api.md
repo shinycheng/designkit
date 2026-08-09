@@ -35,17 +35,29 @@ ERP ── GET /api/v1/generations/{job_id} ──▶ 平台（也可主动轮�
 
 ## 3. 接口明细
 
-### 3.1 获取提示词模板列表
+### 3.1 获取提示词库分类（推荐用法）
+
+```
+GET BASE/api/v1/categories
+→ 200 [{"slug": "ecommerce-main-image", "name": "电商主图", "count": 416,
+        "recommended_for_ecommerce": true}, ...]
+```
+
+**推荐做法：提交任务时只传 `category_slug`，不必自己挑提示词。**
+平台会看你上传的商品图，通览该分类下的全部提示词，挑出风格最搭的 4 条，
+再结合你的 `extra_instructions` 现场写出一条只属于这件商品的提示词。
+
+`recommended_for_ecommerce` 为 true 的几个分类适合出商品图；
+其余（漫画分镜、游戏素材等）也能用，但对电商基本无意义。
+
+### 3.2 获取提示词模板列表（旧用法）
 
 ```
 GET BASE/api/v1/templates
 ```
 
-返回模板数组，关键字段：
-
-> **只返回已启用的正式模板**。网页端「灵感库」里那一万多条开源提示词**不在其中**，
-> 直接拿它们的 id 提交会收到 `404`。需要先由平台管理员在网页上点「采用」，
-> 把它变成正式模板（采用后自动启用），之后才能通过 API 用它的 id。
+> ⚠️ 平台已改为**按分类生成**，这个接口通常返回空数组。
+> 保留它只是为了兼容早期对接方；新接入请用上面的 `category_slug`。
 
 | 字段 | 说明 |
 |---|---|
@@ -55,7 +67,7 @@ GET BASE/api/v1/templates
 | `requires_input_image` | 是否必须提供商品图 |
 | `default_params` | 默认的 `size` / `n` / `quality` |
 
-### 3.2 上传商品图（可选）
+### 3.3 上传商品图
 
 三种给图方式：预先上传、直接给公网 `image_urls`、或给 `images_base64`。
 **可任选一种，也可以在同一次请求里混着用**，合计最多 4 张。
@@ -76,20 +88,19 @@ file: <图片文件，png/jpg/jpeg/webp/heic/heif，≤20MB>
 >
 > **图片归属**：一个 API Key 只能使用自己上传的图片。用了别的 Key 的图片 id 会返回 `404`。
 
-### 3.3 提交生成任务
+### 3.4 提交生成任务
 
 ```
 POST BASE/api/v1/generations
 Content-Type: application/json
 ```
 
-请求体（`template_id` 与 `prompt` 二选一，其余可选）：
+请求体（`category_slug` / `template_id` / `prompt` **三者选一**，其余可选）：
 
 ```json
 {
-  "template_id": 2,
-  "variables": {"scene": "现代客厅的木质茶几上", "style": "高级质感"},
-  "extra_instructions": "整体偏暖色调",
+  "category_slug": "ecommerce-main-image",
+  "extra_instructions": "整体偏暖色调，突出金属质感",
   "image_urls": ["https://你的图片/product.jpg"],
   "upload_ids": [15],
   "images_base64": ["iVBORw0KGgo..."],
@@ -103,8 +114,10 @@ Content-Type: application/json
 
 | 字段 | 说明 |
 |---|---|
-| `template_id` | 模板 id；不用模板时改传 `prompt`（自定义提示词） |
-| `variables` | 模板变量取值，键为模板 `variables[].name` |
+| `category_slug` | **推荐**。提示词库分类，见 3.1。平台会看图挑风格并现场写提示词，**必须同时提供商品图** |
+| `template_id` | 旧用法，模板 id（三者选一） |
+| `prompt` | 自定义提示词，原样发给生图模型（三者选一） |
+| `variables` | 模板变量取值（仅 `template_id` 用法需要） |
 | `image_urls` / `upload_ids` / `images_base64` | 商品图，三者可混用，合计最多 4 张。`image_urls` 必须是直链、不跟随重定向；平台默认允许内网地址（方便内部图片服务器），但云元数据等危险地址始终被拒绝。若平台在「系统设置」关闭了内网访问，则内网图片请改用上传接口或 base64 |
 | `n` | 生成张数 1-4。**不填不等于 1**：优先用模板自带的默认张数（模板列表里的 `default_params.n`），模板没设才用平台默认。想精确控制费用请每次显式传 `n` |
 | `size` | 形如 `1024x1360` 的像素串，或 `auto`。不填同样先取模板默认值。**不是固定枚举**——只要过得了下面的护栏规则就放行，常用版位见下表 |
@@ -163,7 +176,7 @@ Content-Type: application/json
              "input": 5, "ctx": {"le": 4}}]}
 ```
 
-### 3.4 查询任务
+### 3.5 查询任务
 
 ```
 GET BASE/api/v1/generations/{job_id}

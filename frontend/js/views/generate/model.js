@@ -56,42 +56,17 @@ export function failedUploadItems(state) {
   return state.uploads.filter((item) => item.status === 'failed');
 }
 
-export function selectedTemplateValue(variable, values) {
-  return values[variable.name] ?? variable.default ?? '';
-}
-
-// 只做形状检查，不要求必须在预设清单里：管理员可以给模板设一个合法但不在
-// 推荐清单里的尺寸，用「在不在清单里」当闸门会把它静默丢掉、退回 1:1
 export function isUsableSize(value) {
   const text = String(value || '');
   return text === 'auto' || /^\d{3,4}x\d{3,4}$/.test(text);
-}
-
-export function applyTemplateDefaults(state, template) {
-  const params = template?.default_params || {};
-  if (isUsableSize(params.size)) state.size = params.size;
-  if (params.n != null) state.n = Math.max(1, Math.min(4, Number.parseInt(params.n, 10) || 1));
-  if (QUALITY_OPTIONS.some((option) => option.value === params.quality)) state.quality = params.quality;
-
-  state.varValues = {};
-  for (const variable of template?.variables || []) {
-    if (variable.type === 'select' && Array.isArray(variable.options) && variable.options.length) {
-      state.varValues[variable.name] = variable.options.includes(variable.default)
-        ? variable.default
-        : variable.options[0];
-    } else if (variable.default != null) {
-      state.varValues[variable.name] = variable.default;
-    }
-  }
 }
 
 export function configSignature(state) {
   // 用于判断「失败之后配置有没有被改过」。后端的 /retry 会原样重跑旧任务的
   // 提示词与参数，所以只有配置一字未改时重试才符合用户预期。
   return JSON.stringify({
-    template: state.selected === null ? 'free' : (state.selected?.id ?? null),
+    category: state.selected === null ? 'free' : (state.selected?.slug ?? null),
     prompt: state.selected === null ? (state.freePrompt || '').trim() : '',
-    variables: state.varValues || {},
     extra: (state.extra || '').trim(),
     uploads: uploadedItems(state).map((item) => item.id).sort(),
     // 正在上传的图也要算进去：否则刚拖进一张图、还没传完时会被判成「配置没变」，
@@ -123,7 +98,7 @@ export function deriveSubmitState(state) {
   }
 
   if (state.selected === undefined) {
-    return { canSubmit: false, action: 'submit', label: '请选择生成方式', reason: '请选择一个模板或自由模式' };
+    return { canSubmit: false, action: 'submit', label: '请选择生成方式', reason: '请选择一个分类或自由模式' };
   }
 
   if (state.selected === null && !state.freePrompt.trim()) {
@@ -136,22 +111,16 @@ export function deriveSubmitState(state) {
   }
 
   const uploaded = uploadedItems(state);
-  if (state.selected?.requires_input_image && !uploaded.length) {
+  // 按分类生成必须有商品图：整套流程就是「看图 → 挑风格参考 → 结合商品写提示词」，
+  // 没有图这三步全部落空
+  if (state.selected && !uploaded.length) {
     const failed = failedUploadItems(state);
     return {
       canSubmit: false,
       action: 'submit',
       label: '请先上传商品图',
-      reason: failed.length ? '请重试或移除上传失败的图片' : '当前模板需要至少一张商品图',
+      reason: failed.length ? '请重试或移除上传失败的图片' : '按分类生成需要至少一张商品图',
     };
-  }
-
-  for (const variable of state.selected?.variables || []) {
-    const value = selectedTemplateValue(variable, state.varValues);
-    if (variable.required && !String(value).trim()) {
-      const name = variable.label || variable.name;
-      return { canSubmit: false, action: 'submit', label: `请填写${name}`, reason: `模板必填项“${name}”尚未填写` };
-    }
   }
 
   return {
@@ -164,9 +133,8 @@ export function deriveSubmitState(state) {
 
 export function buildGenerationPayload(state) {
   return {
-    template_id: state.selected ? state.selected.id : null,
+    category_slug: state.selected ? state.selected.slug : null,
     prompt: state.selected === null ? state.freePrompt.trim() : null,
-    variables: { ...state.varValues },
     extra_instructions: state.extra.trim() || null,
     upload_ids: uploadedItems(state).map((item) => item.id),
     n: state.n,

@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/web/generations", tags=["网页-生成任务"])
 
 class GenerationCreateBody(BaseModel):
     template_id: Optional[int] = None
+    category_slug: Optional[str] = None
     prompt: Optional[str] = None
     variables: Dict[str, Any] = {}
     extra_instructions: Optional[str] = None
@@ -36,6 +37,7 @@ def create_generation(
         source="web",
         user_id=user.id,
         template_id=body.template_id,
+        category_slug=body.category_slug,
         prompt=body.prompt,
         variables=body.variables,
         extra_instructions=body.extra_instructions,

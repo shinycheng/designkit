@@ -22,12 +22,10 @@ import {
   QUALITY_OPTIONS,
   SIZE_OPTIONS,
   applySizePresets,
-  applyTemplateDefaults,
   isUsableSize,
   buildGenerationPayload,
   configSignature,
   deriveSubmitState,
-  selectedTemplateValue,
   uploadedItems,
   visibleUploads,
 } from './generate/model.js';
@@ -49,30 +47,6 @@ function cloneJson(value) {
   try { return JSON.parse(JSON.stringify(value)); } catch { return null; }
 }
 
-function reconcileTemplateValues(template, previousValues = {}) {
-  const nextValues = {};
-  for (const variable of template?.variables || []) {
-    if (!variable?.name) continue;
-    const hasPrevious = Object.prototype.hasOwnProperty.call(previousValues, variable.name);
-    if (variable.type === 'select' && Array.isArray(variable.options) && variable.options.length) {
-      const previous = hasPrevious ? previousValues[variable.name] : undefined;
-      const preserved = hasPrevious
-        ? variable.options.find((option) => String(option) === String(previous))
-        : undefined;
-      const fallback = variable.default != null
-        ? variable.options.find((option) => String(option) === String(variable.default))
-        : undefined;
-      nextValues[variable.name] = preserved ?? fallback;
-      if (nextValues[variable.name] == null) nextValues[variable.name] = variable.options[0];
-    } else if (hasPrevious) {
-      nextValues[variable.name] = previousValues[variable.name];
-    } else if (variable.default != null) {
-      nextValues[variable.name] = variable.default;
-    }
-  }
-  return nextValues;
-}
-
 function createGenerateState(snapshot = null) {
   const state = {
     uploads: [],
@@ -80,8 +54,7 @@ function createGenerateState(snapshot = null) {
     categories: [],
     activeCategory: null,
     selected: undefined,
-    selectedTemplateId: null,
-    varValues: {},
+    selectedCategorySlug: null,
     freePrompt: '',
     extra: '',
     size: '1024x1024',
@@ -105,8 +78,7 @@ function createGenerateState(snapshot = null) {
   if (!snapshot) return state;
   state.activeCategory = snapshot.activeCategory ?? null;
   state.selected = snapshot.selection === 'free' ? null : undefined;
-  state.selectedTemplateId = snapshot.selection === 'template' ? snapshot.templateId : null;
-  state.varValues = { ...(snapshot.varValues || {}) };
+  state.selectedCategorySlug = snapshot.selection === 'category' ? snapshot.categorySlug : null;
   state.freePrompt = snapshot.freePrompt || '';
   state.extra = snapshot.extra || '';
   state.size = isUsableSize(snapshot.size) ? snapshot.size : state.size;
@@ -273,12 +245,11 @@ function getGenerateState(user) {
 function saveGenerateState(user, state) {
   const selection = state.selected === null
     ? 'free'
-    : (state.selected?.id != null || state.selectedTemplateId != null ? 'template' : 'none');
+    : (state.selected?.slug || state.selectedCategorySlug ? 'category' : 'none');
   getGenerateSession(user).snapshot = {
     activeCategory: state.activeCategory,
     selection,
-    templateId: state.selected?.id ?? state.selectedTemplateId ?? null,
-    varValues: { ...state.varValues },
+    categorySlug: state.selected?.slug ?? state.selectedCategorySlug ?? null,
     freePrompt: state.freePrompt,
     extra: state.extra,
     size: state.size,
@@ -312,7 +283,6 @@ export function renderGenerate(container, user) {
   const session = getGenerateSession(user);
   const state = getGenerateState(user);
   // 这些字段属于单次视图挂载，不应在返回页面时保留旧请求或旧错误。
-  state.templates = [];
   state.categories = [];
   state.submitting = false;
   state.submitError = '';
@@ -356,8 +326,8 @@ export function renderGenerate(container, user) {
   }, configTab, resultTab);
 
   const uploadSection = configSection('01', '商品原图', '最多 4 张，商品图会作为生成参考');
-  const templateSection = configSection('02', '模板与提示词', '选择模板，或使用自由模式描述画面');
-  const variablesSection = configSection('03', '模板变量', '根据模板补充生成内容');
+  const templateSection = configSection('02', '生成方式', '选一个分类，AI 从该分类的提示词库里挑风格');
+  const variablesSection = configSection('03', '画面描述', '自由模式下自己描述画面');
   const settingsSection = configSection('04', '生成设置', '设置成图比例、张数与画质');
   const extraSection = configSection('05', '补充要求', '可选，用于强调构图、色调或禁用内容');
 
@@ -437,7 +407,7 @@ export function renderGenerate(container, user) {
   // 必须等比例清单到位再读系统默认尺寸：loadRuntimeDefaults 会用 SIZE_OPTIONS
   // 校验后端返回的 default_size，清单还是兜底版时会把管理员设的比例静默丢掉
   void loadSizePresets().then(() => { if (!disposed) return loadRuntimeDefaults(); });
-  void loadTemplates();
+  void loadCategories();
   void restoreJobState();
 
   function applyPendingPrompt() {
@@ -447,8 +417,8 @@ export function renderGenerate(container, user) {
       if (raw) { pending = JSON.parse(raw); sessionStorage.removeItem('dk_apply_prompt'); }
     } catch { return; }
     if (!pending?.prompt) return;
-    state.selected = null;  // 自由模式
-    state.selectedTemplateId = null;
+    state.selected = null;  // 灵感库接力 → 自由模式，原文照发
+    state.selectedCategorySlug = null;
     state.freePrompt = pending.prompt;
     if (pending.from) toast(`已带入灵感库提示词「${pending.from}」，可直接生成或继续修改`, 'success');
     if (pending.requiresImage) toast('这条提示词需要先上传商品/参考图', 'info', 4200);
@@ -471,7 +441,7 @@ export function renderGenerate(container, user) {
       const settings = await api.get('/api/web/settings');
       // 选了具体模板（模板默认优先）或用户手动动过设置才跳过；
       // 灵感库接力进入的自由模式（selected === null）仍应套用系统默认尺寸/张数
-      if (disposed || state.settingsTouched || state.selected || state.selectedTemplateId != null) return;
+      if (disposed || state.settingsTouched || state.selected || state.selectedCategorySlug) return;
       if (isUsableSize(settings.default_size)) state.size = settings.default_size;
       const defaultCount = Number.parseInt(settings.default_n, 10);
       if (Number.isFinite(defaultCount)) state.n = Math.max(1, Math.min(4, defaultCount));
@@ -659,21 +629,22 @@ export function renderGenerate(container, user) {
   // --------------------------------------------------------------- Templates
 
   function setupTemplateSection() {
-    const modeTitle = h('p', { class: 'dk-field-label', id: 'dk-generation-mode-label' }, '生成方式');
+    // 「更多分类」的折叠开关：上游 11 个分类里有一半（漫画分镜、游戏素材…）
+    // 拿来出商品图纯属误导，默认只露出电商能用的那几个
     const categoryList = h('div', {
       class: 'dk-template-categories',
       role: 'group',
-      'aria-label': '模板分类',
+      'aria-label': '更多分类',
     });
     const grid = h('div', {
       class: 'dk-template-grid',
       role: 'listbox',
-      'aria-labelledby': 'dk-generation-mode-label',
+      'aria-label': '生成方式',
       onkeydown: handleTemplateGridKey,
     });
     const summary = h('div', { class: 'dk-template-summary' });
 
-    templateSection.body.append(modeTitle, categoryList, grid, summary);
+    templateSection.body.append(grid, categoryList, summary);
     templateSection.categoryList = categoryList;
     templateSection.grid = grid;
     templateSection.summary = summary;
@@ -688,247 +659,145 @@ export function renderGenerate(container, user) {
     templateSection.summary.replaceChildren();
   }
 
-  async function loadTemplates() {
+  async function loadCategories() {
     const sequence = lifecycleSequence;
     state.templatesLoading = true;
     state.templatesError = '';
     renderTemplateLoading();
     try {
-      const [templates, categories] = await Promise.all([
-        api.get('/api/web/templates'),
-        api.get('/api/web/categories'),
-      ]);
+      const data = await api.get('/api/web/generate-categories');
       if (disposed || sequence !== lifecycleSequence) return;
-      state.templates = Array.isArray(templates) ? templates : [];
-      state.categories = Array.isArray(categories) ? categories : [];
-      const selectedTemplateId = state.selected?.id ?? state.selectedTemplateId;
-      if (selectedTemplateId != null) {
-        const refreshedTemplate = state.templates.find(
-          (template) => String(template.id) === String(selectedTemplateId),
-        );
-        state.selected = refreshedTemplate;
-        state.selectedTemplateId = refreshedTemplate?.id ?? null;
-        state.varValues = refreshedTemplate
-          ? reconcileTemplateValues(refreshedTemplate, state.varValues)
-          : {};
-      }
-      if (
-        state.activeCategory != null
-        && !state.categories.some((category) => category.id === state.activeCategory)
-      ) {
-        state.activeCategory = null;
+      state.categories = Array.isArray(data?.categories) ? data.categories : [];
+      // 恢复快照里选中的分类：切页回来时它可能还没加载完
+      if (state.selectedCategorySlug) {
+        const found = state.categories.find((c) => c.slug === state.selectedCategorySlug);
+        state.selected = found || undefined;
+        state.selectedCategorySlug = found ? found.slug : null;
       }
       state.templatesLoading = false;
       renderTemplateOptions();
-      updateVariablesSection();
       updateSettingsControls();
       updatePrimaryAction();
     } catch (error) {
       if (disposed || sequence !== lifecycleSequence) return;
       state.templatesLoading = false;
-      state.templatesError = error?.message || '模板加载失败';
-      templateSection.categoryList.replaceChildren();
+      state.templatesError = error?.message || '无法加载生成方式';
       templateSection.grid.replaceChildren(
-        h('div', { class: 'dk-template-load-error' },
-          inlineAlert(state.templatesError, 'error'),
-          button('重新加载', {
-            variant: 'secondary', size: 'sm', type: 'button', onclick: () => void loadTemplates(),
-          })));
-      templateSection.summary.replaceChildren();
+        inlineAlert(state.templatesError, 'error'),
+        button('重试', {
+          variant: 'secondary', size: 'sm', type: 'button', onclick: () => void loadCategories(),
+        }));
+      updatePrimaryAction();
     }
   }
 
   function renderTemplateOptions() {
-    const allButton = categoryButton(null, '全部');
-    const categoryButtons = state.categories.map((category) => categoryButton(category.id, category.name));
-    templateSection.categoryList.replaceChildren(allButton, ...categoryButtons);
+    const main = state.categories.filter((c) => !c.collapsed);
+    const extra = state.categories.filter((c) => c.collapsed);
 
-    const freeMode = templateButton(null);
-    const templates = state.templates.map((template) => templateButton(template));
-    templateSection.grid.replaceChildren(freeMode, ...templates);
+    const freeMode = categoryCard(null);
+    templateSection.grid.replaceChildren(freeMode, ...main.map(categoryCard));
+
+    templateSection.categoryList.replaceChildren();
+    if (extra.length) {
+      const extraGrid = h('div', { class: 'dk-template-grid', role: 'listbox', hidden: true },
+        ...extra.map(categoryCard));
+      const toggle = button(`更多分类（${extra.length}）`, {
+        variant: 'quiet', size: 'sm', type: 'button', iconName: 'chevron-down',
+        onclick: () => {
+          extraGrid.hidden = !extraGrid.hidden;
+          toggle.setAttribute('aria-expanded', String(!extraGrid.hidden));
+        },
+      });
+      toggle.setAttribute('aria-expanded', 'false');
+      templateSection.categoryList.append(toggle, extraGrid);
+    }
     updateTemplateSelection();
   }
 
-  function categoryButton(categoryId, label) {
-    return h('button', {
-      class: 'dk-filter-chip',
-      type: 'button',
-      'data-category-id': categoryId == null ? 'all' : String(categoryId),
-      'aria-pressed': state.activeCategory === categoryId ? 'true' : 'false',
-      onclick: () => setActiveCategory(categoryId),
-      onkeydown: handleCategoryKey,
-    }, label);
-  }
-
-  function templateButton(template) {
-    const isFree = template === null;
-    const templateId = isFree ? 'free' : String(template.id);
-    const title = isFree ? '自由模式' : template.name;
-    const meta = isFree ? '用自己的文字描述画面' : (template.category_name || '通用模板');
-    const visual = !isFree && template.thumbnail_url
-      ? h('img', {
-        class: 'dk-template-thumb dk-template-card__media',
-        src: template.thumbnail_url,
-        alt: '',
-        loading: 'lazy',
-        width: '120',
-        height: '80',
-      })
-      : h('span', { class: 'dk-template-icon dk-template-card__media', 'aria-hidden': 'true' },
-        icon(isFree ? 'pencil' : 'layout-template', { size: 22 }));
+  function categoryCard(category) {
+    const isFree = category === null;
+    const key = isFree ? 'free' : category.slug;
+    const title = isFree ? '自由模式' : category.name;
+    const meta = isFree
+      ? '自己描述画面，不参考提示词库'
+      : `${category.count} 条提示词可参考`;
 
     return h('button', {
       class: 'dk-template-card',
       type: 'button',
       role: 'option',
-      'data-template-id': templateId,
+      'data-category-slug': key,
       'aria-selected': 'false',
-      onclick: () => selectTemplate(template),
+      onclick: () => selectCategory(category),
     },
-      visual,
+      h('span', { class: 'dk-template-icon dk-template-card__media', 'aria-hidden': 'true' },
+        icon(isFree ? 'pencil' : 'layout-template', { size: 22 })),
       h('span', { class: 'dk-template-card-copy' },
         h('strong', { class: 'dk-template-card__title' }, title),
         h('span', { class: 'dk-template-card__description' }, meta)),
       h('span', { class: 'dk-template-check', 'aria-hidden': 'true' }, icon('check', { size: 16 })));
   }
 
-  function selectTemplate(template) {
-    // 再点一次当前已选中的模板不应清空用户已填好的变量与已调过的参数
-    const sameTemplate = template
-      ? state.selected && state.selected.id === template.id
-      : state.selected === template;
-    state.selected = template;
-    state.selectedTemplateId = template?.id ?? null;
+  function selectCategory(category) {
+    state.selected = category;
+    state.selectedCategorySlug = category ? category.slug : null;
     state.submitError = '';
-    if (template && !sameTemplate) applyTemplateDefaults(state, template);
     updateTemplateSelection();
-    updateVariablesSection();
-    updateSettingsControls();
     updatePrimaryAction();
   }
 
-  function setActiveCategory(categoryId) {
-    state.activeCategory = categoryId;
-    for (const control of templateSection.categoryList.querySelectorAll('[data-category-id]')) {
-      const selected = control.dataset.categoryId === (categoryId == null ? 'all' : String(categoryId));
-      control.classList.toggle('is-active', selected);
-      control.setAttribute('aria-pressed', String(selected));
-    }
-    for (const control of templateSection.grid.querySelectorAll('[data-template-id]')) {
-      if (control.dataset.templateId === 'free') {
-        control.hidden = false;
-        continue;
-      }
-      const template = state.templates.find((item) => String(item.id) === control.dataset.templateId);
-      control.hidden = categoryId != null && template?.category_id !== categoryId;
-    }
-  }
-
   function updateTemplateSelection() {
-    const selectedId = state.selected === null
+    const selectedKey = state.selected === null
       ? 'free'
-      : (state.selected ? String(state.selected.id) : '');
-    for (const control of templateSection.grid.querySelectorAll('[data-template-id]')) {
-      const selected = control.dataset.templateId === selectedId;
+      : (state.selected ? state.selected.slug : '');
+    for (const control of document.querySelectorAll('[data-category-slug]')) {
+      const selected = control.dataset.categorySlug === selectedKey;
       control.classList.toggle('is-selected', selected);
       control.setAttribute('aria-selected', String(selected));
     }
-    setActiveCategory(state.activeCategory);
 
     if (state.selected === undefined) {
       templateSection.summary.replaceChildren(
-        h('p', { class: 'dk-section-note' }, '选择后将在下方显示模板变量和默认参数。'));
+        h('p', { class: 'dk-section-note' },
+          '选一个分类：出图时 AI 会先看你的商品图，再从该分类的提示词库里挑几条最搭的风格，'
+          + '结合你的补充要求现场写提示词。'));
     } else if (state.selected === null) {
       templateSection.summary.replaceChildren(
         h('div', { class: 'dk-selected-template' },
           icon('pencil', { size: 18 }),
-          h('div', {}, h('strong', {}, '自由模式'), h('p', {}, '直接描述画面，不套用模板提示词。'))));
+          h('div', {}, h('strong', {}, '自由模式'), h('p', {}, '完全按你写的描述出图，不参考提示词库。'))));
     } else {
-      const params = state.selected.default_params || {};
-      const defaults = [params.size, params.n ? `${params.n} 张` : '', params.quality].filter(Boolean).join(' · ');
       templateSection.summary.replaceChildren(
         h('div', { class: 'dk-selected-template' },
           icon('check-circle-2', { size: 18 }),
           h('div', {},
             h('strong', {}, `已选择：${state.selected.name}`),
-            h('p', {}, state.selected.description || defaults || '使用模板推荐参数生成。'))));
+            h('p', {}, `AI 会从这 ${state.selected.count} 条提示词里挑最适合你商品的几条作为风格参考。`))));
     }
   }
 
   function updateVariablesSection() {
-    variablesSection.root.hidden = state.selected === undefined;
+    // 按分类生成没有「模板变量」这回事，这一段只在自由模式下用来写画面描述
+    variablesSection.root.hidden = state.selected !== null;
     variablesSection.body.replaceChildren();
-    if (state.selected === undefined) return;
+    if (state.selected !== null) return;
 
-    if (state.selected === null) {
-      const prompt = h('textarea', {
-        class: 'dk-textarea textarea',
-        id: 'dk-free-prompt',
-        rows: '4',
-        value: state.freePrompt,
-        placeholder: '例如：把商品放在明亮的木质桌面上，柔和自然光，背景干净，不出现文字',
-        oninput: (event) => {
-          state.freePrompt = event.target.value;
-          state.submitError = '';
-          updatePrimaryAction();
-        },
-      });
-      variablesSection.body.append(field('画面描述', prompt, {
-        required: true,
-        help: '描述场景、光线、构图与需要避开的元素。',
-      }));
-      return;
-    }
-
-    const variables = state.selected.variables || [];
-    if (!variables.length) {
-      variablesSection.body.append(
-        h('p', { class: 'dk-section-note' }, '该模板无需填写变量，将直接使用推荐配置。'));
-      return;
-    }
-
-    variablesSection.body.append(...variables.map((variable, index) => {
-      const id = `dk-template-variable-${index}`;
-      const current = selectedTemplateValue(variable, state.varValues);
-      let control;
-      if (variable.type === 'select' && Array.isArray(variable.options) && variable.options.length) {
-        control = h('select', {
-          class: 'dk-select select',
-          id,
-          value: current,
-          onchange: (event) => {
-            state.varValues[variable.name] = event.target.value;
-            state.submitError = '';
-            updatePrimaryAction();
-          },
-        }, variable.options.map((option) => h('option', {
-          value: option,
-          selected: String(current) === String(option),
-        }, option)));
-      } else {
-        control = h('input', {
-          class: 'dk-input input',
-          id,
-          value: current,
-          placeholder: variable.placeholder || '',
-          oninput: (event) => {
-            state.varValues[variable.name] = event.target.value;
-            state.submitError = '';
-            updatePrimaryAction();
-          },
-        });
-      }
-      return field(variable.label || variable.name, control, {
-        required: Boolean(variable.required),
-        help: variable.help || '',
-      });
+    const prompt = h('textarea', {
+      class: 'dk-textarea textarea',
+      id: 'dk-free-prompt',
+      rows: '4',
+      value: state.freePrompt,
+      placeholder: '例如：把商品放在明亮的木质桌面上，柔和自然光，背景干净，不出现文字',
+      oninput: (event) => {
+        state.freePrompt = event.target.value;
+        state.submitError = '';
+        updatePrimaryAction();
+      },
+    });
+    variablesSection.body.append(field('画面描述', prompt, {
+      help: '越具体越好：场景、光线、角度、色调。商品本身不用描述，AI 会看图。',
     }));
-  }
-
-  function handleCategoryKey(event) {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    const controls = [...templateSection.categoryList.querySelectorAll('button:not([disabled])')];
-    moveRovingFocus(event, controls);
   }
 
   function handleTemplateGridKey(event) {
@@ -1402,7 +1271,7 @@ export function renderGenerate(container, user) {
     return h('div', { class: 'dk-result-state is-empty' },
       h('span', { class: 'dk-result-state__icon', 'aria-hidden': 'true' }, icon('image', { size: 28 })),
       h('h2', { class: 'dk-result-state__title' }, '结果会显示在这里'),
-      h('p', { class: 'dk-result-state__description' }, '上传商品图，选择模板并设置参数后，生成结果会持续显示在这块画布中。'),
+      h('p', { class: 'dk-result-state__description' }, '上传商品图，选一个分类并设置参数后，生成结果会持续显示在这块画布中。'),
       action);
   }
 
