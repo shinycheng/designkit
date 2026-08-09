@@ -35,7 +35,9 @@ services:
         condition: service_healthy
     healthcheck:
       # 探活时真的往数据库跑一趟：进程活着但连不上库时，页面只会一直转圈不报错，
-      # 让编排层判为不健康并重启，比让人对着转圈猜要好。
+      # 有了它 `docker compose ps` 会直接显示 unhealthy，一眼看出问题在哪。
+      # 注意 Docker 不会自动重启 unhealthy 的容器（restart 只管进程真的退出），
+      # 看到 unhealthy 需要自己查日志。
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8787/healthz', timeout=5).status==200 else 1)\""]
       interval: 30s
       timeout: 10s

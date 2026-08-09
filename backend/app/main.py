@@ -83,10 +83,11 @@ app.include_router(v1.router)
 
 @app.get("/healthz", include_in_schema=False)
 def healthz():
-    """容器健康检查。故意只做一次真实的数据库往返：
+    """容器健康检查。故意做一次真实的数据库往返：
 
-    进程活着但连不上数据库时，页面会一直转圈却不报错，用户完全看不出问题；
-    让编排层把这种状态判为「不健康」并重启，比让人对着转圈猜要好。
+    进程活着但连不上数据库时，页面会一直转圈却不报错，用户完全看不出问题。
+    有了它，`docker compose ps` 会把容器标成 unhealthy，一眼能定位到根因。
+    （Docker 本身不会因为 unhealthy 就重启容器，这里只负责把状态暴露出来。）
     """
     from sqlalchemy import text
 

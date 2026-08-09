@@ -75,6 +75,9 @@ vi .env
 网关 Key（`OPENAI_API_KEY`）**建议留空**——启动后在网页「系统设置 → 生图服务」里填，
 这样 Key 不会躺在文件里被别人看到。
 
+> **改完 `.env` 想生效，一律用 `docker compose up -d`**，不要用 `restart`。
+> `restart` 只是把容器停了再开，不会重新读取 `.env`，改了等于没改。
+
 ---
 
 ## 第 4 步：启动
@@ -99,8 +102,14 @@ sudo docker compose ps
 浏览器访问：**http://NAS的IP:8787**
 
 - 初始账号 `admin`，密码 `admin123456`，**首次登录会强制你改密码**
-- 进「系统设置 → 生图服务」填入网关 Key，点「测试已保存的连接」确认通了
-- 进「灵感库」→ 点右上角「同步上游」，约 15 秒拉回 1.4 万条提示词
+  （那个窗口关不掉，不想现在设就点窗口左下角的「退出登录」）
+- 进「系统设置 → 生图服务」填入网关 Key → **先点「保存此区域」** → 再点
+  「测试已保存的连接」。顺序反了会提示「请先保存当前更改」，测试不会真的执行
+- 进「灵感库」→ 点右上角「同步上游」，约 1-2 分钟拉回 1.4 万条提示词。
+  同步过程中页面会显示进度，不要重复点
+
+> 部署用的配置模板默认已是**真实生图**模式，Key 没填之前点生成会报
+> 「尚未配置生图 API Key」。所以上面填 Key 这步要先做。
 
 ---
 
@@ -148,8 +157,10 @@ sudo docker compose pull && sudo docker compose up -d
 | `docker compose up` 报 `请在 .env 里设置 POSTGRES_PASSWORD` | `.env` 没改密码，或者 `.env` 不在当前目录 |
 | 拉镜像报 `denied` / `not found` | 镜像跟随公开仓库自动公开，正常不会出现。若真遇到，去 GitHub 仓库 → Packages → designkit → Package settings → Change visibility 确认是 Public |
 | 浏览器打不开 8787 | 先在 NAS 上 `curl localhost:8787` 试试。通了说明是防火墙：控制面板 → 安全性 → 防火墙，放行 8787 |
-| 容器一直 `unhealthy` | `sudo docker compose logs designkit`，多半是连不上数据库 |
-| 上传图片报错、生成失败 | `.env` 里 `PUID`/`PGID` 填错了。改对后 `sudo docker compose restart designkit`，容器会自动纠正目录属主 |
+| 容器一直 `unhealthy` | `sudo docker compose logs designkit`，多半是连不上数据库。注意 Docker **不会**自动重启 unhealthy 的容器，看到了要自己查 |
+| 上传图片报错、生成失败 | 看 `sudo docker compose logs designkit` 里有没有 `[entrypoint]` 开头的警告：提示「目录里有本项目之外的内容」就是挂载目录挂错了，换成专门给 DesignKit 用的空目录；提示「修改属主失败」就在 NAS 上手工执行 `sudo chown -R PUID:PGID 该目录` |
+| 图能生成，但在 File Station 里打不开 | `.env` 里 `PUID`/`PGID` 和你的账号对不上。改完 `.env` 后必须用 `sudo docker compose up -d`——**`restart` 不会重新读取 `.env`**，改了也没用 |
+| 重启后有个任务卡在「生成中」，既不能重试也删不掉 | 服务重启时只会捞回已开始超过 75 分钟的中断任务。等一个多小时后再重启一次服务，它会自动回到队列重新执行 |
 | 测试连接失败 | NAS 能不能连到网关：`curl http://192.168.31.235:8090/v1/models`。不通就是两台机器不在同一网段，或网关那台机器关机了 |
 
 ---
