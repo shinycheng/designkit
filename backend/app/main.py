@@ -4,11 +4,29 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+
+
+class RevalidateStaticFiles(StaticFiles):
+    """前端静态资源加 Cache-Control: no-cache。
+
+    no-cache 不是「不缓存」，而是「每次都用 ETag 重新校验」：没变返回 304 很省流量，
+    变了立刻拿到新版本。否则无 Cache-Control 时浏览器会启发式缓存旧 JS，
+    重新部署后用户可能因缓存的旧模块白屏。
+    """
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 from .config import FRONTEND_DIR, OUTPUT_DIR, THUMB_DIR, UPLOAD_DIR
 from .database import SessionLocal, engine
+from .migrations import run_migrations
 from .models import Base
-from .routers import apikeys, auth, generations, settings_router, templates, uploads, v1
+from .routers import (
+    apikeys, auth, generations, inspiration, settings_router, templates, uploads, v1,
+)
 from .seed import seed
 from .services.worker import worker
 
@@ -20,6 +38,7 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    run_migrations(engine)  # 给老数据库补新列（create_all 不会改已有表）
     db = SessionLocal()
     try:
         seed(db)
@@ -52,6 +71,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(uploads.router)
 app.include_router(templates.router)
+app.include_router(inspiration.router)
 app.include_router(generations.router)
 app.include_router(apikeys.router)
 app.include_router(settings_router.router)
@@ -62,4 +82,4 @@ app.include_router(v1.router)
 app.mount("/files/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="files_uploads")
 app.mount("/files/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="files_outputs")
 app.mount("/files/thumbnails", StaticFiles(directory=str(THUMB_DIR)), name="files_thumbnails")
-app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+app.mount("/", RevalidateStaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

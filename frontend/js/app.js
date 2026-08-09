@@ -6,6 +6,7 @@ import { button, closeOverlays, field, h, icon, iconButton, inlineAlert, modal, 
 import { renderGenerate } from './views/generate.js';
 import { renderHistory } from './views/history.js';
 import { renderTemplates } from './views/templates.js';
+import { renderInspiration } from './views/inspiration.js';
 import { renderApiKeys } from './views/apikeys.js';
 import { renderSettings } from './views/settings.js';
 
@@ -13,6 +14,7 @@ const ROUTES = [
   { hash: '#/generate', title: '生成工作台', navLabel: '生成', icon: 'sparkles', render: renderGenerate },
   { hash: '#/history', title: '生成记录', navLabel: '记录', icon: 'images', render: renderHistory },
   { hash: '#/templates', title: '提示词模板', navLabel: '模板', icon: 'layout-template', render: renderTemplates },
+  { hash: '#/inspiration', title: '灵感库', navLabel: '灵感', icon: 'lightbulb', render: renderInspiration },
   { hash: '#/apikeys', title: 'API 对接', navLabel: 'API', icon: 'plug', render: renderApiKeys, adminOnly: true },
   { hash: '#/settings', title: '系统设置', navLabel: '设置', icon: 'settings', render: renderSettings, adminOnly: true },
 ];

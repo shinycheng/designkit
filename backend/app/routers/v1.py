@@ -138,7 +138,7 @@ def _store_incoming_image(db: Session, key: ApiKey, data: bytes, name: str) -> s
         raise HTTPException(status_code=422, detail="提供的内容不是有效图片：%s" % name[:100])
     # 格式白名单，与上传端点对齐（不认识的格式直接拒绝而非误存成 .webp）
     if fmt not in ("png", "jpeg", "jpg", "webp"):
-        raise HTTPException(status_code=422, detail="只支持 png / jpg / webp 图片：%s" % name[:100])
+        raise HTTPException(status_code=422, detail="只支持 png / jpg / webp / heic 图片：%s" % name[:100])
     suffix = ".png" if fmt == "png" else ".jpg" if fmt in ("jpg", "jpeg") else ".webp"
     rel, w, h = storage.save_upload(data, suffix)
     db.add(
@@ -161,6 +161,7 @@ def v1_list_templates(key: ApiKey = Depends(get_api_client), db: Session = Depen
     rows = (
         db.query(PromptTemplate)
         .filter(PromptTemplate.is_enabled.is_(True))
+        .filter(PromptTemplate.source == "user")
         .order_by(PromptTemplate.sort.asc(), PromptTemplate.id.desc())
         .all()
     )
@@ -176,7 +177,7 @@ async def v1_upload(
 ):
     suffix = Path(file.filename or "image.png").suffix.lower()
     if suffix not in ALLOWED_IMAGE_EXTS:
-        raise HTTPException(status_code=422, detail="只支持 png / jpg / jpeg / webp 图片")
+        raise HTTPException(status_code=422, detail="只支持 png / jpg / jpeg / webp / heic 图片")
     data = await file.read()
     if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(status_code=422, detail="图片不能超过 %dMB" % MAX_UPLOAD_MB)

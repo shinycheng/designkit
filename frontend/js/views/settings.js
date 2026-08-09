@@ -41,18 +41,20 @@ export function renderSettings(container) {
       id: 'provider-settings',
       title: '生图服务',
       description: '配置图像生成供应商、接口地址和模型。',
-      keys: ['provider', 'openai_base_url', 'openai_api_key', 'image_model'],
+      keys: ['provider', 'openai_base_url', 'openai_api_key', 'image_model', 'normalize_input_ratio'],
       renderFields: (form) => {
         const provider = h('select', { class: 'select' },
           h('option', { value: 'mock' }, '模拟生图（验证流程）'),
           h('option', { value: 'openai' }, 'OpenAI 兼容接口'));
-        const baseUrl = h('input', { class: 'input', type: 'url', placeholder: 'https://api.openai.com' });
+        const baseUrl = h('input', { class: 'input', type: 'url', placeholder: 'http://192.168.31.235:8090/v1' });
         const apiKey = h('input', { class: 'input', type: 'password', autocomplete: 'off', placeholder: 'sk-…' });
-        const model = h('input', { class: 'input', placeholder: 'gpt-image-1' });
+        const model = h('input', { class: 'input', placeholder: 'gpt-image-2' });
+        const normalize = h('input', { type: 'checkbox' });
         form.register('provider', provider);
         form.register('openai_base_url', baseUrl);
         form.register('openai_api_key', apiKey);
         form.register('image_model', model);
+        form.register('normalize_input_ratio', normalize, checkboxBinding());
         mockNotice = inlineAlert('模拟模式会返回占位图，适合验证上传、队列和 ERP 回调流程，不会产生模型费用。', 'info');
         const syncModeNotice = () => { mockNotice.hidden = provider.value !== 'mock'; };
         provider.addEventListener('change', syncModeNotice);
@@ -61,9 +63,13 @@ export function renderSettings(container) {
           field('服务模式', provider),
           mockNotice,
           h('div', { class: 'dk-field-grid' },
-            field('API 地址（Base URL）', baseUrl, { help: '可填 OpenAI 官方或兼容中转服务的地址。' }),
-            field('生图模型', model, { help: '默认为 gpt-image-1；中转平台如有要求，使用其指定模型名。' })),
-          field('API Key', apiKey, { help: '已保存的值仅显示掩码；不修改即不会覆盖原密钥。' }));
+            field('API 地址（Base URL）', baseUrl, { help: '可填 OpenAI 官方、兼容中转或自建网关的地址。' }),
+            field('生图模型', model, { help: '默认 gpt-image-2（自建网关）；平台如有要求，使用其指定模型名。' })),
+          field('API Key', apiKey, { help: '已保存的值仅显示掩码；不修改即不会覆盖原密钥。' }),
+          field('发送前按所选比例预处理商品图',
+            h('label', { class: 'dk-checkbox-row' }, normalize,
+              h('span', { class: 'dk-checkbox-row__copy' }, '补白边到目标比例（不裁产品）+ 透明底合成白底 + HEIC 自动转码')),
+            { help: '自建网关会忽略 size 参数、出图比例跟随输入图，开启才能控制比例；对官方接口同样安全。' }));
       },
       validate: (draft) => {
         if (!['mock', 'openai'].includes(draft.provider)) return '服务模式不受支持。';

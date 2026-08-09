@@ -1,6 +1,15 @@
 export const MAX_UPLOADS = 4;
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-export const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+export const ACCEPTED_IMAGE_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif',
+]);
+// Safari/Chrome 对 HEIC 常给空 MIME，退回按扩展名判断
+export const ACCEPTED_IMAGE_EXTS = /\.(png|jpe?g|webp|heic|heif)$/i;
+
+export function isAcceptedImageFile(file) {
+  if (file.type) return ACCEPTED_IMAGE_TYPES.has(file.type);
+  return ACCEPTED_IMAGE_EXTS.test(file.name || '');
+}
 
 export const SIZE_OPTIONS = [
   { value: '1024x1024', label: '方图', ratio: '1:1', usage: '商品主图' },

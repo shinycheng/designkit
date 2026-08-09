@@ -13,6 +13,13 @@ from PIL import Image
 
 from ..config import DATA_DIR
 
+try:  # Mac 相册导出的 HEIC（常伪装成 .jpg）：装了 pillow-heif 即可直接识别
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+except ImportError:  # pragma: no cover
+    pass
+
 THUMB_MAX = 480
 
 
@@ -31,6 +38,13 @@ def abs_path(rel_path: str) -> Path:
     return p
 
 
+def _looks_like_heif(data: bytes) -> bool:
+    # ISO BMFF：前 4 字节为 box 长度，随后是 'ftyp' + 品牌（heic/heix/mif1…）
+    return len(data) > 12 and data[4:8] == b"ftyp" and data[8:12] in (
+        b"heic", b"heix", b"hevc", b"heim", b"heis", b"mif1", b"msf1",
+    )
+
+
 def validate_image(data: bytes) -> Tuple[int, int, str]:
     """校验是不是真图片，返回 (宽, 高, 格式)。"""
     try:
@@ -39,6 +53,11 @@ def validate_image(data: bytes) -> Tuple[int, int, str]:
         with Image.open(io.BytesIO(data)) as im:
             return im.width, im.height, (im.format or "PNG").lower()
     except Exception:
+        if _looks_like_heif(data):
+            raise StorageError(
+                "这是 iPhone/Mac 的 HEIC 照片，服务器缺少解码组件："
+                "请运行 pip install pillow-heif 后重启，或先把照片导出为 JPG"
+            )
         raise StorageError("文件不是有效的图片")
 
 
@@ -90,4 +109,7 @@ def delete_file(rel_path: Optional[str]) -> None:
 def to_url(rel_path: Optional[str], public_base_url: str) -> Optional[str]:
     if not rel_path:
         return None
+    # 灵感库条目的缩略图直接引用来源方 CDN 的绝对地址
+    if rel_path.startswith("http://") or rel_path.startswith("https://"):
+        return rel_path
     return public_base_url.rstrip("/") + "/files/" + rel_path

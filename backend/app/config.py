@@ -60,7 +60,7 @@ PORT = int(os.environ.get("DESIGNKIT_PORT", "8787"))
 
 TOKEN_EXPIRE_DAYS = 7
 MAX_UPLOAD_MB = 20
-ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif"}
 
 # 可在「系统设置」界面里修改的运行时设置（存数据库），这里是默认值 + env 后备
 RUNTIME_DEFAULTS = {
@@ -68,7 +68,12 @@ RUNTIME_DEFAULTS = {
     "provider": os.environ.get("DESIGNKIT_PROVIDER", "mock"),
     "openai_base_url": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com"),
     "openai_api_key": os.environ.get("OPENAI_API_KEY", ""),
-    "image_model": os.environ.get("DESIGNKIT_IMAGE_MODEL", "gpt-image-1"),
+    # 默认对齐用户的自建 Sub2API 网关；接其他平台时在系统设置里改
+    "image_model": os.environ.get("DESIGNKIT_IMAGE_MODEL", "gpt-image-2"),
+    # 发送前把商品图按所选比例补边（不裁产品）+ 透明底合成白底。
+    # 自建网关忽略 size 参数、输出比例跟随输入图，开着才能控制出图比例；
+    # 对遵循 size 的官方/中转网关同样安全（输入输出比例一致，无形变）。
+    "normalize_input_ratio": os.environ.get("DESIGNKIT_NORMALIZE_INPUT_RATIO", "true").lower() in ("1", "true", "yes"),
     # 对外可访问的地址：生成结果的图片链接、webhook 里的 URL 都基于它拼出来
     "public_base_url": os.environ.get(
         "DESIGNKIT_PUBLIC_BASE_URL", "http://127.0.0.1:%d" % PORT
@@ -79,7 +84,8 @@ RUNTIME_DEFAULTS = {
     "allow_internal_targets": os.environ.get("DESIGNKIT_ALLOW_INTERNAL_TARGETS", "true").lower() in ("1", "true", "yes"),
     "worker_concurrency": int(os.environ.get("DESIGNKIT_WORKER_CONCURRENCY", "2")),
     "max_attempts": int(os.environ.get("DESIGNKIT_MAX_ATTEMPTS", "2")),
-    "request_timeout": int(os.environ.get("DESIGNKIT_REQUEST_TIMEOUT", "300")),
+    # 自建网关实测单张 70~296 秒（多参考图更慢），默认给足
+    "request_timeout": int(os.environ.get("DESIGNKIT_REQUEST_TIMEOUT", "360")),
     "default_size": "1024x1024",
     "default_n": 1,
 }

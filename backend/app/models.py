@@ -70,12 +70,21 @@ class PromptCategory(Base):
 
 
 class PromptTemplate(Base):
-    """提示词模板。prompt_template 中可用 {变量名} 占位，由 variables 定义。"""
+    """提示词模板。prompt_template 中可用 {变量名} 占位，由 variables 定义。
+
+    source 说明：
+    - user     用户自己创建/采用的正式模板（生成页可见，取决于 is_enabled）
+    - youmind  从 YouMind 开源库同步来的灵感库条目（默认 is_enabled=False，
+               只出现在「灵感库」页；采用时会复制成一条 source=user 的新模板）
+    """
 
     __tablename__ = "prompt_templates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(128))
+    source: Mapped[str] = mapped_column(String(16), default="user", index=True)
+    # 外部来源标识，如 youmind:29918；同步时按它幂等更新，采用的副本也带上它用于标记「已采用」
+    source_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     category_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("prompt_categories.id", ondelete="SET NULL"), nullable=True
     )

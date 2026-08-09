@@ -54,15 +54,17 @@ def list_templates(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(PromptTemplate)
+    # 只列正式模板；灵感库条目（source=youmind）走 /api/web/inspiration
+    query = db.query(PromptTemplate).filter(PromptTemplate.source == "user")
     if not (include_disabled and user.role == "admin"):
         query = query.filter(PromptTemplate.is_enabled.is_(True))
     if category_id is not None:
         query = query.filter(PromptTemplate.category_id == category_id)
     if q:
-        like = "%%%s%%" % q.strip()
+        keyword = q.strip()
         query = query.filter(
-            PromptTemplate.name.like(like) | PromptTemplate.description.like(like)
+            PromptTemplate.name.contains(keyword, autoescape=True)
+            | PromptTemplate.description.contains(keyword, autoescape=True)
         )
     rows = query.order_by(PromptTemplate.sort.asc(), PromptTemplate.id.desc()).all()
     public_base = ""  # 网页端用相对 /files 路径，换访问入口也不会失效
@@ -89,7 +91,7 @@ def update_template(
     db: Session = Depends(get_db),
 ):
     t = db.get(PromptTemplate, template_id)
-    if t is None:
+    if t is None or t.source != "user":
         raise HTTPException(status_code=404, detail="模板不存在")
     _apply_template_body(t, body, db)
     db.commit()
@@ -102,7 +104,7 @@ def delete_template(
     template_id: int, _: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     t = db.get(PromptTemplate, template_id)
-    if t is None:
+    if t is None or t.source != "user":
         raise HTTPException(status_code=404, detail="模板不存在")
     storage.delete_file(t.thumbnail_path)
     db.delete(t)
@@ -118,7 +120,7 @@ async def upload_thumbnail(
     db: Session = Depends(get_db),
 ):
     t = db.get(PromptTemplate, template_id)
-    if t is None:
+    if t is None or t.source != "user":
         raise HTTPException(status_code=404, detail="模板不存在")
     data, suffix = await read_and_validate(file)
     try:
@@ -142,7 +144,12 @@ def import_templates(
         name = body.name.strip()
         existing = seen.get(name)
         if existing is None:
-            existing = db.query(PromptTemplate).filter(PromptTemplate.name == name).first()
+            existing = (
+                db.query(PromptTemplate)
+                .filter(PromptTemplate.source == "user")  # 同名更新只针对自己的模板
+                .filter(PromptTemplate.name == name)
+                .first()
+            )
         if existing is not None:
             _apply_template_body(existing, body, db)
             updated += 1
@@ -160,7 +167,13 @@ def import_templates(
 
 @router.get("/templates/export")
 def export_templates(_: User = Depends(require_admin), db: Session = Depends(get_db)):
-    rows = db.query(PromptTemplate).order_by(PromptTemplate.id.asc()).all()
+    # 只导出自己的正式模板；1.4 万条灵感库数据不属于用户资产，也不该进备份文件
+    rows = (
+        db.query(PromptTemplate)
+        .filter(PromptTemplate.source == "user")
+        .order_by(PromptTemplate.id.asc())
+        .all()
+    )
     return [
         {
             "name": t.name,

@@ -14,7 +14,7 @@ import {
   toast,
 } from '../ui.js';
 import {
-  ACCEPTED_IMAGE_TYPES,
+  isAcceptedImageFile,
   MAX_UPLOAD_BYTES,
   MAX_UPLOADS,
   QUALITY_OPTIONS,
@@ -166,17 +166,33 @@ export function renderGenerate(container, user) {
   setupTemplateSection();
   setupSettingsSection();
   setupExtraSection();
+  applyPendingPrompt();  // 灵感库「用它生成」带过来的提示词
   updateVariablesSection();
   updatePrimaryAction();
   updateCanvas(true);
   void loadRuntimeDefaults();
   void loadTemplates();
 
+  function applyPendingPrompt() {
+    let pending = null;
+    try {
+      const raw = sessionStorage.getItem('dk_apply_prompt');
+      if (raw) { pending = JSON.parse(raw); sessionStorage.removeItem('dk_apply_prompt'); }
+    } catch { return; }
+    if (!pending?.prompt) return;
+    state.selected = null;  // 自由模式
+    state.freePrompt = pending.prompt;
+    if (pending.from) toast(`已带入灵感库提示词「${pending.from}」，可直接生成或继续修改`, 'success');
+    if (pending.requiresImage) toast('这条提示词需要先上传商品/参考图', 'info', 4200);
+  }
+
   async function loadRuntimeDefaults() {
     if (user?.role !== 'admin') return;
     try {
       const settings = await api.get('/api/web/settings');
-      if (disposed || settingsTouched || state.selected !== undefined) return;
+      // 选了具体模板（模板默认优先）或用户手动动过设置才跳过；
+      // 灵感库接力进入的自由模式（selected === null）仍应套用系统默认尺寸/张数
+      if (disposed || settingsTouched || state.selected) return;
       if (SIZE_OPTIONS.some((option) => option.value === settings.default_size)) {
         state.size = settings.default_size;
       }
@@ -206,7 +222,7 @@ export function renderGenerate(container, user) {
   function setupUploadSection() {
     const input = h('input', {
       type: 'file',
-      accept: 'image/png,image/jpeg,image/webp',
+      accept: 'image/png,image/jpeg,image/webp,image/heic,image/heif,.heic,.heif',
       multiple: true,
       hidden: true,
       onchange: (event) => {
@@ -278,7 +294,7 @@ export function renderGenerate(container, user) {
         sequence: 0,
       };
 
-      if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
+      if (!isAcceptedImageFile(file)) {
         item.status = 'failed';
         item.error = '仅支持 PNG、JPG、WEBP';
       } else if (file.size > MAX_UPLOAD_BYTES) {
@@ -370,7 +386,7 @@ export function renderGenerate(container, user) {
     uploadSection.dropzone.disabled = remaining === 0;
     uploadSection.dropTitle.textContent = items.length ? '继续添加商品图' : '点击或拖拽上传商品图';
     uploadSection.dropMeta.textContent = remaining
-      ? `还可上传 ${remaining} 张 · PNG / JPG / WEBP · 单张 20MB`
+      ? `还可上传 ${remaining} 张 · PNG / JPG / WEBP / HEIC · 单张 20MB`
       : '已达到 4 张上限，移除后可继续添加';
 
     uploadSection.list.replaceChildren(...items.map((item) => {

@@ -21,8 +21,10 @@ logger = logging.getLogger("designkit.worker")
 
 POLL_INTERVAL = 1.0
 RETRY_BACKOFF_SECONDS = 5
-# 启动时重置卡住任务的年龄阈值：超过它仍是 processing 才认定为「上次中断」
-STUCK_RESET_SECONDS = 3600
+# 启动时重置卡住任务的年龄阈值：超过它仍是 processing 才认定为「上次中断」。
+# 要大于生图的最坏合法耗时（降级逐张时预算为 request_timeout(≤900) × n(≤4) = 3600 秒），
+# 否则多进程部署下会把还在正常执行的任务误判为中断、重新入队重复计费。
+STUCK_RESET_SECONDS = 4500
 
 
 class GenerationWorker:

@@ -36,3 +36,12 @@ rm -rf data && ./start.sh
 
 - `test_provider_compat.py` — 覆盖 OpenAI Images 兼容网关拒绝多图 `n`
   参数时的单图拆分回退，并确保无关 400 不会误触发。
+
+## 灵感库与预处理单测
+
+```bash
+.venv/bin/python -m unittest discover -s tests -p 'test_inspiration_convert.py' -v
+```
+
+- `test_inspiration_convert.py` — YouMind `{argument}` 变量语法转换（同名复用/撞名加序号/中文变量）
+  与输入图预处理（比例补边、透明合白底、坏图回退），不联网、不花钱。

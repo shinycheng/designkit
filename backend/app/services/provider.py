@@ -9,7 +9,6 @@ import binascii
 import hashlib
 import io
 import logging
-import mimetypes
 import re
 import textwrap
 import time
@@ -19,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import httpx
 from PIL import Image, ImageDraw
 
+from . import imaging
 from .storage import abs_path
 
 
@@ -238,8 +238,9 @@ def _openai_generate(
 ) -> List[bytes]:
     base = _api_base(settings)
     headers = _headers(settings)
-    model = str(settings.get("image_model") or "gpt-image-1")
-    timeout = int(settings.get("request_timeout") or 300)
+    model = str(settings.get("image_model") or "gpt-image-2")
+    timeout = int(settings.get("request_timeout") or 360)
+    normalize_ratio = bool(settings.get("normalize_input_ratio", True))
 
     common: Dict[str, Any] = {"model": model, "prompt": prompt, "n": n, "size": size}
     if quality and quality != "auto":
@@ -248,15 +249,25 @@ def _openai_generate(
     if not model.startswith("gpt-image"):
         common["response_format"] = "b64_json"
 
+    # 输入图只预处理一次（方向摆正、HEIC 解码、透明合白、按比例补边），重试/降级时复用
+    prepared_images: List[Tuple[str, bytes, str]] = []
+    for rel in input_paths:
+        p: Path = abs_path(rel)
+        prepared = imaging.prepare_input_image(
+            p.read_bytes(), size, normalize_ratio, original_suffix=p.suffix
+        )
+        prepared_images.append((p.stem + prepared.suffix, prepared.data, prepared.mime))
+        if prepared.note != "无需处理":
+            logger.info("输入图 %s：%s", p.name, prepared.note)
+
     def _send(payload: Dict[str, Any]) -> httpx.Response:
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            if input_paths:
-                files = []
-                field = "image" if len(input_paths) == 1 else "image[]"
-                for rel in input_paths:
-                    p: Path = abs_path(rel)
-                    mime = mimetypes.guess_type(p.name)[0] or "image/png"
-                    files.append((field, (p.name, p.read_bytes(), mime)))
+            if prepared_images:
+                field = "image" if len(prepared_images) == 1 else "image[]"
+                files = [
+                    (field, (name, content, mime))
+                    for name, content, mime in prepared_images
+                ]
                 data = {k: str(v) for k, v in payload.items()}
                 return client.post(
                     base + "/v1/images/edits", headers=headers, data=data, files=files

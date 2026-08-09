@@ -55,7 +55,7 @@ GET BASE/api/v1/templates
 ```
 POST BASE/api/v1/uploads
 Content-Type: multipart/form-data
-file: <图片文件，png/jpg/webp，≤20MB>
+file: <图片文件，png/jpg/webp/heic，≤20MB>
 
 → 200 {"id": 15, "url": "...", "width": 800, "height": 800, ...}
 ```
