@@ -15,6 +15,7 @@ logger = logging.getLogger("designkit.migrations")
 _COLUMN_MIGRATIONS = [
     ("prompt_templates", "source", "VARCHAR(16) NOT NULL DEFAULT 'user'"),
     ("prompt_templates", "source_ref", "VARCHAR(64)"),
+    ("generation_jobs", "prompt_sent", "TEXT"),
 ]
 
 # 老库补索引（CREATE INDEX IF NOT EXISTS 在 SQLite 与 PostgreSQL 上都支持）

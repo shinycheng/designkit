@@ -396,8 +396,21 @@ export function renderHistory(container) {
         : null,
       imageGrid ? h('section', { class: 'dk-panel-stack' }, h('h3', {}, '生成结果'), imageGrid) : null,
       inputs ? h('section', { class: 'dk-panel-stack' }, h('h3', {}, '商品原图'), inputs) : null,
+      // AI 现场重写过时，实际发出的与配置产生的不同，两个都要能看到
+      (job.prompt_sent && job.prompt_sent !== job.prompt)
+        ? h('section', { class: 'dk-panel-stack' },
+          h('div', { class: 'dk-section-head' },
+            h('h3', {}, 'AI 实际发出的提示词'),
+            button('复制', {
+              variant: 'quiet', size: 'sm', iconName: 'copy',
+              onclick: () => copyText(job.prompt_sent || ''),
+            })),
+          h('p', { class: 'dk-section-meta' }, 'AI 看过你的商品图后，结合模板风格与补充要求重写的版本'),
+          h('pre', { class: 'code-block' }, job.prompt_sent))
+        : null,
       h('section', { class: 'dk-panel-stack' },
-        h('div', { class: 'dk-section-head' }, h('h3', {}, '最终提示词'),
+        h('div', { class: 'dk-section-head' },
+          h('h3', {}, (job.prompt_sent && job.prompt_sent !== job.prompt) ? '你的配置（模板 + 补充要求）' : '最终提示词'),
           button('复制', { variant: 'quiet', size: 'sm', iconName: 'copy', onclick: () => copyText(job.prompt || '') })),
         h('pre', { class: 'code-block' }, job.prompt || '无')),
       actions,

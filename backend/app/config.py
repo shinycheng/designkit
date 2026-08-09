@@ -70,6 +70,10 @@ RUNTIME_DEFAULTS = {
     "openai_api_key": os.environ.get("OPENAI_API_KEY", ""),
     # 默认对齐用户的自建 Sub2API 网关；接其他平台时在系统设置里改
     "image_model": os.environ.get("DESIGNKIT_IMAGE_MODEL", "gpt-image-2"),
+    # 带视觉的文本模型：生成前先看商品图、结合补充要求现场合成提示词
+    "text_model": os.environ.get("DESIGNKIT_TEXT_MODEL", "gpt-5.6-sol"),
+    # 提示词库只作参考——开启后每次生成都由 AI 按实际商品重写提示词
+    "prompt_synthesis": os.environ.get("DESIGNKIT_PROMPT_SYNTHESIS", "true").lower() in ("1", "true", "yes"),
     # 发送前把商品图按所选比例补边（不裁产品）+ 透明底合成白底。
     # 自建网关忽略 size 参数、输出比例跟随输入图，开着才能控制出图比例；
     # 对遵循 size 的官方/中转网关同样安全（输入输出比例一致，无形变）。

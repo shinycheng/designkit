@@ -15,7 +15,7 @@ from sqlalchemy import update as sa_update
 from ..database import SessionLocal
 from ..models import ApiKey, GeneratedImage, GenerationJob
 from ..serializers import job_to_dict
-from . import provider, settings_service, storage, webhook
+from . import prompt_studio, provider, settings_service, storage, webhook
 
 logger = logging.getLogger("designkit.worker")
 
@@ -170,9 +170,24 @@ class GenerationWorker:
             size = str(params.get("size") or settings.get("default_size") or "1024x1024")
             quality = params.get("quality")
 
+            # 提示词库只作参考：先让带视觉的文本模型看商品图，结合补充要求
+            # 现场写出贴合这件商品的提示词。失败则沿用原提示词，不阻断出图。
+            prompt_to_send = job.prompt_final
+            if settings.get("prompt_synthesis") and settings.get("provider") != "mock":
+                try:
+                    prompt_to_send = prompt_studio.synthesize_prompt(
+                        settings, job.prompt_final, list(job.input_paths or [])
+                    )
+                    logger.info("任务 %s 已按实际商品重写提示词", job.id)
+                except Exception as exc:
+                    logger.warning("任务 %s 提示词合成失败，沿用原提示词：%s", job.id, exc)
+                    prompt_to_send = job.prompt_final
+            job.prompt_sent = prompt_to_send
+            db.commit()
+
             try:
                 images = provider.generate_images(
-                    settings, job.prompt_final, list(job.input_paths or []), n, size, quality
+                    settings, prompt_to_send, list(job.input_paths or []), n, size, quality
                 )
                 for idx, data in enumerate(images):
                     rel, thumb_rel, width, height, fmt = storage.save_output(job.id, idx, data)

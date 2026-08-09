@@ -41,7 +41,8 @@ export function renderSettings(container) {
       id: 'provider-settings',
       title: '生图服务',
       description: '配置图像生成供应商、接口地址和模型。',
-      keys: ['provider', 'openai_base_url', 'openai_api_key', 'image_model', 'normalize_input_ratio'],
+      keys: ['provider', 'openai_base_url', 'openai_api_key', 'image_model',
+        'text_model', 'prompt_synthesis', 'normalize_input_ratio'],
       renderFields: (form) => {
         const provider = h('select', { class: 'select' },
           h('option', { value: 'mock' }, '模拟生图（验证流程）'),
@@ -50,10 +51,14 @@ export function renderSettings(container) {
         const apiKey = h('input', { class: 'input', type: 'password', autocomplete: 'off', placeholder: 'sk-…' });
         const model = h('input', { class: 'input', placeholder: 'gpt-image-2' });
         const normalize = h('input', { type: 'checkbox' });
+        const textModel = h('input', { class: 'input', placeholder: 'gpt-5.6-sol' });
+        const synthesis = h('input', { type: 'checkbox' });
         form.register('provider', provider);
         form.register('openai_base_url', baseUrl);
         form.register('openai_api_key', apiKey);
         form.register('image_model', model);
+        form.register('text_model', textModel);
+        form.register('prompt_synthesis', synthesis, checkboxBinding(true));
         form.register('normalize_input_ratio', normalize, checkboxBinding(true));
         mockNotice = inlineAlert('模拟模式会返回占位图，适合验证上传、队列和 ERP 回调流程，不会产生模型费用。', 'info');
         const syncModeNotice = () => { mockNotice.hidden = provider.value !== 'mock'; };
@@ -66,6 +71,16 @@ export function renderSettings(container) {
             field('API 地址（Base URL）', baseUrl, { help: '可填 OpenAI 官方、兼容中转或自建网关的地址。' }),
             field('生图模型', model, { help: '默认 gpt-image-2（自建网关）；平台如有要求，使用其指定模型名。' })),
           field('API Key', apiKey, { help: '已保存的值仅显示掩码；不修改即不会覆盖原密钥。' }),
+          field('AI 现场写提示词',
+            h('label', { class: 'dk-checkbox-row' }, synthesis,
+              h('span', { class: 'dk-checkbox-row__copy' }, '每次生成前，先让 AI 看一眼你的商品图再写提示词',
+                h('small', { class: 'dk-checkbox-row__description' },
+                  '模板和灵感库只作风格参考；AI 会结合实际商品与你的补充要求现场重写。'
+                  + '每次多花约 30 秒文本模型开销，出图更贴合商品。'))),
+            { help: '关闭后直接把模板原文发给生图模型（快，但通用模板对具体商品的贴合度较低）。' }),
+          field('写提示词用的文本模型', textModel, {
+            help: '需要能看图（视觉）的模型，默认 gpt-5.6-sol。改完先保存，再点下方「测试文本模型」。',
+          }),
           field('发送前按所选比例预处理商品图',
             h('label', { class: 'dk-checkbox-row' }, normalize,
               h('span', { class: 'dk-checkbox-row__copy' }, '补白边到目标比例（不裁产品）+ 透明底合成白底 + HEIC 自动转码')),
@@ -103,7 +118,29 @@ export function renderSettings(container) {
             }
           },
         });
-        return [testButton];
+        const testTextButton = button('测试文本模型', {
+          variant: 'secondary',
+          iconName: 'wand-sparkles',
+          onclick: async () => {
+            if (form.dirty) {
+              form.setStatus('请先保存当前更改，测试只使用已保存的配置。', 'warning');
+              return;
+            }
+            testTextButton.disabled = true;
+            testTextButton.setAttribute('aria-busy', 'true');
+            form.setStatus('正在测试文本模型…', 'saving');
+            try {
+              const result = await api.post('/api/web/settings/test_text_model');
+              form.setStatus(result.message, result.ok ? 'success' : 'error');
+            } catch (error) {
+              form.setStatus(error.message, 'error');
+            } finally {
+              testTextButton.disabled = false;
+              testTextButton.removeAttribute('aria-busy');
+            }
+          },
+        });
+        return [testButton, testTextButton];
       },
     });
     return controller;

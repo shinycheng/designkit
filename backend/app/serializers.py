@@ -68,6 +68,7 @@ def job_to_dict(job: GenerationJob, public_base: str, include_inputs: bool = Tru
         "template_id": job.template_id,
         "template_name": job.template_name or "",
         "prompt": job.prompt_final,
+        "prompt_sent": job.prompt_sent or job.prompt_final,
         "params": job.params or {},
         "external_ref": job.external_ref,
         "callback_url": job.callback_url,

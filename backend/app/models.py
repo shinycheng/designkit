@@ -138,7 +138,9 @@ class GenerationJob(Base):
     )
     template_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     template_name: Mapped[str] = mapped_column(String(128), default="")  # 快照，模板删了也能看
-    prompt_final: Mapped[str] = mapped_column(Text)
+    prompt_final: Mapped[str] = mapped_column(Text)  # 模板渲染 + 变量 + 补充要求（配置产物）
+    # 实际发给生图模型的提示词。开启 AI 合成时是「看图重写」后的版本，否则同 prompt_final
+    prompt_sent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     params: Mapped[dict] = mapped_column(JSON, default=dict)  # {"size","n","quality"}
     input_paths: Mapped[list] = mapped_column(JSON, default=list)  # 商品图相对路径列表
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
