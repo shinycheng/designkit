@@ -18,14 +18,29 @@ DSM → 控制面板 → 信息中心 → 常规：
 
 ---
 
-## 第 1 步：装 Container Manager 并开 SSH
+## 第 1 步：把镜像设为公开（只需做一次）
+
+GitHub 自动构建出来的镜像**默认是私有的**，NAS 拉不下来（报 `denied` 或 `not found`）。
+
+用浏览器打开 https://github.com/shinycheng/designkit —— 右侧栏找到 **Packages**
+→ 点 `designkit` → 右侧 **Package settings** → 拉到最下面 **Danger Zone**
+→ **Change visibility** → 选 **Public** → 按提示输入包名确认。
+
+> 设为公开的只是打包好的程序镜像，你的 `.env`、密码、Key、生成的图片都不在里面。
+> 仓库本身已经是公开的，镜像跟着公开不会多暴露什么。
+
+设好之后以后每次自动构建都是公开的，不用再管。
+
+---
+
+## 第 2 步：装 Container Manager 并开 SSH
 
 - 套件中心 → 搜索「Container Manager」→ 安装（DSM 6.x 里叫「Docker」）
 - 控制面板 → 终端机和 SNMP → 勾选「启动 SSH 功能」→ 应用
 
 ---
 
-## 第 2 步：下载两个配置文件
+## 第 3 步：下载两个配置文件
 
 SSH 登录 NAS（把 `你的用户名` 和 `NAS的IP` 换成实际值）：
 
@@ -37,15 +52,15 @@ ssh 你的用户名@NAS的IP
 
 ```bash
 mkdir -p /volume1/docker/designkit && cd /volume1/docker/designkit
-wget -O docker-compose.yml https://raw.githubusercontent.com/shinycheng/designkit/main/docker-compose.yml
-wget -O .env https://raw.githubusercontent.com/shinycheng/designkit/main/example.env
+curl -fLo docker-compose.yml https://raw.githubusercontent.com/shinycheng/designkit/main/docker-compose.yml
+curl -fLo .env https://raw.githubusercontent.com/shinycheng/designkit/main/example.env
 ```
 
 ---
 
-## 第 3 步：改配置
+## 第 4 步：改配置
 
-先查出你的用户 id（第 4 步要用）：
+先查出你的用户 id：
 
 ```bash
 id
@@ -77,7 +92,7 @@ vi .env
 
 ---
 
-## 第 4 步：启动
+## 第 5 步：启动
 
 ```bash
 cd /volume1/docker/designkit
@@ -94,7 +109,7 @@ sudo docker compose ps
 
 ---
 
-## 第 5 步：打开使用
+## 第 6 步：打开使用
 
 浏览器访问：**http://NAS的IP:8787**
 
@@ -104,7 +119,7 @@ sudo docker compose ps
 
 ---
 
-## 第 6 步：设置每日自动备份（建议做）
+## 第 7 步：设置每日自动备份（建议做）
 
 ⚠️ 数据库在 Docker 数据卷里，**只拷 `data` 文件夹不会备份到数据库**。
 

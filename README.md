@@ -111,9 +111,13 @@ refined gold trim, TIARALEEN REPRONIZER 107D Plus branding"*，出图的金色�
 在装有 Docker 的机器上建一个空文件夹，下载两个文件：
 
 ```bash
-wget -O docker-compose.yml https://raw.githubusercontent.com/shinycheng/designkit/main/docker-compose.yml
-wget -O .env https://raw.githubusercontent.com/shinycheng/designkit/main/example.env
+curl -fLo docker-compose.yml https://raw.githubusercontent.com/shinycheng/designkit/main/docker-compose.yml
+curl -fLo .env https://raw.githubusercontent.com/shinycheng/designkit/main/example.env
 ```
+
+> **首次部署前**：GitHub 自动构建的镜像默认是私有的，拉取会报 `denied`。
+> 到仓库首页右侧 Packages → `designkit` → Package settings → Change visibility
+> → Public，改一次即可（只是程序镜像，不含任何配置和数据）。
 
 改完 `.env`（见文件内注释，必改项只有 4 处）后：
 
