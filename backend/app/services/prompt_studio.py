@@ -29,23 +29,57 @@ REQUEST_TIMEOUT = 180  # 视觉识别实测约 36 秒，给足余量
 
 _SYSTEM_PROMPT = """You write image-generation prompts for e-commerce product photography.
 
-You receive a photo of the user's ACTUAL product, plus a BRIEF (desired style, scene and
-the user's own requirements). Write ONE prompt for an image model that will re-photograph
-THIS EXACT product.
+You receive a photo of the user's ACTUAL product, a BRIEF (desired style, scene and the
+user's own requirements), and a required OUTPUT FRAMING. Write ONE prompt for an image
+model that will re-photograph THIS EXACT product.
 
 Rules:
 1. The product in the supplied photo is the only subject. Describe it accurately —
    category, form, colour, material, finish, and any visible branding — so the image model
    reproduces it faithfully. Never invent a different product.
 2. Treat the BRIEF as the art direction: scene, lighting, mood, colour palette,
-   composition, camera angle. If the BRIEF names some other product, ignore that product
-   and borrow only its styling.
+   camera angle. If the BRIEF names some other product, ignore that product and borrow
+   only its styling.
 3. The user's explicit requirements in the BRIEF outrank everything else. Honour them.
-4. State that the product's real shape, colour, material and branding must be preserved.
-5. Plain English only, never any other writing system. One paragraph, under 130 words,
+4. Compose for the required OUTPUT FRAMING and end the prompt by stating it. Never use
+   wording that implies a different shape of frame — avoid describing the picture itself
+   as tall, vertical, wide, panoramic, full-length or long-form, and do not request
+   multi-section layouts or detail pages. Those words describe the FRAME, not the product;
+   you may still describe the product's own proportions.
+5. State that the product's real shape, colour, material and branding must be preserved.
+6. Plain English only, never any other writing system. One paragraph, under 130 words,
    no markdown, no preamble, no surrounding quotes.
 
 Output ONLY the prompt text."""
+
+# 网关忽略 size 参数，出图比例由「输入图比例」和「提示词里的构图措辞」共同决定，
+# 且措辞的优先级更高（实测：1:1 输入 + 「tall / upright / bursting upward」的提示词
+# → 输出 2:3 竖图）。所以把目标画幅显式写进提示词，才是可靠的比例控制手段。
+_FRAMING = {
+    "1024x1024": "a square 1:1 image",
+    "1536x1024": "a landscape 3:2 image",
+    "1024x1536": "a portrait 2:3 image",
+}
+
+
+def framing_label(size: Optional[str]) -> Optional[str]:
+    return _FRAMING.get(str(size or "").lower())
+
+
+def aspect_clause(size: Optional[str]) -> str:
+    """给提示词补一句显式画幅要求；auto 或未知尺寸返回空串。"""
+    label = framing_label(size)
+    return (" The final image must be %s." % label) if label else ""
+
+
+def enforce_aspect(prompt: str, size: Optional[str]) -> str:
+    """确保提示词末尾带有目标画幅声明（已经写过就不重复加）。"""
+    label = framing_label(size)
+    if not label:
+        return prompt
+    if label in (prompt or ""):
+        return prompt
+    return (prompt or "").rstrip() + aspect_clause(size)
 
 # 偶发 token 泄漏：混入天城文/西里尔/阿拉伯/希伯来/泰文等。
 # 中日韩不拦——用户可能要求画面里出现中文。
@@ -98,17 +132,21 @@ def synthesize_prompt(
     settings: Dict[str, Any],
     brief: str,
     input_paths: Optional[List[str]] = None,
+    size: Optional[str] = None,
 ) -> str:
-    """看商品图 + brief（模板风格 + 用户补充要求）→ 合成最终提示词。
+    """看商品图 + brief（模板风格 + 用户补充要求）+ 目标画幅 → 合成最终提示词。
 
     brief 就是原本要直接发给生图模型的那段提示词；这里把它降级为「art direction」，
-    真正的主体以图为准。
+    真正的主体以图为准。size 决定画幅，会同时写进指令和成品提示词。
     """
     brief = (brief or "").strip()
     if not brief:
         raise ProviderError("没有可用的提示词内容")
 
     content: List[dict] = [{"type": "text", "text": "BRIEF:\n%s" % brief[:MAX_BRIEF_CHARS]}]
+    label = framing_label(size)
+    if label:
+        content.append({"type": "text", "text": "REQUIRED OUTPUT FRAMING: %s" % label})
     # 只看第一张：多图会显著拖慢且第一张通常就是主体商品
     for rel in (input_paths or [])[:1]:
         part = _image_part(rel)
@@ -134,7 +172,8 @@ def synthesize_prompt(
 
     if not result:
         raise ProviderError("文本模型没有返回内容")
-    return result
+    # 兜底：模型偶尔会忘记声明画幅，这里补上
+    return enforce_aspect(result, size)
 
 
 def test_text_model(settings: Dict[str, Any]) -> str:

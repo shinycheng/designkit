@@ -176,12 +176,15 @@ class GenerationWorker:
             if settings.get("prompt_synthesis") and settings.get("provider") != "mock":
                 try:
                     prompt_to_send = prompt_studio.synthesize_prompt(
-                        settings, job.prompt_final, list(job.input_paths or [])
+                        settings, job.prompt_final, list(job.input_paths or []), size
                     )
                     logger.info("任务 %s 已按实际商品重写提示词", job.id)
                 except Exception as exc:
                     logger.warning("任务 %s 提示词合成失败，沿用原提示词：%s", job.id, exc)
                     prompt_to_send = job.prompt_final
+            # 无论是否走了 AI 合成，都把目标画幅显式写进提示词——网关忽略 size 参数，
+            # 而提示词里的构图措辞对出图比例影响最大（实测可压过输入图比例）
+            prompt_to_send = prompt_studio.enforce_aspect(prompt_to_send, size)
             job.prompt_sent = prompt_to_send
             db.commit()
 

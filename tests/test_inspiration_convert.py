@@ -118,5 +118,27 @@ class ImagingTests(unittest.TestCase):
         self.assertIn("失败", prepared.note)
 
 
+
+class AspectLockTests(unittest.TestCase):
+    """出图比例锁定：网关忽略 size 参数，靠提示词措辞控制画幅。"""
+
+    def test_framing_labels(self):
+        from backend.app.services.prompt_studio import framing_label
+        self.assertEqual(framing_label("1024x1024"), "a square 1:1 image")
+        self.assertEqual(framing_label("1536x1024"), "a landscape 3:2 image")
+        self.assertEqual(framing_label("1024x1536"), "a portrait 2:3 image")
+        self.assertIsNone(framing_label("auto"))
+        self.assertIsNone(framing_label(None))
+
+    def test_enforce_appends_once(self):
+        from backend.app.services.prompt_studio import enforce_aspect
+        once = enforce_aspect("A red can on white.", "1024x1024")
+        self.assertIn("square 1:1 image", once)
+        self.assertEqual(enforce_aspect(once, "1024x1024"), once)  # 不重复叠加
+
+    def test_auto_size_untouched(self):
+        from backend.app.services.prompt_studio import enforce_aspect
+        self.assertEqual(enforce_aspect("keep me", "auto"), "keep me")
+
 if __name__ == "__main__":
     unittest.main()
