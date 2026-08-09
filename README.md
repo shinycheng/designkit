@@ -115,10 +115,6 @@ curl -fLo docker-compose.yml https://raw.githubusercontent.com/shinycheng/design
 curl -fLo .env https://raw.githubusercontent.com/shinycheng/designkit/main/example.env
 ```
 
-> **首次部署前**：GitHub 自动构建的镜像默认是私有的，拉取会报 `denied`。
-> 到仓库首页右侧 Packages → `designkit` → Package settings → Change visibility
-> → Public，改一次即可（只是程序镜像，不含任何配置和数据）。
-
 改完 `.env`（见文件内注释，必改项只有 4 处）后：
 
 ```bash

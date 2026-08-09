@@ -18,29 +18,14 @@ DSM → 控制面板 → 信息中心 → 常规：
 
 ---
 
-## 第 1 步：把镜像设为公开（只需做一次）
-
-GitHub 自动构建出来的镜像**默认是私有的**，NAS 拉不下来（报 `denied` 或 `not found`）。
-
-用浏览器打开 https://github.com/shinycheng/designkit —— 右侧栏找到 **Packages**
-→ 点 `designkit` → 右侧 **Package settings** → 拉到最下面 **Danger Zone**
-→ **Change visibility** → 选 **Public** → 按提示输入包名确认。
-
-> 设为公开的只是打包好的程序镜像，你的 `.env`、密码、Key、生成的图片都不在里面。
-> 仓库本身已经是公开的，镜像跟着公开不会多暴露什么。
-
-设好之后以后每次自动构建都是公开的，不用再管。
-
----
-
-## 第 2 步：装 Container Manager 并开 SSH
+## 第 1 步：装 Container Manager 并开 SSH
 
 - 套件中心 → 搜索「Container Manager」→ 安装（DSM 6.x 里叫「Docker」）
 - 控制面板 → 终端机和 SNMP → 勾选「启动 SSH 功能」→ 应用
 
 ---
 
-## 第 3 步：下载两个配置文件
+## 第 2 步：下载两个配置文件
 
 SSH 登录 NAS（把 `你的用户名` 和 `NAS的IP` 换成实际值）：
 
@@ -58,7 +43,7 @@ curl -fLo .env https://raw.githubusercontent.com/shinycheng/designkit/main/examp
 
 ---
 
-## 第 4 步：改配置
+## 第 3 步：改配置
 
 先查出你的用户 id：
 
@@ -92,7 +77,7 @@ vi .env
 
 ---
 
-## 第 5 步：启动
+## 第 4 步：启动
 
 ```bash
 cd /volume1/docker/designkit
@@ -109,7 +94,7 @@ sudo docker compose ps
 
 ---
 
-## 第 6 步：打开使用
+## 第 5 步：打开使用
 
 浏览器访问：**http://NAS的IP:8787**
 
@@ -119,7 +104,7 @@ sudo docker compose ps
 
 ---
 
-## 第 7 步：设置每日自动备份（建议做）
+## 第 6 步：设置每日自动备份（建议做）
 
 ⚠️ 数据库在 Docker 数据卷里，**只拷 `data` 文件夹不会备份到数据库**。
 
@@ -161,7 +146,7 @@ sudo docker compose pull && sudo docker compose up -d
 | 现象 | 原因与解决 |
 |---|---|
 | `docker compose up` 报 `请在 .env 里设置 POSTGRES_PASSWORD` | `.env` 没改密码，或者 `.env` 不在当前目录 |
-| 拉镜像报 `denied` / `not found` | 镜像仓库还是私有的。去 GitHub 仓库 → Packages → designkit → Package settings → Change visibility → Public |
+| 拉镜像报 `denied` / `not found` | 镜像跟随公开仓库自动公开，正常不会出现。若真遇到，去 GitHub 仓库 → Packages → designkit → Package settings → Change visibility 确认是 Public |
 | 浏览器打不开 8787 | 先在 NAS 上 `curl localhost:8787` 试试。通了说明是防火墙：控制面板 → 安全性 → 防火墙，放行 8787 |
 | 容器一直 `unhealthy` | `sudo docker compose logs designkit`，多半是连不上数据库 |
 | 上传图片报错、生成失败 | `.env` 里 `PUID`/`PGID` 填错了。改对后 `sudo docker compose restart designkit`，容器会自动纠正目录属主 |
