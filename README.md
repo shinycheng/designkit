@@ -102,6 +102,10 @@ refined gold trim, TIARALEEN REPRONIZER 107D Plus branding"*，出图的金色�
 ## 五、部署到服务器
 
 项目已 Docker 化，**服务器上用 PostgreSQL**（本机开发仍是零安装的 SQLite）。
+
+> 📘 **部署到群晖 NAS 请直接看 [docs/deploy-synology.md](docs/deploy-synology.md)**——
+> 那是一份照着做就行的分步指南（含权限、备份、排错）。下面是通用说明。
+
 在装有 Docker 的服务器上：
 
 ```bash
@@ -216,6 +220,7 @@ tar xzf images-20260809.tar.gz
   `docs/`（文档），`data/`（运行数据，勿提交）
 - 文档索引：
   - [docs/PLAN.md](docs/PLAN.md) — 项目计划与路线图
+  - [docs/deploy-synology.md](docs/deploy-synology.md) — 群晖 NAS 部署分步指南
   - [docs/erp-api.md](docs/erp-api.md) — ERP 对接接口文档
   - [docs/UI_REFACTOR_SPEC.md](docs/UI_REFACTOR_SPEC.md) — 界面设计规范
   - [docs/AUTH_VISUAL_ATTRIBUTIONS.md](docs/AUTH_VISUAL_ATTRIBUTIONS.md) — 登录页素材来源说明
