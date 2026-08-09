@@ -2,12 +2,12 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ..deps import get_current_user, get_db, require_admin
 from ..models import PromptCategory, PromptTemplate, User
-from ..serializers import template_to_dict
+from ..serializers import adapt_prompt_to_uploaded_product, template_to_dict
 from ..services import inspiration
 
 router = APIRouter(prefix="/api/web/inspiration", tags=["网页-灵感库"])
@@ -30,6 +30,7 @@ def browse(
     q: Optional[str] = None,
     category_id: Optional[int] = None,
     requires_image: Optional[bool] = None,
+    adaptable_only: bool = False,
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=50),
     user: User = Depends(get_current_user),
@@ -40,6 +41,16 @@ def browse(
         query = query.filter(PromptTemplate.category_id == category_id)
     if requires_image is not None:
         query = query.filter(PromptTemplate.requires_input_image.is_(requires_image))
+    if adaptable_only:
+        # 只看「会参照你上传的商品图」的条目——库里约九成条目自带具体商品描述，
+        # 直接套用会画出它自己的商品，这个开关把它们过滤掉
+        clauses = [
+            PromptTemplate.prompt_template.contains(kw, autoescape=True)
+            for kw in ("uploaded image", "uploaded photo", "reference image",
+                       "provided image", "attached image", "input image",
+                       "from the image", "the uploaded", "上传的图", "参考图")
+        ]
+        query = query.filter(or_(*clauses))
     if q and q.strip():
         keyword = q.strip()
         # contains(autoescape=True) 会转义 % 和 _，搜「100%」不会变成通配匹配
@@ -135,13 +146,15 @@ def adopt(
         name = (src.name[: 128 - len(tag)] + tag)
         suffix_index += 1
 
+    prompt_text = adapt_prompt_to_uploaded_product(src.prompt_template)
+
     copy = PromptTemplate(
         name=name,
         source="user",
         source_ref=src.source_ref,
         category_id=src.category_id,
         description=src.description,
-        prompt_template=src.prompt_template,
+        prompt_template=prompt_text,
         variables=list(src.variables or []),
         default_params=dict(src.default_params or {}),
         requires_input_image=bool(src.requires_input_image),

@@ -19,6 +19,7 @@ export function renderInspiration(container, user) {
   const state = {
     q: '',
     categoryId: null,
+    adaptableOnly: false,
     page: 1,
     data: null,
     loadSequence: 0,
@@ -51,6 +52,11 @@ export function renderInspiration(container, user) {
   const syncBtn = isAdmin
     ? button('同步上游', { variant: 'quiet', iconName: 'refresh-cw', onclick: startSync })
     : null;
+  const adaptableToggle = h('input', {
+    type: 'checkbox',
+    checked: state.adaptableOnly,
+    onchange: (event) => { state.adaptableOnly = event.target.checked; state.page = 1; void load(); },
+  });
   toolbar.append(
     h('div', { class: 'dk-section-head' },
       h('div', {},
@@ -59,6 +65,10 @@ export function renderInspiration(container, user) {
           '来自 YouMind 开源提示词库（CC BY 4.0，每日更新）。看中哪条可以直接拿去生成，或采用为自己的模板。')),
       h('div', { class: 'dk-inline-actions' }, searchBtn, syncBtn)),
     h('div', { class: 'dk-insp-search' }, searchInput),
+    h('label', { class: 'dk-checkbox-row dk-insp-adaptable' }, adaptableToggle,
+      h('span', { class: 'dk-checkbox-row__copy' }, '只看能套用我的商品的',
+        h('small', { class: 'dk-checkbox-row__description' },
+          '库里约九成提示词自带具体商品描述（例如写死了某款茶罐），直接用会画出它的商品而不是你的'))),
   );
 
   function applySearch() {
@@ -78,6 +88,7 @@ export function renderInspiration(container, user) {
       const params = new URLSearchParams({ page: String(state.page), page_size: String(PAGE_SIZE) });
       if (state.q) params.set('q', state.q);
       if (state.categoryId != null) params.set('category_id', String(state.categoryId));
+      if (state.adaptableOnly) params.set('adaptable_only', 'true');
       const data = await api.get('/api/web/inspiration?' + params);
       if (state.stopped || sequence !== state.loadSequence) return;
       state.data = data;
@@ -190,8 +201,10 @@ export function renderInspiration(container, user) {
           h('div', { class: 'dk-insp-card__title' }, item.name),
           h('div', { class: 'dk-insp-card__meta' },
             item.category_name ? h('span', { class: 'badge gray' }, item.category_name) : null,
-            item.requires_input_image ? h('span', { class: 'badge blue' }, '需商品图') : null,
-            item.adopted ? h('span', { class: 'badge green' }, '已采用') : null))));
+            item.references_input_image
+              ? h('span', { class: 'badge green' }, '套用你的商品')
+              : h('span', { class: 'badge amber' }, '自带商品描述'),
+            item.adopted ? h('span', { class: 'badge blue' }, '已采用') : null))));
   }
 
   // ------------------------------------------------------------ 详情抽屉
@@ -205,6 +218,14 @@ export function renderInspiration(container, user) {
           ? h('span', { class: 'badge blue' }, '需上传商品/参考图')
           : h('span', { class: 'badge gray' }, '纯文字生成'),
         item.adopted ? h('span', { class: 'badge green' }, '已采用为模板') : null),
+      item.references_input_image
+        ? null
+        : inlineAlert(
+          '这条提示词里写死了它自己的商品（品牌、外形、材质等）。'
+          + '「用它生成」和「采用为模板」时，系统会自动在开头加一段约束，'
+          + '让 AI 以你上传的商品为准、只借用这段文字的风格与色调——实测有效。'
+          + '如果出来的仍不是你的商品，把提示词里过于具体的商品描述删掉再试。',
+          'warning', { title: '自带商品描述，已自动加保护' }),
       item.thumbnail_url
         ? h('img', {
           class: 'dk-insp-detail__preview', src: item.thumbnail_url,
@@ -283,6 +304,15 @@ export function renderInspiration(container, user) {
     let prompt = item.prompt_template || '';
     for (const v of item.variables || []) {
       prompt = prompt.split(`{${v.name}}`).join(v.default || `[${v.label || v.name}]`);
+    }
+    if (!item.references_input_image) {
+      // 自带商品描述的提示词：约束必须放开头才压得住（实测末尾追加无效，
+      // 模型仍会画它自己的商品）；同时声明下文只作风格参考
+      prompt = 'Create a product photo of THE PRODUCT FROM THE UPLOADED IMAGE. '
+        + 'The uploaded product is the ONLY subject; keep its real shape, color, material '
+        + 'and branding exactly as they are. IGNORE any other product described below — '
+        + 'the text below only defines the visual style, mood, lighting and color palette.\n\n'
+        + 'STYLE REFERENCE (do not copy its products):\n' + prompt;
     }
     try {
       sessionStorage.setItem('dk_apply_prompt', JSON.stringify({
