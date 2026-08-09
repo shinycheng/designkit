@@ -81,6 +81,25 @@ app.include_router(settings_router.router)
 app.include_router(v1.router)
 
 
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    """容器健康检查。故意只做一次真实的数据库往返：
+
+    进程活着但连不上数据库时，页面会一直转圈却不报错，用户完全看不出问题；
+    让编排层把这种状态判为「不健康」并重启，比让人对着转圈猜要好。
+    """
+    from sqlalchemy import text
+
+    from .database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+    finally:
+        db.close()
+    return {"status": "ok"}
+
+
 # 生成结果 / 上传图片的静态访问；只暴露图片子目录，数据库等文件绝不可对外
 app.mount("/files/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="files_uploads")
 app.mount("/files/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="files_outputs")

@@ -1,12 +1,17 @@
 """把本机 SQLite 的数据整体搬到 PostgreSQL（部署上服务器时用一次）。
 
 用法：
-    # 1) 先确保 PG 里已建好空库，再运行（源库默认取 data/designkit.db）
+    # 在服务器上用应用容器跑（推荐）：目标库自动取容器已配好的连接，
+    # 不用手写连接串，密码里有 @ % 等字符也不会出错
+    docker compose run --rm designkit \
+        python -m backend.migrate_sqlite_to_pg --source "sqlite:////app/data/designkit.db"
+
+    # 也可以显式指定目标库
     .venv/bin/python -m backend.migrate_sqlite_to_pg \
         --target "postgresql+psycopg://designkit:密码@127.0.0.1:5432/designkit"
 
-    # 只想看会搬多少、不实际写入：
-    .venv/bin/python -m backend.migrate_sqlite_to_pg --target "..." --dry-run
+    # 只想看会搬多少、不实际写入（不需要连上目标库）：
+    .venv/bin/python -m backend.migrate_sqlite_to_pg --source "..." --dry-run
 
 要点：
 - 表按外键依赖顺序搬，避免引用不存在的父行；
@@ -45,16 +50,24 @@ def _table(name):
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="SQLite → PostgreSQL 数据迁移")
     parser.add_argument("--source", default=DATABASE_URL, help="源库连接串，默认取当前配置")
-    parser.add_argument("--target", required=True, help="目标 PostgreSQL 连接串")
+    parser.add_argument(
+        "--target", default=None,
+        help="目标 PostgreSQL 连接串，默认取当前配置（在应用容器里跑时正好是它连的那个库）")
     parser.add_argument("--truncate", action="store_true", help="目标表非空时先清空（危险）")
     parser.add_argument("--dry-run", action="store_true", help="只统计不写入")
     args = parser.parse_args(argv)
 
+    target = args.target or str(DATABASE_URL)
+
     if not args.source.startswith("sqlite"):
         print("源库不是 SQLite：%s" % args.source, file=sys.stderr)
         return 1
-    if "postgresql" not in args.target:
-        print("目标库不是 PostgreSQL：%s" % args.target, file=sys.stderr)
+    # dry-run 只统计源库，压根不碰目标库，所以不校验它——
+    # 这样在 PG 还没搭好之前就能先看清要搬多少数据
+    if not args.dry_run and "postgresql" not in target:
+        print("目标库不是 PostgreSQL：%s" % target, file=sys.stderr)
+        if args.target is None:
+            print("（没给 --target，默认用了当前配置的库；请确认已切到 PostgreSQL）", file=sys.stderr)
         return 1
 
     src = create_engine(args.source, connect_args={"check_same_thread": False}, future=True)
@@ -76,7 +89,7 @@ def main(argv=None) -> int:
         print("\n合计 %d 条（dry-run，未连接目标库、未写入）" % total)
         return 0
 
-    dst = create_engine(args.target, future=True)
+    dst = create_engine(target, future=True)
     Base.metadata.create_all(bind=dst)  # 目标库缺表就建出来
     print("目标库表结构已就绪\n")
 

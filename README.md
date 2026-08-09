@@ -102,11 +102,20 @@ refined gold trim, TIARALEEN REPRONIZER 107D Plus branding"*，出图的金色�
 ## 五、部署到服务器
 
 项目已 Docker 化，**服务器上用 PostgreSQL**（本机开发仍是零安装的 SQLite）。
+镜像由 GitHub Actions 自动构建并发布到 `ghcr.io`（同时提供 x86 和 ARM 版本），
+部署时直接拉现成镜像，**不需要上传源码，也不需要在目标机器上编译**。
 
 > 📘 **部署到群晖 NAS 请直接看 [docs/deploy-synology.md](docs/deploy-synology.md)**——
 > 那是一份照着做就行的分步指南（含权限、备份、排错）。下面是通用说明。
 
-在装有 Docker 的服务器上：
+在装有 Docker 的机器上建一个空文件夹，下载两个文件：
+
+```bash
+wget -O docker-compose.yml https://raw.githubusercontent.com/shinycheng/designkit/main/docker-compose.yml
+wget -O .env https://raw.githubusercontent.com/shinycheng/designkit/main/example.env
+```
+
+改完 `.env`（见文件内注释，必改项只有 4 处）后：
 
 ```bash
 docker compose up -d
@@ -115,20 +124,20 @@ docker compose up -d
 这一条命令会同时起两个容器：PostgreSQL 数据库 + DesignKit 应用，应用会等数据库
 健康检查通过后再启动，首次会自动建表。
 
-**部署前必做**：在 `.env` 里设置数据库账号密码（**没设置容器会拒绝启动**，
-这是故意的——防止默认弱口令被带上生产）：
+**必改项**：`.env` 里的 `POSTGRES_PASSWORD` 没设置容器会拒绝启动——这是故意的，
+防止默认弱口令被带上生产。密码可以放心用特殊字符，应用会正确处理。
 
-```
-POSTGRES_DB=designkit
-POSTGRES_USER=designkit
-POSTGRES_PASSWORD=换成你自己的强密码
-```
+**文件权限**：`.env` 里的 `PUID`/`PGID` 填成数据目录属主的 uid/gid
+（在目标机器上执行 `id` 查看）。容器启动时会自动把数据目录属主纠正过来，
+不需要手工 `chown`。填错的表现是「上传图片报错、生成全部失败」。
 
-密码可以放心用特殊字符，应用会正确处理。
+**关于对外访问**：compose 默认把 8787 绑在所有网卡（`0.0.0.0`），同局域网可访问。
+⚠️ **切勿**把这个端口转发到公网——当前是 HTTP 明文，登录密码会在网上裸奔。
+确需公网访问请在前面加一层 Nginx/Caddy 并配 HTTPS。
+只想本机访问就在 `.env` 里设 `DESIGNKIT_BIND_HOST=127.0.0.1`。
 
-**关于对外访问**：compose 默认只把 8787 绑在服务器本机（`127.0.0.1`），
-公网访问不到。要对外提供服务，请在前面加一层 Nginx/Caddy 并配 HTTPS——
-直接把 8787 暴露到公网意味着登录密码在网上明文传输。
+**更新版本**：`docker compose pull && docker compose up -d`。
+想锁定版本就把 `.env` 里的 `DESIGNKIT_VERSION` 从 `latest` 改成具体标签。
 
 **部署后必做**：在「系统设置」→「对外访问地址」填实际访问地址（如 `https://你的域名`），
 否则生成图片的链接和回调里还是本机地址，外部系统打不开。
@@ -138,19 +147,20 @@ POSTGRES_PASSWORD=换成你自己的强密码
 **顺序很重要**，请照这个来：
 
 ```bash
-# 1) 在服务器上起好数据库（此时先不要用应用，避免它先写入数据）
+# 1) 在本机看看会搬多少（不写入任何东西，也不需要连上服务器）
+.venv/bin/python -m backend.migrate_sqlite_to_pg --dry-run
+
+# 2) 在服务器上起好数据库（此时先不要启动应用，避免它先写入数据）
 docker compose up -d db
 
-# 2) 在本机看看会搬多少（不写入任何东西，也不需要连上服务器）
-.venv/bin/python -m backend.migrate_sqlite_to_pg --target "x" --dry-run
+# 3) 把本机的 data/ 整个传到服务器（图片和 SQLite 库文件都在里面）
+rsync -av data/ 用户@服务器IP:/volume1/docker/designkit/data/
 
-# 3) 正式迁移。compose 已把 5432 绑到服务器本机回环，所以要么在服务器上跑这条命令，
-#    要么先开 SSH 隧道：ssh -L 5432:127.0.0.1:5432 用户@服务器IP
-.venv/bin/python -m backend.migrate_sqlite_to_pg \
-    --target "postgresql+psycopg://designkit:你的密码@127.0.0.1:5432/designkit"
-
-# 4) 把图片拷到服务器的 data/ 目录（数据库里存的是相对路径）
-rsync -av data/ 用户@服务器IP:~/designkit/data/
+# 4) 在服务器上，用应用容器自己跑迁移。
+#    数据库端口没有对外开放，但应用容器本来就在同一个网络里，直接连得到；
+#    目标库连接串由容器的配置自动组装，密码里有 @ % 等字符也不会出错。
+docker compose run --rm designkit \
+    python -m backend.migrate_sqlite_to_pg --source "sqlite:////app/data/designkit.db"
 
 # 5) 最后再启动应用
 docker compose up -d

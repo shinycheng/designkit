@@ -3,24 +3,26 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
+# gosu 用于在入口脚本里安全降权（比 su/sudo 更适合容器）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
 COPY backend backend
 COPY frontend frontend
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && mkdir -p /app/data
 
 ENV DESIGNKIT_DATA_DIR=/app/data \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# 不以 root 运行：容器写出的图片和数据库在宿主机上若归 root，用户备份删除都要 sudo。
-# 同时把 /app 的属组权限放开——NAS 上共享文件夹的属主 uid 各不相同，
-# compose 里可用 PUID/PGID 覆盖运行身份，这里保证任意 uid 都能读写工作目录。
-RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin designkit \
-    && mkdir -p /app/data \
-    && chown -R designkit:root /app \
-    && chmod -R g=u /app
-USER 10001
-
 EXPOSE 8787
+
+# 以 root 进入口脚本：它按 PUID/PGID 纠正数据目录属主后再降权运行应用本身。
+# 这样绑挂载到 NAS 共享文件夹时用户无需手工 chown，应用进程也不是 root。
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8787"]
