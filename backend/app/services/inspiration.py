@@ -419,3 +419,33 @@ def fetch_references(db, ids: List[int]) -> List[dict]:
             "excerpt": _collapse(row.prompt_template)[:REFERENCE_FULL_CHARS],
         })
     return picked
+
+
+def backfill_slugs_if_needed() -> int:
+    """老库升级后回填 source_slugs：用**本地缓存**补，不联网。
+
+    为什么必须自愈：加了这一列之后、在下一次同步之前，所有条目的标签都是空的，
+    而生成页的分类清单正是按标签统计条数的——用户会看到「一个分类都没有」，
+    看起来就像系统坏了。而下次自动同步最长要等 12 小时。
+    缓存文件就在 data/inspiration/ 下，本地重放一遍即可，十几秒。
+    """
+    db = SessionLocal()
+    try:
+        pending = (
+            db.query(PromptTemplate)
+            .filter(PromptTemplate.source == "youmind")
+            .filter(PromptTemplate.source_slugs.is_(None))
+            .count()
+        )
+    finally:
+        db.close()
+    if not pending:
+        return 0
+    if not any((CACHE_DIR / ("%s.json" % s)).exists() for s in CATEGORIES):
+        logger.warning("有 %d 条灵感库条目缺少分类标签，但本地缓存不存在；"
+                       "请到「灵感库」点一次「同步上游」", pending)
+        return 0
+    logger.info("正在用本地缓存回填 %d 条灵感库条目的分类标签…", pending)
+    result = import_cache_to_db()
+    logger.info("分类标签回填完成：%s", result)
+    return pending

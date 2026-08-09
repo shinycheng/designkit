@@ -28,6 +28,7 @@ from .routers import (
     apikeys, auth, generations, inspiration, settings_router, templates, uploads, v1,
 )
 from .seed import seed
+from .services import inspiration as inspiration_service
 from .services.scheduler import scheduler
 from .services.worker import worker
 
@@ -35,6 +36,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+logger = logging.getLogger("designkit.startup")
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -45,6 +48,12 @@ async def lifespan(_app: FastAPI):
         seed(db)
     finally:
         db.close()
+    # 老库升级后用本地缓存回填灵感库的分类标签（不联网）。不做的话，
+    # 在下次同步之前生成页会一个分类都显示不出来，看起来像坏了。
+    try:
+        inspiration_service.backfill_slugs_if_needed()
+    except Exception:
+        logger.exception("回填灵感库分类标签失败（不影响启动，可手动同步一次）")
     worker.start()
     scheduler.start()
     yield
