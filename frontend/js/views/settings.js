@@ -1,6 +1,6 @@
 // 系统设置：四个独立 section，各自管理 draft / dirty / saving / result
 import { api, getSessionEpoch, getUser, setSession } from '../api.js';
-import { button, field, h, inlineAlert, skeleton, toast } from '../ui.js';
+import { button, field, fmtTime, h, inlineAlert, skeleton, toast } from '../ui.js';
 
 // 比例清单以后端 /api/web/size-presets 为准（后端拿同一份做校验）。
 // 这里的初值只是接口没返回时的兜底，拉到后整体替换。
@@ -57,6 +57,7 @@ export function renderSettings(container) {
       createProviderSection(),
       createRuntimeSection(),
       createSecuritySection(),
+      createAccessSection(),
       createPasswordSection(),
     ];
     stack.append(...state.controllers.map((controller) => controller.element));
@@ -247,6 +248,12 @@ export function renderSettings(container) {
             help: '同步灵感库要访问 GitHub（raw.githubusercontent.com），部分地区直连不通，'
               + '这时填一个代理地址。留空即直连。'
               + '只影响灵感库同步——生图网关是局域网地址，永远直连、不走代理。'
+              // 后端为了不把代理密码回吐到页面上，会把 user:pass 那一段打成 ***（见
+              // settings_service.masked）。管理员如果在这串上直接改端口再保存，
+              // 那三个星号会被当成真的密码存进去，表现是「灵感库同步突然连不上」，
+              // 而页面上什么错都看不出来。所以这里必须提醒他整串重填。
+              + '带用户名密码的代理，密码不会显示（显示成 ***）；要改的话请把整串重新填一遍，'
+              + '只改其中一段会把密码存成三个星号本身。'
               + '改完先保存，再点下方「测试同步连接」。',
           }));
       },
@@ -312,6 +319,95 @@ export function renderSettings(container) {
       },
       validate: (draft) => isHttpUrl(draft.public_base_url) ? '' : '请填写有效的 HTTP(S) 对外访问地址。',
     });
+  }
+
+  /** 图片访问与多用户。
+   *
+   * 这一节管的是「谁能看到图」和「生图的钱记在谁头上」。
+   * 尤其是「生图费用怎么算」：不在这里放一个开关的话，管理员在「成员账号」页
+   * 给每个人配好了 Key，却永远没有地方把它启用，界面上还一直提示他
+   *「要等在系统设置里改成每人一把」——那句提示就变成了一条死路。
+   */
+  function createAccessSection() {
+    return createSettingsController({
+      id: 'access-settings',
+      title: '图片访问与多用户',
+      description: '控制图片链接要不要凭证才能打开，以及生图费用是大家共用一把 Key 还是各花各的。',
+      keys: ['gateway_mode', 'files_signed_only', 'web_file_cookie_days',
+        'erp_file_link_ttl_hours', 'allowed_origins'],
+      renderFields: (form) => {
+        const gatewayMode = h('select', { class: 'select' },
+          h('option', { value: 'shared' }, '共用一把 Key（所有人的生图费用记在一起）'),
+          h('option', { value: 'per_user' }, '每人一把 Key（各花各的，需要先在「成员账号」页给每个人配 Key）'));
+        const signedOnly = h('input', { type: 'checkbox' });
+        const cookieDays = h('input', { class: 'input', type: 'number', min: 7, max: 30, inputmode: 'numeric' });
+        const erpTtl = h('input', { class: 'input', type: 'number', min: 1, max: 8760, inputmode: 'numeric' });
+        const origins = h('input', { class: 'input', type: 'text', autocomplete: 'off', placeholder: '*' });
+        form.register('gateway_mode', gatewayMode);
+        form.register('files_signed_only', signedOnly, checkboxBinding(true));
+        form.register('web_file_cookie_days', cookieDays, numberBinding());
+        form.register('erp_file_link_ttl_hours', erpTtl, numberBinding());
+        form.register('allowed_origins', origins);
+
+        // 只读的观察窗口：本次启动以来有多少次「没带任何凭证」的取图请求。
+        // 这是判断「敢不敢临时关掉图片访问限制」的唯一客观依据，不用去翻日志。
+        const stats = state.settings.files_unsigned_access || {};
+        const total = Number(stats.total || 0);
+        const blocked = Number(stats.blocked || 0);
+        const lastAt = Number(stats.last_at || 0);
+        const statsText = total
+          ? `自本次启动以来，有 ${total} 次没有凭证的图片访问（其中 ${blocked} 次已被拒绝）。`
+            + `最近一次：${lastAt ? fmtEpoch(lastAt) : '从未发生'}。`
+          : '自本次启动以来，没有出现过不带凭证的图片访问。';
+
+        return h('div', { class: 'dk-panel-stack' },
+          field('生图费用怎么算', gatewayMode, {
+            help: '选「每人一把」之后，没有配 Key 的成员点生成会被直接拦住，并提示他找管理员开通。'
+              + '改成「共用一把」则全体回到系统设置里上面那把全局 Key。',
+          }),
+          field('图片链接需要凭证才能打开',
+            h('label', { class: 'dk-checkbox-row' }, signedOnly,
+              h('span', { class: 'dk-checkbox-row__copy' }, '打开（推荐）',
+                h('small', { class: 'dk-checkbox-row__description' },
+                  '关掉之后，没有登录凭证的人也能凭地址直接打开图片，只用于临时兼容对接方手里的老链接。'))),
+            { help: '网页端靠登录后自动发放的凭证取图，对接方靠链接里的签名参数，正常使用都不受影响。' }),
+          h('div', { class: 'dk-field-grid' },
+            field('网页取图凭证有效期（天）', cookieDays, {
+              help: '范围 7–30。到期后重新登录一次即可，用户一般察觉不到。',
+            }),
+            field('对接方图片链接有效期（小时）', erpTtl, {
+              help: '范围 1–8760（8760 小时 = 一年）。默认 168 小时，也就是 7 天。',
+            })),
+          field('允许跨站调用的地址（allowed_origins）', origins, {
+            help: '多个用英文逗号隔开，不限制填 *。每一条都要带 http:// 或 https:// 且不带路径。'
+              + '注意：这一项改完需要重启服务才生效——页面提示保存成功也不会立刻起作用，'
+              + '这是正常的，不用反复保存。',
+          }),
+          inlineAlert(statsText, total ? 'warning' : 'info', { title: '无凭证访问统计' }),
+          h('p', { class: 'dk-section-meta' }, '这个数字在服务重启后归零，它只是一个观察窗口。'));
+      },
+      validate: (draft) => {
+        if (!['shared', 'per_user'].includes(draft.gateway_mode)) return '生图费用方式只能选「共用一把」或「每人一把」。';
+        if (typeof draft.files_signed_only !== 'boolean') return '图片凭证开关的取值不对，请重新勾选一次。';
+        if (!integerBetween(draft.web_file_cookie_days, 7, 30)) return '网页取图凭证有效期必须是 7–30 天的整数。';
+        if (!integerBetween(draft.erp_file_link_ttl_hours, 1, 8760)) return '对接方图片链接有效期必须是 1–8760 小时的整数。';
+        const origins = String(draft.allowed_origins || '').trim();
+        if (origins && origins !== '*') {
+          for (const item of origins.split(',')) {
+            const one = item.trim();
+            if (!one) continue;
+            if (!/^https?:\/\/[^/]+\/?$/.test(one)) {
+              return `「${one}」不是合法的地址：要以 http:// 或 https:// 开头，且不能带路径，例如 https://erp.example.com。`;
+            }
+          }
+        }
+        return '';
+      },
+    });
+  }
+
+  function fmtEpoch(seconds) {
+    return fmtTime(new Date(seconds * 1000).toISOString());
   }
 
   function createPasswordSection() {

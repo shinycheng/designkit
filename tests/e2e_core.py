@@ -1,9 +1,18 @@
-"""端到端验证：网页流程 + 对外 API 流程 + webhook 回调签名。"""
+"""端到端验证：网页流程 + 对外 API 流程 + webhook 回调签名。
+
+**这个脚本会把 admin 的密码从初始口令改掉**（服务端有强制改密的闸门，
+不先改掉的话，后面每一个业务接口都会返回 403「请先修改初始密码，再使用其他功能」）。
+所以它必须跑在**自己的一份全新数据**上，不能和 tests/e2e_security.py 共用同一份——
+那个脚本第一项要验的正是「默认口令可登录」。跑法见 tests/README.md，照抄即可。
+
+服务地址默认 http://127.0.0.1:8787，也可以用环境变量 DESIGNKIT_E2E_BASE 指到别的端口。
+"""
 import base64
 import hashlib
 import hmac
 import io
 import json
+import os
 import sys
 import threading
 import time
@@ -12,7 +21,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import httpx
 from PIL import Image, ImageDraw
 
-BASE = "http://127.0.0.1:8787"
+BASE = os.environ.get("DESIGNKIT_E2E_BASE", "http://127.0.0.1:8787").rstrip("/")
+# 本脚本把 admin 的密码改成这个。跑完这份数据就「用过了」，下次要重新来一份干净的。
+NEW_PASSWORD = "corepass8888"
 results = []
 
 
@@ -57,6 +68,14 @@ def full(u):
 # ========== 网页端流程 ==========
 r = client.post(BASE + "/api/web/auth/login", json={"username": "admin", "password": "admin123456"})
 check("网页登录", r.status_code == 200, r.text[:100])
+token = r.json()["token"]
+auth = {"Authorization": "Bearer " + token}
+
+# 首次登录必须先改掉初始密码，否则服务端会把后面每一个业务接口都拦成 403。
+# 这不是测试脚本的特殊要求，真人第一次登录看到的也是同一道改密页。
+r = client.post(BASE + "/api/web/auth/change_password", headers=auth,
+                json={"old_password": "admin123456", "new_password": NEW_PASSWORD})
+check("首登强制改密并换发新令牌", r.status_code == 200 and bool(r.json().get("token")), r.text[:120])
 token = r.json()["token"]
 auth = {"Authorization": "Bearer " + token}
 

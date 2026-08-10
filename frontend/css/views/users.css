@@ -1,0 +1,264 @@
+/*
+ * 成员账号页 + 我的账户页。
+ * 结构上照抄 apikeys.css 的行卡片（同样是「列表 + 行内操作」），
+ * 运营同学在两个页面之间切换时不用重新认一遍布局。
+ */
+
+.dk-user-list {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-3);
+}
+
+.dk-user-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(200px, 1fr) auto;
+  /* 注意：具名区域必须各自连成一个矩形。把 error 夹在 main / actions 中间的话，
+     stats 会被切成不连续的两块，整条 grid-template-areas 会被浏览器当成无效值
+     整个丢弃——表现是所有元素挤在左上角互相压住。 */
+  grid-template-areas:
+    "main stats"
+    "actions stats"
+    "error error";
+  align-items: start;
+  gap: var(--dk-space-3) var(--dk-space-4);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface);
+  padding: var(--dk-space-4);
+}
+
+/* 停用的账号整行压暗，一眼能从列表里区分出来 */
+.dk-user-row[data-state="disabled"] {
+  background: var(--dk-surface-subtle);
+}
+
+.dk-user-row[data-state="disabled"] .dk-user-row__identity h3 {
+  color: var(--dk-text-secondary);
+}
+
+.dk-user-row__main {
+  display: grid;
+  min-width: 0;
+  grid-area: main;
+  align-content: center;
+  gap: var(--dk-space-2);
+}
+
+.dk-user-row__identity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dk-user-row__identity h3 {
+  color: var(--dk-text);
+  font-size: var(--dk-text-sm);
+  font-weight: 650;
+}
+
+.dk-user-row__identity code {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dk-user-row__badges {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--dk-space-2);
+}
+
+.dk-user-row__stats {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--dk-space-3);
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+  grid-area: stats;
+}
+
+.dk-user-row__stats > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dk-user-row__stats dt {
+  color: var(--dk-text-tertiary);
+}
+
+.dk-user-row__stats dd {
+  color: var(--dk-text-secondary);
+  white-space: nowrap;
+}
+
+.dk-user-row__stats dd[data-tone="ok"] {
+  color: var(--dk-success);
+  font-weight: 600;
+}
+
+.dk-user-row__stats dd small {
+  color: var(--dk-text-tertiary);
+  font-weight: 400;
+}
+
+/* 网关开通失败的原因（后端给的中文人话），整行显示，别截断 */
+.dk-user-row__error {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--dk-space-2);
+  border-radius: var(--dk-radius-sm);
+  background: var(--dk-danger-soft);
+  color: var(--dk-danger-strong);
+  padding: var(--dk-space-2) var(--dk-space-3);
+  font-size: var(--dk-text-xs);
+  grid-area: error;
+}
+
+.dk-user-row__error svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.dk-user-row > .dk-inline-actions {
+  grid-area: actions;
+}
+
+/* 建号 / 重置密码之后显示一次的「用户名 + 初始密码」 */
+.dk-initial-credential {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-2);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle);
+  padding: var(--dk-space-3);
+}
+
+.dk-initial-credential > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dk-space-2);
+}
+
+.dk-initial-credential dt {
+  color: var(--dk-text-tertiary);
+  font-size: var(--dk-text-xs);
+}
+
+.dk-initial-credential dd code {
+  overflow-wrap: anywhere;
+  font-size: var(--dk-text-sm);
+}
+
+.dk-gateway-status:empty {
+  display: none;
+}
+
+/* ── 我的账户 ─────────────────────────────────────────────────────────── */
+
+.dk-account-stack {
+  display: grid;
+  min-width: 0;
+  max-width: 880px;
+  gap: var(--dk-space-4);
+}
+
+.dk-account-facts {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--dk-space-3);
+}
+
+.dk-account-facts > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dk-account-facts dt {
+  color: var(--dk-text-tertiary);
+  font-size: var(--dk-text-xs);
+}
+
+.dk-account-facts dd {
+  color: var(--dk-text);
+  font-size: var(--dk-text-sm);
+  font-weight: 600;
+}
+
+.dk-account-gateway {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--dk-space-3);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle);
+  padding: var(--dk-space-4);
+}
+
+.dk-account-gateway[data-ok="true"] {
+  border-color: var(--dk-success);
+  background: var(--dk-success-soft);
+}
+
+.dk-account-gateway[data-ok="false"] {
+  border-color: var(--dk-danger);
+  background: var(--dk-danger-soft);
+}
+
+.dk-account-gateway strong {
+  display: block;
+  font-size: var(--dk-text-sm);
+}
+
+.dk-account-gateway p {
+  color: var(--dk-text-secondary);
+  margin-top: 2px;
+  font-size: var(--dk-text-xs);
+}
+
+.dk-account-gateway[data-ok="true"] .dk-account-gateway__icon {
+  color: var(--dk-success);
+}
+
+.dk-account-gateway[data-ok="false"] .dk-account-gateway__icon {
+  color: var(--dk-danger);
+}
+
+.dk-account-test-result:empty {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .dk-user-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "main"
+      "stats"
+      "actions"
+      "error";
+  }
+
+  .dk-user-row__stats {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    justify-content: stretch;
+    gap: var(--dk-space-2) var(--dk-space-4);
+  }
+}

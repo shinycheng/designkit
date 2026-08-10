@@ -24,6 +24,11 @@ services:
     volumes:
       # 商品原图与生成图存这里。冒号左边是 NAS 上的路径，右边不要改。
       # 用绑定目录（不是 docker 卷）是为了让你能在 File Station 里直接看到图。
+      #
+      # ⚠️ 这个目录里还有两个隐藏文件（File Station 默认看不见），备份必须带上：
+      #   .secret_key —— 登录令牌与 ERP 回调签名的主密钥
+      #   .enc_key    —— 解开成员个人网关 Key 的钥匙，丢了「全体突然都不能生图」
+      # 所以备份要 tar 整个目录，不要只挑里面的图片文件夹。
       - ${DESIGNKIT_DATA_LOCATION:-./data}:/app/data
     ports:
       # 默认监听所有网卡，同局域网的电脑、手机、ERP 都能访问。
@@ -58,6 +63,10 @@ services:
       # 数据库用 docker 卷而不是绑定目录：PostgreSQL 要求数据目录权限是 0700，
       # 而 NAS 共享文件夹常带 ACL，绑定后 initdb 会以「目录权限过于开放」直接拒绝启动。
       # 备份不受影响——PG 本来就必须用 pg_dump 备份，拷文件夹是拷不出一致快照的。
+      #
+      # 注意：成员账号和他们的网关 Key（密文）都在这个库里。
+      # 「只拷 data 目录」备不到它们，必须 pg_dump；反过来「只 pg_dump」也不够，
+      # 解密钥匙在 data/.enc_key。两样缺一，恢复出来就是「全体都不能生图」。
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       # 必须带 -h 走 TCP：不加的话 initdb 阶段的临时本地服务也会被判为健康，

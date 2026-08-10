@@ -1,9 +1,17 @@
-"""第二轮端到端：覆盖修复后的契约变化 + 新修复项的回归。"""
+"""第二轮端到端：覆盖修复后的契约变化 + 新修复项的回归。
+
+**这个脚本要求 admin 还是初始口令**（第一项验的就是「默认口令可登录 + 强制改密」），
+所以它必须跑在**自己的一份全新数据**上，不能接在 tests/e2e_core.py 后面跑——
+那个脚本已经把初始口令改掉了。跑法见 tests/README.md，照抄即可。
+
+服务地址默认 http://127.0.0.1:8787，也可以用环境变量 DESIGNKIT_E2E_BASE 指到别的端口。
+"""
 import base64
 import hashlib
 import hmac
 import io
 import json
+import os
 import sys
 import threading
 import time
@@ -12,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import httpx
 from PIL import Image, ImageDraw
 
-BASE = "http://127.0.0.1:8787"
+BASE = os.environ.get("DESIGNKIT_E2E_BASE", "http://127.0.0.1:8787").rstrip("/")
 results = []
 
 
@@ -74,14 +82,40 @@ check("新令牌可用且已清除改密标记", r.status_code == 200 and r.json
 r = c.post(BASE + "/api/web/auth/login", json={"username": "admin", "password": "admin123456"})
 check("旧默认口令已失效", r.status_code == 401)
 
-# ---------- 网页图片走相对路径 ----------
+# ---------- 网页图片：相对路径 + 必须凭登录才能打开 ----------
 r = c.post(BASE + "/api/web/uploads", headers=auth,
            files={"file": ("p.png", product, "image/png")})
 up = r.json()
 check("上传成功", r.status_code == 200, r.text[:80])
 check("网页端图片URL为相对路径", up["url"].startswith("/files/"), up["url"])
+
+# c 是登录过的那个客户端，登录时服务端种下的 dk_files Cookie 会被自动带上，
+# 所以这条等价于「浏览器里已登录的人打得开自己的图」。
 r = c.get(BASE + up["url"])
-check("相对路径图片可访问", r.status_code == 200)
+check("带登录凭证可打开图片", r.status_code == 200, "HTTP %d" % r.status_code)
+
+settings_resp = c.get(BASE + "/api/web/settings", headers=auth)
+signed_only = bool(settings_resp.json().get("files_signed_only"))
+
+# 设置接口是管理员每天都会打开的页面，也是最容易「顺手多返回一个字段」的地方。
+# 这几个名字一旦出现在响应体里，就等于把密钥/口令的一部分挂在了网页上。
+leaks = [w for w in ("api_key_tail", "api_key_enc", "password_hash", "dk_files")
+         if w in settings_resp.text]
+check("设置接口不泄露任何密钥/口令字段", not leaks, "泄露了：%s" % leaks)
+
+# 换一个全新的、没有任何 Cookie 的客户端 = 拿到链接的陌生人。
+# 行为由设置项 files_signed_only 决定：默认 True（没凭证就 403）；
+# 万一哪天有人把它关掉临时兼容老链接，这条断言会跟着改成期望 200，
+# 而不是变成一条永远绿的空断言。
+stranger = httpx.Client(timeout=30)
+r = stranger.get(BASE + up["url"])
+expected = 403 if signed_only else 200
+check("不带任何凭证时按 files_signed_only 开关行事",
+      r.status_code == expected,
+      "files_signed_only=%s 期望 %d 实得 %d" % (signed_only, expected, r.status_code))
+check("图片鉴权默认是开着的（files_signed_only 默认 True）", signed_only is True,
+      "实得 %s——有人把默认值改回去了" % signed_only)
+stranger.close()
 
 # ---------- size 校验 ----------
 tpls = c.get(BASE + "/api/web/templates", headers=auth).json()

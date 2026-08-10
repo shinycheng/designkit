@@ -6,26 +6,66 @@
 """
 import base64
 import binascii
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from ..config import ALLOWED_IMAGE_EXTS, MAX_UPLOAD_MB
 from ..deps import get_api_client, get_db
-from ..models import ApiKey, GenerationJob, PromptTemplate, Upload
+from ..models import ApiKey, GeneratedImage, GenerationJob, PromptTemplate, Upload
 from ..serializers import job_to_dict, template_to_dict, upload_to_dict
 from ..services import inspiration, net_guard, settings_service, storage
 from ..services.jobs import MAX_INPUT_IMAGES, create_job, resolve_upload_paths
 
+logger = logging.getLogger("designkit.api")
+
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
+# 图片签名链接的默认有效期（小时），与 config.py 的 erp_file_link_ttl_hours 默认值一致。
+DEFAULT_ERP_LINK_TTL_HOURS = 168
+
 router = APIRouter(prefix="/api/v1", tags=["对外API-ERP对接"])
+
+
+def _erp_sign(db: Session, key: ApiKey) -> Tuple[int, int]:
+    """本次请求返回的图片地址要用的签名参数：(这把 Key 的 id, 有效小时数)。
+
+    **凡是对外返回图片地址的地方都必须带上它。** /files 现在只认凭证，不带签名
+    的链接一律 403；而接口本身照样返回 200，对接方看到的是「你们给的地址打不开」，
+    是最难归因的一种故障。所以宁可每处都显式写一遍，也不做「自动推断该不该签」。
+
+    第二个元素传的是**有效小时数**，不是到期时间戳——storage.to_url 自己按
+    「当前时间 + 小时数 × 3600」算到期时间（见该函数注释）。把算好的时间戳传进去
+    会被当成小时数，算出一条几十万年后才过期的链接：表面上完全正常，
+    实际上等于把「链接会过期」这层保护整个关掉了。
+
+    有效小时数取自设置项 erp_file_link_ttl_hours。它没有被 settings_router 的
+    数字范围校验覆盖，管理员填个「七天」就会存成字符串，storage 那边会抛
+    StorageError、整条对外接口 500。这里兜一层回落到默认值并记 WARNING：
+    链接仍然是签过名的，安全性没有降级，只是有效期回到 7 天。
+    （worker.py 的 _erp_link_ttl_hours 是同样的兜底，两处都要，因为回调那条线
+      走的是 worker 自己的设置字典、拿不到 db。）
+    """
+    raw = settings_service.get(db, "erp_file_link_ttl_hours")
+    try:
+        hours = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "设置项 erp_file_link_ttl_hours 不是数字（当前值：%r），"
+            "图片链接有效期按默认 %d 小时处理，请到设置页改成整数",
+            raw, DEFAULT_ERP_LINK_TTL_HOURS,
+        )
+        hours = DEFAULT_ERP_LINK_TTL_HOURS
+    return (key.id, hours)
 
 
 class V1GenerationBody(BaseModel):
@@ -148,6 +188,10 @@ def _store_incoming_image(db: Session, key: ApiKey, data: bytes, name: str) -> s
     rel, w, h = storage.save_upload(data, suffix)
     db.add(
         Upload(
+            # user_id 记的是「这把 Key 是谁的」。只写 api_key_id 的话，这些图在
+            # 网页端就是一批无主数据：/files 的归属反查按 user_id 判本人，
+            # Key 的主人自己反而打不开自己 ERP 传上来的图。
+            user_id=key.user_id,
             api_key_id=key.id, original_name=name[:250], path=rel,
             width=w, height=h, size_bytes=len(data),
         )
@@ -191,15 +235,30 @@ def v1_list_categories(key: ApiKey = Depends(get_api_client), db: Session = Depe
 
 @router.get("/templates")
 def v1_list_templates(key: ApiKey = Depends(get_api_client), db: Session = Depends(get_db)):
+    """可用的提示词模板：平台公共模板 + 这把 Key 的主人自己建的。"""
     rows = (
         db.query(PromptTemplate)
         .filter(PromptTemplate.is_enabled.is_(True))
         .filter(PromptTemplate.source == "user")
+        # 属主过滤。owner_user_id 为 NULL = 平台公共模板，谁都能用；
+        # 其余只给这把 Key 的主人。少了这一句，任意一把有效 Key 都能读到站内
+        # **所有人**自建模板的 prompt_template 全文——提示词正文正是这类账号
+        # 最值钱的东西，而且泄露过程完全不留痕迹（对方只是调了一次正常接口）。
+        # key.user_id 为 NULL 的存量 Key 只看得到公共模板，是安全的默认。
+        .filter(
+            or_(
+                PromptTemplate.owner_user_id.is_(None),
+                PromptTemplate.owner_user_id == key.user_id,
+            )
+        )
         .order_by(PromptTemplate.sort.asc(), PromptTemplate.id.desc())
         .all()
     )
     public_base = settings_service.get(db, "public_base_url")
-    return [template_to_dict(t, public_base) for t in rows]
+    # 模板封面也在 /files 下面，同样要签名（它是全站共用素材，签名校验时按
+    # 「公共资源」放行，但**必须带签名参数**才走得到那一步）
+    sign = _erp_sign(db, key)
+    return [template_to_dict(t, public_base, sign=sign) for t in rows]
 
 
 @router.post("/uploads")
@@ -220,13 +279,17 @@ async def v1_upload(
     except storage.StorageError as e:
         raise HTTPException(status_code=422, detail=str(e))
     record = Upload(
+        # 同 _store_incoming_image：记上这把 Key 属于谁，否则这些图在网页端无人认领
+        user_id=key.user_id,
         api_key_id=key.id, original_name=(file.filename or "")[:250], path=rel,
         width=w, height=h, size_bytes=len(data),
     )
     db.add(record)
     db.commit()
     db.refresh(record)
-    return upload_to_dict(record, settings_service.get(db, "public_base_url"))
+    return upload_to_dict(
+        record, settings_service.get(db, "public_base_url"), sign=_erp_sign(db, key)
+    )
 
 
 @router.post("/generations", status_code=202)
@@ -257,6 +320,12 @@ def v1_create_generation(
         job = create_job(
             db,
             source="api",
+            # user_id 是「这把 Key 是谁的」。不传的话所有 ERP 任务的 job.user_id
+            # 恒为 NULL，worker 里「按人取网关 Key」就永远取不到人，整条按人计费
+            # 的链路在 ERP 这一侧等于没接上。
+            # 存量 Key 已在启动回填里挂到管理员名下，而管理员走 resolve_for_user
+            # 的规则 4 回落全局 Key —— 所以升级当天 ERP 的行为与今天逐字一致。
+            user_id=key.user_id,
             api_key_id=key.id,
             template_id=body.template_id,
             category_slug=body.category_slug,
@@ -286,7 +355,7 @@ def v1_create_generation(
         db.commit()
         raise
     public_base = settings_service.get(db, "public_base_url")
-    return job_to_dict(job, public_base, include_inputs=False)
+    return job_to_dict(job, public_base, include_inputs=False, sign=_erp_sign(db, key))
 
 
 @router.get("/generations/{job_id}")
@@ -296,4 +365,100 @@ def v1_get_generation(
     job = db.get(GenerationJob, job_id)
     if job is None or job.api_key_id != key.id:
         raise HTTPException(status_code=404, detail="任务不存在")
-    return job_to_dict(job, settings_service.get(db, "public_base_url"), include_inputs=False)
+    return job_to_dict(
+        job, settings_service.get(db, "public_base_url"),
+        include_inputs=False, sign=_erp_sign(db, key),
+    )
+
+
+@router.get("/generations/{job_id}/images/{index}", summary="直接下载任务的某一张结果图")
+def v1_get_generation_image(
+    job_id: str,
+    index: int,
+    thumbnail: bool = False,
+    key: ApiKey = Depends(get_api_client),
+    db: Session = Depends(get_db),
+):
+    """凭 X-API-Key 按「任务号 + 第几张」直接取图，返回图片文件本身。
+
+    这条端点是「链接会过期怎么办」的正解：对接方**不需要**把我们返回的图片
+    地址存进自己的库，只要记住 job_id，随时可以凭 Key 重新取图，永不过期、
+    也不受签名有效期影响。反过来，正因为有它兜底，签名链接的有效期才可以
+    放心地设短。
+
+    - index 从 0 开始，与查询任务时返回的 images 数组下标一一对应；
+    - thumbnail=true 取缩略图（没有缩略图时自动回退成原图）；
+    - 不消耗生成额度（这只是下载，不产生任何生图费用）。
+    """
+    job = db.get(GenerationJob, job_id)
+    # 越权和不存在都回同一个 404：不确认「这个任务号存在」，
+    # 否则拿一把有效 Key 就能逐个试出别人的任务号。
+    if job is None or job.api_key_id != key.id:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    # 显式按 id 升序取，不用 job.images：那个关系没写 order_by，顺序由数据库
+    # 决定（SQLite 和 PostgreSQL 不保证一致）。序号必须和查询接口返回的
+    # images 数组对得上，否则对接方按 index=1 取到的可能不是同一张图。
+    # id 升序 = 入库顺序 = 生成时的第几张（storage 存盘用的也是同一个序号）。
+    images = (
+        db.query(GeneratedImage)
+        .filter(GeneratedImage.job_id == job.id)
+        .order_by(GeneratedImage.id.asc())
+        .all()
+    )
+    if not images:
+        # 把任务当前状态和失败原因一起说出来：对接方最常见的情况是任务还在跑
+        # 就来取图，只回一句「没有图」会让人以为是我们弄丢了。
+        raise HTTPException(
+            status_code=404,
+            detail="这个任务还没有可下载的图片（当前状态：%s%s）"
+                   % (job.status, "；失败原因：" + job.error if job.error else ""),
+        )
+    if index < 0 or index >= len(images):
+        raise HTTPException(
+            status_code=404,
+            detail="这个任务只有 %d 张图，序号从 0 开始（你要的是第 %d 个）"
+                   % (len(images), index),
+        )
+
+    img = images[index]
+    # 缩略图可能生成失败（storage.save_output 里失败不影响主流程），这时回退取原图：
+    # 让对接方拿到一张大一点的图，总好过对着 404 猜是不是任务出问题了。
+    use_thumb = bool(thumbnail and img.thumb_path)
+    rel = img.thumb_path if use_thumb else img.path
+    try:
+        full_path = storage.abs_path(rel)
+    except storage.StorageError:
+        # 库里存了一条越界的路径：只可能是数据被改过。不暴露细节。
+        raise HTTPException(status_code=404, detail="图片文件不存在")
+    if not full_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="图片文件已不在服务器上（可能已被清理），请重新提交任务生成",
+        )
+
+    # 缩略图统一是 JPEG（见 services/storage.py 的 save_output）
+    fmt = "jpeg" if use_thumb else str(img.format or "png").lower()
+    media_type = {
+        "png": "image/png", "webp": "image/webp",
+        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    }.get(fmt, "application/octet-stream")
+
+    # 用 FileResponse 而不是像 /files 那样复用 StaticFiles：这条端点是
+    # 机器对机器的一次性下载，不需要 StaticFiles 那套 304 协商（那是为了
+    # 网页里几十张缩略图反复加载才必须的）。FileResponse 本身支持 Range。
+    return FileResponse(
+        full_path,
+        media_type=media_type,
+        # inline 而不是默认的 attachment：对接方在浏览器里粘贴这个地址核对时
+        # 能直接看到图，用程序下载则不受影响。
+        content_disposition_type="inline",
+        filename="%s_%d%s" % (job.id, index, full_path.suffix),
+        headers={
+            # 图片内容不会变（同一个 job 的同一张图是不可变的），但仍限定 private：
+            # 这个地址带着 Key 才能取，不能让中间的反向代理缓存一份发给别人。
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+        },
+    )

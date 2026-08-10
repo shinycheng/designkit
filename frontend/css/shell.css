@@ -64,6 +64,47 @@
   overflow: hidden;
 }
 
+/*
+ * 整站告警条（.dk-shell-banner）：横跨顶栏之下的一整行。
+ * 只有真的挂了横幅时才给外壳加 --banner 修饰类，多出来的这一行才存在；
+ * 没有横幅时布局与从前逐像素一致，不会因为多了一个空行把内容区挤矮。
+ */
+.dk-app-shell--banner {
+  grid-template-rows: var(--dk-topbar-h) auto minmax(0, 1fr);
+}
+
+.dk-app-shell--banner > .dk-shell-banner {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.dk-app-shell--banner > .dk-app-body {
+  grid-row: 3;
+}
+
+.dk-shell-banner {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--dk-space-3);
+  border-bottom: 1px solid var(--dk-danger);
+  background: var(--dk-danger-soft);
+  color: var(--dk-danger-strong);
+  padding: var(--dk-space-3) var(--dk-space-5);
+  font-size: var(--dk-text-sm);
+  line-height: var(--dk-leading);
+}
+
+.dk-shell-banner__title {
+  display: block;
+  font-weight: 650;
+}
+
+.dk-shell-banner svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
 .dk-app-body > .dk-tool-rail {
   grid-column: 1;
 }
@@ -450,6 +491,27 @@
     width: 100%;
     height: calc(100dvh - var(--dk-topbar-h));
     overflow: hidden;
+  }
+
+  /* 手机上外壳是 display:block + 固定高度，直接插一条横幅会把内容区顶出屏幕。
+     挂了横幅时改用纵向弹性布局，让内容区自己吃掉剩下的高度。 */
+  .dk-app-shell--banner {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dk-app-shell--banner > .dk-shell-banner {
+    flex: 0 0 auto;
+  }
+
+  .dk-app-shell--banner > .dk-app-body {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .dk-shell-banner {
+    padding: var(--dk-space-3) var(--dk-space-4);
   }
 
   .dk-app-body > .dk-main {

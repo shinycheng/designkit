@@ -9,18 +9,34 @@ import { renderTemplates } from './views/templates.js';
 import { renderInspiration } from './views/inspiration.js';
 import { renderApiKeys } from './views/apikeys.js';
 import { renderSettings } from './views/settings.js';
+import { renderUsers } from './views/users.js';
+import { renderAccount } from './views/account.js';
 
+// adminOnly 的条目由 core/router.js 的 visibleRoutes 过滤掉，侧栏和底部导航自动跟着变。
+// 注意：这里读的角色来自 localStorage 里的 dk_user，用户自己改一改就能把菜单点亮——
+// 但点进去后端照样 403 / 404。**这是显示层的便利，不是安全边界**，别把它当成权限控制。
 const ROUTES = [
   { hash: '#/generate', title: '生成工作台', navLabel: '生成', icon: 'sparkles', render: renderGenerate },
   { hash: '#/history', title: '生成记录', navLabel: '记录', icon: 'images', render: renderHistory },
   { hash: '#/templates', title: '提示词模板', navLabel: '模板', icon: 'layout-template', render: renderTemplates },
   { hash: '#/inspiration', title: '灵感库', navLabel: '灵感', icon: 'lightbulb', render: renderInspiration },
+  { hash: '#/users', title: '成员账号', navLabel: '成员', icon: 'users', render: renderUsers, adminOnly: true },
   { hash: '#/apikeys', title: 'API 对接', navLabel: 'API', icon: 'plug', render: renderApiKeys, adminOnly: true },
   { hash: '#/settings', title: '系统设置', navLabel: '设置', icon: 'settings', render: renderSettings, adminOnly: true },
+  { hash: '#/account', title: '我的账户', navLabel: '我的', icon: 'circle-user', render: renderAccount },
 ];
 
 const root = document.getElementById('app');
 let disposeView = null;
+// 「历史数据归属回填」失败时给管理员看的红色横幅文案（后端 /api/web/settings 的
+// backfill_error）。整个会话只查一次，避免每次切页都多打一个请求。
+let backfillError = '';
+let backfillChecked = false;
+// 正在显示「先改初始密码」那一页时置 true，防止多个并发请求同时撞上 403
+// 把改密页反复重绘、弹出一叠对话框。
+let passwordGateActive = false;
+// 渲染序号：renderApp 中途要等接口返回，用它丢弃「等回来时已经过期」的那次渲染。
+let renderSeq = 0;
 
 const SIMPLE_ICON_ROOT = 'https://cdn.jsdelivr.net/npm/simple-icons@16.21.0/icons';
 const LORDICON_ELEMENT_URL = 'https://cdn.jsdelivr.net/npm/@lordicon/element@2.3.1/+esm';
@@ -281,10 +297,16 @@ function mountLoginStage(page) {
 
 function renderLogin() {
   cleanupView();
+  passwordGateActive = false;
+  // 回到登录页 = 换人了：健康标志要重新查一次，否则下一个登录的管理员
+  // 看到的可能是上一个人那次查询的结果。
+  backfillChecked = false;
+  backfillError = '';
   clearGenerateSessions();
   document.title = '登录 · DesignKit';
   setThemeColor('#f3f5f7');
-  const username = h('input', { class: 'dk-control input', autocomplete: 'username', value: 'admin' });
+  // 不预填用户名：多人使用之后，这里预填 admin 会让每个成员都要先把它删掉再打自己的名字。
+  const username = h('input', { class: 'dk-control input', autocomplete: 'username' });
   const password = passwordControl({ autocomplete: 'current-password' });
   const errorRegion = h('div', { id: 'dk-login-error', class: 'dk-form-message', tabindex: '-1', 'aria-live': 'assertive' });
   const submit = button('登录', { size: 'lg', type: 'submit', className: 'dk-auth-submit' });
@@ -343,9 +365,13 @@ function renderLogin() {
     field('用户名', username, { required: true }),
     field('密码', password.wrap, { required: true }),
     submit,
+    // 这句话是给「刚把系统装起来、还不知道怎么进去」的人看的。
+    // 完全删掉会让首次部署的人找不到入口；但把默认口令印在登录页上，
+    // 多人使用之后就不合适了——所以只说管理员那一个账号，成员一律由管理员建号。
     h('p', { class: 'dk-auth-note' },
       icon('shield-check', { size: 15 }),
-      h('span', {}, '首次使用：账号 admin，初始密码 admin123456；登录后会要求你立即设置新密码。')));
+      h('span', {}, '首次部署：管理员账号 admin / 初始密码 admin123456，登录后立即修改；'
+        + '成员账号请由管理员在「成员账号」页创建。')));
 
   function workflowCard(iconComponent, title, copy) {
     return h('article', { class: 'dk-auth-workflow-card' },
@@ -395,31 +421,101 @@ function renderLogin() {
   queueMicrotask(() => { if (username.isConnected) username.focus(); });
 }
 
-function renderApp() {
-  cleanupView();
-  const user = getUser();
-  if (!getToken() || !user) {
+/** 向服务端确认一次「我是谁」，并把结果写回本地。
+ *
+ * 这一步**不能因为「本地已经有 user 缓存」就跳过**，它同时承担两件事：
+ * 1. 后端会顺手补发取图凭证（dk_files Cookie）。升级当天，所有已经登录着的人
+ *    手上只有 localStorage 里的令牌、并没有这个 Cookie，跳过这一步的直接后果
+ *    是他们打开页面看到满屏裂图，而且刷新多少次都一样。
+ * 2. 顺便刷新可能已经变了的角色、以及「要不要强制改密码」。
+ * 令牌过期（401）由 api.js 统一处理：清会话 + 派发 dk-unauthorized 回登录页，
+ * 这里不用重复写。断网之类的其他错误则继续用本地缓存渲染，不把人挡在门外。
+ */
+async function refreshSession() {
+  const token = getToken();
+  try {
+    const me = await api.get('/api/web/auth/me');
+    if (getToken() !== token) return;
+    // 只有内容真的变了才写回：setSession 会让会话计数 +1，
+    // 而各个页面用它判断「请求发出后用户是不是换人了」，无谓地 +1 会让在途请求白白作废。
+    if (JSON.stringify(getUser()) !== JSON.stringify(me)) setSession(token, me);
+  } catch (error) {
+    if (error?.status !== 401) console.warn('刷新登录状态失败，暂时沿用本地缓存', error);
+  }
+}
+
+/** 管理员专用：历史数据归属回填失败时，顶部要挂一条红色横幅。
+ * 标志来自 GET /api/web/settings 的 backfill_ok / backfill_error（后端 P1-3 写入）。
+ * 只查一次：这个状态只在服务启动时写一次，不会在使用过程中自己变好。
+ */
+async function ensureBackfillFlag(user) {
+  if (backfillChecked || user.role !== 'admin') return;
+  backfillChecked = true;
+  try {
+    const settings = await api.get('/api/web/settings');
+    if (settings && settings.backfill_ok === false) {
+      backfillError = String(settings.backfill_error
+        || '历史数据的归属回填没有全部成功，请查看服务器日志后重启一次服务。');
+    }
+  } catch { /* 查不到就不显示横幅，不影响任何功能 */ }
+}
+
+function backfillBanner(user) {
+  if (!backfillError || user.role !== 'admin') return null;
+  return h('div', { class: 'dk-shell-banner', role: 'alert' },
+    icon('circle-alert', { size: 18 }),
+    h('div', {},
+      h('strong', { class: 'dk-shell-banner__title' }, '历史数据归属回填没有完成'),
+      // backfill_error 后端写的就是给非技术用户看的中文，自带处置建议，原样显示
+      h('span', {}, backfillError)));
+}
+
+async function renderApp() {
+  // 这个函数中途要等服务端回话，而用户完全可能在等待期间又点了一次导航。
+  // 不记序号的话，两次渲染会先后各画一遍：先画的那个页面已经被覆盖掉了，
+  // 它的清理函数却被后画的那个顶掉，于是它的轮询定时器永远没人停——
+  // 表现是切几次页面之后请求越来越多。这里只让最后一次渲染算数。
+  const seq = ++renderSeq;
+  if (!getToken() || !getUser()) {
     renderLogin();
     return;
   }
+  // 先把会话刷新掉再动界面：中途如果发现令牌已经失效，
+  // 用户看到的是直接回到登录页，而不是先闪一下空白的工作台。
+  await refreshSession();
+  const user = getUser();
+  if (!getToken() || !user) return; // 刷新过程中被登出，dk-unauthorized 已经接手
+  await ensureBackfillFlag(user);
+  if (!getToken() || seq !== renderSeq) return;
+  paintApp(user);
+}
+
+function paintApp(user) {
+  cleanupView();
   setThemeColor('#f3f5f7');
   if (user.must_change_password) {
     renderPasswordGate(user);
     return;
   }
+  passwordGateActive = false;
   const route = resolveRoute(ROUTES, user);
   if (window.location.hash !== route.hash) navigate(route.hash, { replace: true });
   document.title = `${route.title} · DesignKit`;
-  const { main } = renderAppShell({ root, user, route, routes: ROUTES, onLogout: logout });
+  const { main } = renderAppShell({
+    root, user, route, routes: ROUTES, onLogout: logout, banner: backfillBanner(user),
+  });
   const cleanup = route.render(main, user);
   disposeView = typeof cleanup === 'function' ? cleanup : null;
 }
 
 function renderPasswordGate(user) {
+  passwordGateActive = true;
   const route = ROUTES[0];
   if (window.location.hash !== route.hash) navigate(route.hash, { replace: true });
   document.title = '设置安全密码 · DesignKit';
-  const { main } = renderAppShell({ root, user, route, routes: ROUTES, onLogout: logout });
+  const { main } = renderAppShell({
+    root, user, route, routes: ROUTES, onLogout: logout, banner: backfillBanner(user),
+  });
   main.replaceChildren(h('section', { class: 'dk-session-gate', 'aria-label': '首次登录安全设置' },
     h('div', { class: 'dk-session-gate__content' },
       h('span', { class: 'dk-session-gate__icon', 'aria-hidden': 'true' }, icon('shield-check', { size: 28 })),
@@ -493,13 +589,34 @@ function forceChangePassword(user) {
 }
 
 function logout() {
+  // 必须先招呼一声服务端：POST /auth/logout 会把取图凭证（dk_files Cookie）删掉。
+  // 只清 localStorage 的话，用户在公用电脑上点完「退出登录」，
+  // 那张 Cookie 最长还能再用 7 天——下一个人直接敲图片地址，
+  // 就能把他的商品图和出图全看走，而界面上明明写着「已退出」。
+  // 不 await：清本地和回登录页要立刻发生，网络慢不该让人干等；
+  // 请求失败也不挡住退出流程（Cookie 删不掉是次要问题，本地不清才是大问题）。
+  api.post('/api/web/auth/logout').catch(() => {});
   cleanupView();
   clearSession();
+  passwordGateActive = false;
   history.replaceState(null, '', window.location.pathname);
   renderLogin();
 }
 
 window.addEventListener('hashchange', () => { if (getToken()) renderApp(); });
-window.addEventListener('dk-unauthorized', renderLogin);
+window.addEventListener('dk-unauthorized', () => {
+  passwordGateActive = false;
+  renderLogin();
+});
+// 后端的「改密闸门」：没改初始密码时，所有业务接口都会返回 403 +
+// backend/app/deps.MUST_CHANGE_PASSWORD_DETAIL 那句话。api.js 识别出来后派发这个事件，
+// 这里把人领到改密页——而不是弹一个「请先修改初始密码」却没地方可改的报错。
+window.addEventListener('dk-must-change-password', () => {
+  if (passwordGateActive) return; // 并发请求会一起撞上 403，只处理第一条
+  const user = getUser();
+  if (!getToken() || !user) return;
+  if (!user.must_change_password) setSession(getToken(), { ...user, must_change_password: true });
+  paintApp(getUser());
+});
 
 renderApp();

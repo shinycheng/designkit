@@ -5,6 +5,7 @@
 """
 import os
 import secrets
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -80,6 +81,71 @@ def _load_secret_key() -> str:
 
 SECRET_KEY = _load_secret_key()
 
+
+def _load_encryption_key() -> str:
+    """凭据加密（网关 Key 等）用的主密钥，存 data/.enc_key。
+
+    为什么单独一把、不从上面的 SECRET_KEY 派生：SECRET_KEY 是登录令牌的签名密钥，
+    「怀疑令牌泄露就换掉 DESIGNKIT_SECRET_KEY」是随手就能做的应急动作，
+    换完大家重新登录一次而已、成本近乎为零。可这把钥匙一换，
+    库里所有加密过的网关凭据就永久解不开了（现象是全体用户突然都不能生图，
+    而数据库看起来完好无损，根因根本查不出来）。两者绑在一起迟早出这个事，
+    所以彻底分开：SECRET_KEY 随时可换，.enc_key 丢了等于凭据全丢。
+    详细说明见 services/secrets_box.py 的文件头。
+
+    备份 data 目录时，.secret_key 和 .enc_key 这两个文件必须和数据库一起备份。
+    """
+    # 前后空白一律去掉：.env 里行尾多一个空格、或从网页上复制时带了换行，
+    # 都会算出另一把钥匙。表现是「本机好好的，NAS 上所有 Key 都解不开」，极难想到这里。
+    env_key = (os.environ.get("DESIGNKIT_ENCRYPTION_KEY") or "").strip()
+    if env_key:
+        if len(env_key) < 16:
+            # 这把钥匙不做慢哈希拉伸，短口令等于没加密。宁可启动失败也不让它上生产。
+            raise RuntimeError(
+                "环境变量 DESIGNKIT_ENCRYPTION_KEY 太短（至少 16 位）。"
+                "要么删掉它、让程序自动生成 data/.enc_key（推荐），"
+                "要么用这条命令生成一串随机的填进去："
+                "python3 -c \"import secrets;print(secrets.token_urlsafe(48))\""
+            )
+        return env_key
+    key_file = DATA_DIR / ".enc_key"
+
+    def _read_back() -> str:
+        # 极小概率的竞态：另一个进程刚用 O_EXCL 建好文件、还没来得及写内容，
+        # 这时读到的是空串。空钥匙会让本次启动的加解密全部算错，
+        # 所以宁可等一等、等不到就报错退出，也不能拿空串继续跑。
+        for _ in range(20):
+            text = key_file.read_text().strip()
+            if text:
+                return text
+            time.sleep(0.05)
+        raise RuntimeError(
+            "data/.enc_key 是个空文件，无法用于加密。"
+            "请把它删掉再重启（会自动重新生成）；"
+            "但注意：如果库里已经存过加密的网关 Key，删掉后那些 Key 就解不开了，"
+            "需要在设置里重新填一次。"
+        )
+
+    if key_file.exists():
+        return _read_back()
+    key = secrets.token_urlsafe(48)
+    # 与 .secret_key 完全相同的写法：O_CREAT|O_EXCL + 0600 原子创建，
+    # 既避免「先按默认权限写入、再 chmod」中间那段人人可读的窗口，
+    # 也保证多进程（uvicorn 多 worker）同时启动时只有一个能建成、其余读回同一把钥匙，
+    # 不会出现两个进程各拿一把、互相解不开对方密文的情况。
+    try:
+        fd = os.open(str(key_file), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            os.write(fd, key.encode("utf-8"))
+        finally:
+            os.close(fd)
+    except FileExistsError:
+        return _read_back()
+    return key
+
+
+ENCRYPTION_KEY = _load_encryption_key()
+
 HOST = os.environ.get("DESIGNKIT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("DESIGNKIT_PORT", "8787"))
 
@@ -129,4 +195,35 @@ RUNTIME_DEFAULTS = {
     "request_timeout": int(os.environ.get("DESIGNKIT_REQUEST_TIMEOUT", "360")),
     "default_size": "1024x1024",
     "default_n": 1,
+    # ── 图片访问与多用户隔离 ──
+    # 图片链接是否必须带凭证（网页端的 dk_files Cookie，或对外 API 的 ?k=&e=&t= 签名）
+    # 才能打开。**默认 True，也就是「没凭证就不给看」。**
+    #
+    # 为什么一上来就默认打开、不做灰度：改造之前，uploads / outputs / thumbnails
+    # 三个目录是零鉴权直接挂出去的——不用登录、不带任何令牌，知道地址就能下载任何
+    # 一个人的商品图和出图结果，而地址里除了任务号之外全是可枚举的小集合。
+    # 灰度只有在「已经有对接方存着一批老链接、一刀切会让对方的图集体裂开」时才划算，
+    # 而本系统**目前没有任何 ERP 对接方**（已确认），根本不存在会被打断的存量链接。
+    # 既然没有人会被打断，就没有理由让这个洞多开着一天。
+    #
+    # 开关保留下来，是留给将来真接了对接方、对方一时半会儿换不完老地址时临时放宽用的：
+    # 关掉之后未带凭证的请求会照旧放行，但每一次都会记警告日志并计数
+    # （设置页「图片访问」一节看得到累计次数），等计数连续几天不再涨，再关回去。
+    # 换句话说，关掉它是一次**有意识、有观察窗口的临时决定**，不是默认状态。
+    "files_signed_only": os.environ.get("DESIGNKIT_FILES_SIGNED_ONLY", "true").lower() in ("1", "true", "yes"),
+    # 网页端取图凭证（dk_files Cookie）的有效期。和登录令牌的 7 天对齐：
+    # 短于登录有效期的话，人还登录着、图却开始裂了，这种故障用户完全无法归因。
+    "web_file_cookie_days": int(os.environ.get("DESIGNKIT_WEB_FILE_COOKIE_DAYS", "7")),
+    # 给 ERP 的图片直链有效多久（小时）。默认 168 小时 = 7 天：
+    # ERP 那边常把链接落库、隔几天才真正去下载，给短了会变成「偶发下载失败」。
+    "erp_file_link_ttl_hours": int(os.environ.get("DESIGNKIT_ERP_FILE_LINK_TTL_HOURS", "168")),
+    # 允许哪些网站的网页调用本系统接口（CORS）。默认 "*" 与今天的行为一致；
+    # 哪天把系统开到公网上，就在这里改成实际域名（多个用英文逗号隔开），
+    # 这样别人的网页就没法拿着用户的登录状态偷偷读数据了。
+    "allowed_origins": os.environ.get("DESIGNKIT_ALLOWED_ORIGINS", "*"),
+    # 生图网关的计费方式：
+    #   shared   —— 全体共用系统设置里那一把 Key（今天就是这样，升级当天不变）
+    #   per_user —— 每人一把自己的 Key，各花各的钱、账单分得清是谁用的
+    # 默认保持 shared，等成员账号和各自的 Key 都配好了再切过去。
+    "gateway_mode": os.environ.get("DESIGNKIT_GATEWAY_MODE", "shared"),
 }

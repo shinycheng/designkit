@@ -31,13 +31,23 @@ from .app.config import DATABASE_URL
 from .app.models import (  # noqa: F401 —— 导入即注册到 Base.metadata
     ApiKey, AppSetting, Base, GeneratedImage, GenerationJob,
     PromptCategory, PromptTemplate, SyncState, Upload, User,
+    UserGatewayAccount,
 )
 
 BATCH = 500
 
-# 按外键依赖排序：父表在前
+# 按外键依赖排序：父表在前。
+#
+# ⚠️ 加了新表就必须往这里补一行，否则那张表的数据会**静默搬不过去**：
+# 下面第 78 行对「源库里没有的表」只打一行提示、不中止，而这里漏写的表压根不会
+# 进入循环，连提示都不会有——脚本照样显示「迁移完成」。
+# 真实后果举例：漏掉 user_gateway_accounts，就是所有成员的网关 Key 全部消失，
+# 表现为「换了台服务器之后全公司都不能生图」，而数据库看起来一切正常。
 ORDERED_TABLES: List[str] = [
-    "users", "api_keys", "prompt_categories", "prompt_templates",
+    "users",
+    # 必须排在 users 之后：它的 user_id 指向 users，父行不在会插不进去
+    "user_gateway_accounts",
+    "api_keys", "prompt_categories", "prompt_templates",
     "uploads", "generation_jobs", "generated_images",
     "app_settings", "sync_state",
 ]
@@ -45,6 +55,30 @@ ORDERED_TABLES: List[str] = [
 
 def _table(name):
     return Base.metadata.tables[name]
+
+
+def _check_table_list_is_complete() -> None:
+    """确认上面那份 ORDERED_TABLES 没漏表。
+
+    为什么值得单开一个检查：漏表是**静默**的——脚本会正常跑完、打印「迁移完成」，
+    只是那张表一条都没搬。等发现的时候，源库那台机器可能已经被格式化了。
+    这个检查不连数据库，纯比对两个名单，跑 --dry-run 时也会执行。
+    """
+    known = set(Base.metadata.tables)
+    missing = sorted(known - set(ORDERED_TABLES))
+    if missing:
+        raise SystemExit(
+            "迁移脚本的表清单漏了这几张表：%s\n"
+            "请把它们按外键依赖顺序（父表在前）补进 backend/migrate_sqlite_to_pg.py 的 "
+            "ORDERED_TABLES，否则这些表的数据会一条都搬不过去，而脚本仍然显示成功。"
+            % "、".join(missing)
+        )
+    unknown = sorted(set(ORDERED_TABLES) - known)
+    if unknown:
+        raise SystemExit(
+            "迁移脚本的表清单里有 models.py 中已经不存在的表：%s\n"
+            "请从 ORDERED_TABLES 里删掉。" % "、".join(unknown)
+        )
 
 
 def main(argv=None) -> int:
@@ -56,6 +90,8 @@ def main(argv=None) -> int:
     parser.add_argument("--truncate", action="store_true", help="目标表非空时先清空（危险）")
     parser.add_argument("--dry-run", action="store_true", help="只统计不写入")
     args = parser.parse_args(argv)
+
+    _check_table_list_is_complete()
 
     target = args.target or str(DATABASE_URL)
 

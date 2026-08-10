@@ -24,6 +24,13 @@ export class ApiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
 }
 
+// 后端在「这个人还没改掉初始密码」时，会对**所有**业务接口返回 HTTP 403，
+// 响应体是 {"detail": "<下面这一串>"}。这里必须逐字一致地硬编码同一句话——
+// 出处：backend/app/deps.py 的 MUST_CHANGE_PASSWORD_DETAIL。
+// 改后端那个常量时，这里要一起改，否则前端会把「该去改密码了」当成普通报错弹出来，
+// 用户看到一句「请先修改初始密码」却没有任何地方可以改，彻底卡死。
+export const MUST_CHANGE_PASSWORD_DETAIL = '请先修改初始密码，再使用其他功能';
+
 async function request(method, path, body, options = {}) {
   const headers = { ...(options.headers || {}) };
   const token = getToken();
@@ -54,6 +61,12 @@ async function request(method, path, body, options = {}) {
     let msg = (data && (data.detail || data.message)) || ('请求失败（HTTP ' + resp.status + '）');
     if (Array.isArray(msg)) msg = msg.map(e => e.msg || JSON.stringify(e)).join('；');
     if (typeof msg === 'object') msg = JSON.stringify(msg);
+    // 改密闸门：整站任何一条业务接口都可能撞上它（模板、上传、灵感库……）。
+    // 在这里统一识别，各个页面就不用各自判断一次，也不会漏。
+    // app.js 监听这个事件后会切到「设置安全密码」页，而不是弹一个用户无从下手的报错。
+    if (resp.status === 403 && msg === MUST_CHANGE_PASSWORD_DETAIL) {
+      window.dispatchEvent(new Event('dk-must-change-password'));
+    }
     throw new ApiError(msg, resp.status);
   }
   return data;

@@ -1,6 +1,19 @@
 """跨数据库兼容性与定时同步调度的单元测试（不联网、不需要真实 PG）。"""
+import atexit
+import os
+import shutil
+import tempfile
 import unittest
 from datetime import datetime, timedelta
+
+# 导入 backend.app.models 会连带导入 config.py，而 config.py 在 import 期间就会去
+# 建数据目录、改它的权限。测试不该碰用户放着网关密钥和生产数据的那个 data/ 目录，
+# 所以在导入之前先把数据目录指到一个临时位置去。
+# 用 setdefault：按 tests/README.md 的标准跑法本来就会显式设这个变量，那时不覆盖它。
+if not os.environ.get("DESIGNKIT_DATA_DIR"):
+    _TMP_DATA_DIR = tempfile.mkdtemp(prefix="dk-scheduler-data-")
+    os.environ["DESIGNKIT_DATA_DIR"] = _TMP_DATA_DIR
+    atexit.register(shutil.rmtree, _TMP_DATA_DIR, ignore_errors=True)
 
 from sqlalchemy import or_, select
 from sqlalchemy import update as sa_update
@@ -118,9 +131,14 @@ class SyncLockTests(unittest.TestCase):
 
     def setUp(self):
         import sqlalchemy as sa
-        from backend.app.database import SessionLocal
+        from backend.app.database import SessionLocal, engine
         from backend.app.services import scheduler as sch
         self.sa, self.sch = sa, sch
+        # 先把表建出来再用。少了这一句，用一个全新的数据目录跑这组会四项一起报
+        # `no such table: sync_state`——而 tests/README.md 推荐的恰恰就是
+        # 「用临时数据目录跑」，等于谁照着文档做谁踩。
+        # create_all 只补缺失的表，对已经有数据的目录是空操作，不会动任何现有数据。
+        Base.metadata.create_all(bind=engine)
         self.db = SessionLocal()
         sch._ensure_row(self.db)
         self._reset()

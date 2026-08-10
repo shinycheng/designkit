@@ -56,6 +56,14 @@ def create_job(
         template = db.get(PromptTemplate, template_id)
         if template is None or not template.is_enabled:
             raise HTTPException(status_code=404, detail="提示词模板不存在或已停用")
+        # 模板归属校验。owner_user_id 为 NULL = 平台公共库，谁都能用；
+        # 现阶段所有模板（含灵感库 1.4 万条）都是 NULL，所以这行**当前不改变任何行为**。
+        # 提前写在这里，是因为 models.py 加 owner_user_id 那处注释已经承诺
+        # 「归属校验在应用层做（services/jobs.py 取模板那一处）」——
+        # 等 P2 真给模板分主人时，如果这一处是空白，就会出现「别人的私有模板
+        # 换个 id 就能用」，而那时谁也想不起来该补在哪。
+        if template.owner_user_id not in (None, user_id):
+            raise HTTPException(status_code=404, detail="提示词模板不存在或已停用")
 
     if category_slug is not None:
         if not input_paths:
@@ -138,7 +146,20 @@ def resolve_upload_paths(
     user_id: Optional[int] = None,
     api_key_id: Optional[int] = None,
 ) -> List[str]:
-    """把上传记录 id 换成文件路径；校验归属，避免拿别人的图。"""
+    """把上传记录 id 换成文件路径；校验归属，避免拿别人的图。
+
+    调用方**必须**说明自己是谁（网页端传 user_id，ERP 传 api_key_id）。
+    """
+    # fail-closed：两个归属参数都没传就直接拒，不是「没归属所以全放行」。
+    # 以前下面两条判断都以「调用方传了参数」为前提，都为 None 时循环里
+    # 一路 append 不做任何校验。今天的两个调用点（routers/generations.py 的
+    # 建任务、routers/v1.py 的 ERP 建任务）都传了，所以还利用不了；
+    # 但只要多用户跑起来，代客生成、批量任务、后台补图这类新调用方一定会加，
+    # 谁漏传一次，就等于任何人可以拿任何 upload_id 建任务、把别人的商品图
+    # 当输入图使用。这种「忘了传参 = 静默关掉鉴权」的写法必须从函数入口堵死。
+    if user_id is None and api_key_id is None:
+        raise HTTPException(status_code=403, detail="缺少调用方归属")
+
     paths: List[str] = []
     for uid in upload_ids:
         upload = db.get(Upload, int(uid))

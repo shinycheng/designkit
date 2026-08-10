@@ -1,8 +1,23 @@
 """灵感库变量语法转换与输入图预处理的单元测试（不联网、不花钱）。"""
+import atexit
 import io
+import os
+import shutil
+import tempfile
 import unittest
 
 from PIL import Image
+
+# 导入 backend 里的模块会连带导入 config.py，而 config.py 在 import 期间就会去
+# 建数据目录、改它的权限。测试不该碰用户放着网关密钥和生产数据的那个 data/ 目录，
+# 所以在导入之前先把数据目录指到一个临时位置去。
+# 用 setdefault：按 tests/README.md 的标准跑法本来就会显式设这个变量，那时不覆盖它。
+# 每个测试文件都写一遍，是因为「先导入哪个文件」取决于跑法，
+# 只在其中一个里写，换个跑法就漏掉了。
+if not os.environ.get("DESIGNKIT_DATA_DIR"):
+    _TMP_DATA_DIR = tempfile.mkdtemp(prefix="dk-unittest-")
+    os.environ["DESIGNKIT_DATA_DIR"] = _TMP_DATA_DIR
+    atexit.register(shutil.rmtree, _TMP_DATA_DIR, ignore_errors=True)
 
 from backend.app.services.imaging import parse_ratio, prepare_input_image
 from backend.app.services.inspiration import _sanitize_var_name, convert_prompt

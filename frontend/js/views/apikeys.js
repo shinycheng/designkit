@@ -71,6 +71,9 @@ export function renderApiKeys(container) {
             h('code', {}, key.key_prefix + '…')),
           statusBadge(key.is_active ? 'active' : 'inactive')),
         h('dl', { class: 'dk-key-stats' },
+          // 属主要显示出来：这把 Key 归谁，对接方用它建的任务就花谁的生图余额。
+          // 不显示的话，管理员看着一排 Key 完全分不出钱记在谁头上。空串 = 无主的老 Key。
+          h('div', {}, h('dt', {}, '归属'), h('dd', {}, key.owner || '—')),
           h('div', {}, h('dt', {}, '每月额度'), h('dd', {}, key.monthly_quota ? `${key.monthly_quota} 次` : '不限')),
           h('div', {}, h('dt', {}, '累计调用'), h('dd', {}, `${key.used_total || 0} 次`)),
           h('div', {}, h('dt', {}, '最近使用'), h('dd', {}, fmtTime(key.last_used_at))),

@@ -88,12 +88,43 @@ def list_generations(
     }
 
 
-def _get_own_job(job_id: str, user: User, db: Session) -> GenerationJob:
+# 越权和不存在返回同一个 404。
+# 为什么不用 403：如果「不存在→404、越权→403」，两个码一比就是一台任务存在性
+# 探测器——而 job_id 会出现在 ERP 的 202 响应体、webhook 回调、反代访问日志里，
+# 拿到一串 id 就能挨个试出哪些是真的、进而摸清别人有多少单。
+# services/jobs.py 的上传归属校验和 v1.py 的任务查询本来就是统一 404，这里对齐。
+_JOB_NOT_FOUND = "任务不存在"
+
+
+def _get_readable_job(job_id: str, user: User, db: Session) -> GenerationJob:
+    """取一条**可读**的任务：本人的，管理员则可读所有人的。
+
+    管理员放行是刻意保留的：成员说「我的图出不来」时，得有人能点开那条任务
+    看 error 和参数，否则排障只能去翻数据库。
+    """
     job = db.get(GenerationJob, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="任务不存在")
+        raise HTTPException(status_code=404, detail=_JOB_NOT_FOUND)
     if user.role != "admin" and job.user_id != user.id:
-        raise HTTPException(status_code=403, detail="无权查看该任务")
+        raise HTTPException(status_code=404, detail=_JOB_NOT_FOUND)
+    return job
+
+
+def _get_writable_job(job_id: str, user: User, db: Session) -> GenerationJob:
+    """取一条**可写**的任务：一律要求是本人的，**管理员也不例外**。
+
+    和 _get_readable_job 的不对称是故意的，不是漏改：
+    「重新生成」和「补图」会立刻拿**任务归属人**的网关额度去出图，花的是那个
+    成员的真金白银，且发出去就收不回来（retry 只判状态、不计次也不问一句）。
+    管理员点错一下，账单落在别人头上，事后谁也说不清。
+    删除不花钱，所以 delete 仍然走 readable，留给管理员做清理。
+
+    job.user_id 为 None 的是历史上没有主人的 ERP 任务（P1-3 的回填会把绝大多数
+    补上），这类没人认领的任务只让管理员操作，否则它们会彻底动不了。
+    """
+    job = _get_readable_job(job_id, user, db)
+    if job.user_id != user.id and not (job.user_id is None and user.role == "admin"):
+        raise HTTPException(status_code=404, detail=_JOB_NOT_FOUND)
     return job
 
 
@@ -101,7 +132,7 @@ def _get_own_job(job_id: str, user: User, db: Session) -> GenerationJob:
 def get_generation(
     job_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    job = _get_own_job(job_id, user, db)
+    job = _get_readable_job(job_id, user, db)
     return job_to_dict(job, "")  # 相对 /files 路径
 
 
@@ -109,7 +140,7 @@ def get_generation(
 def retry_generation(
     job_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    job = _get_own_job(job_id, user, db)
+    job = _get_writable_job(job_id, user, db)  # 重跑要花归属人的钱，管理员也不能代劳
     if job.status not in ("failed", "succeeded"):
         raise HTTPException(status_code=409, detail="任务还在进行中，不能重试")
     # 清掉旧结果，避免重跑后 images 累积（worker 侧也有兜底清理）
@@ -144,7 +175,7 @@ def supplement_generation(
     实际发出的提示词**（prompt_sent），所以既不用再花一次 AI 写提示词的开销，
     出来的图也和上一批是同一套设定，能直接混在一起用。
     """
-    source = _get_own_job(job_id, user, db)
+    source = _get_writable_job(job_id, user, db)  # 补图同样是花归属人的钱
     if source.status != "succeeded":
         raise HTTPException(status_code=409, detail="只有已完成的任务可以补图")
 
@@ -181,7 +212,7 @@ def supplement_generation(
 def delete_generation(
     job_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    job = _get_own_job(job_id, user, db)
+    job = _get_readable_job(job_id, user, db)  # 删除不花钱，保留给管理员清理
     if job.status == "processing":
         raise HTTPException(status_code=409, detail="任务正在执行，无法删除")
     for img in list(job.images or []):

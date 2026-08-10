@@ -1,11 +1,25 @@
 """Provider compatibility regressions that do not call a real upstream API."""
+import atexit
 import base64
+import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import httpx
+
+# 导入 backend 里的模块会连带导入 config.py，而 config.py 在 import 期间就会去
+# 建数据目录、改它的权限。测试不该碰用户放着网关密钥和生产数据的那个 data/ 目录，
+# 所以在导入之前先把数据目录指到一个临时位置去。
+# 用 setdefault：按 tests/README.md 的标准跑法本来就会显式设这个变量，那时不覆盖它。
+# 每个测试文件都写一遍，是因为「先导入哪个文件」取决于跑法，
+# 只在其中一个里写，换个跑法就漏掉了。
+if not os.environ.get("DESIGNKIT_DATA_DIR"):
+    _TMP_DATA_DIR = tempfile.mkdtemp(prefix="dk-unittest-")
+    os.environ["DESIGNKIT_DATA_DIR"] = _TMP_DATA_DIR
+    atexit.register(shutil.rmtree, _TMP_DATA_DIR, ignore_errors=True)
 
 from backend.app.services import provider
 

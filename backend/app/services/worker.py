@@ -26,6 +26,34 @@ RETRY_BACKOFF_SECONDS = 5
 # 否则多进程部署下会把还在正常执行的任务误判为中断、重新入队重复计费。
 STUCK_RESET_SECONDS = 4500
 
+# 图片签名链接的默认有效期（小时），与 config.py 的 erp_file_link_ttl_hours 默认值一致。
+DEFAULT_ERP_LINK_TTL_HOURS = 168
+
+
+def _erp_link_ttl_hours(settings: Dict[str, Any]) -> int:
+    """取「给 ERP 的图片链接有效几小时」，并兜住设置里被填成非数字的情况。
+
+    为什么要兜：settings_router 的数字范围校验里没有 erp_file_link_ttl_hours
+    （只覆盖了并发数、重试次数等五项），管理员在设置页填个「七天」就会原样存成
+    字符串，而 storage.to_url 遇到非数字会抛 StorageError。这个异常一旦在
+    worker.start() 的「补投未送达回调」那段里抛出来，整个应用就起不来，
+    群晖上 restart: always 会把它变成无限重启——一个填错的字数导致全站打不开，
+    运营同学根本无从下手。
+
+    所以这里回落到默认值并记一条 WARNING：链接照样是签过名的，安全性没有降级，
+    只是有效期回到 7 天，而日志里留着这条线索。
+    """
+    raw = settings.get("erp_file_link_ttl_hours")
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "设置项 erp_file_link_ttl_hours 不是数字（当前值：%r），"
+            "图片链接有效期按默认 %d 小时处理，请到设置页改成整数",
+            raw, DEFAULT_ERP_LINK_TTL_HOURS,
+        )
+        return DEFAULT_ERP_LINK_TTL_HOURS
+
 
 class GenerationWorker:
     def __init__(self) -> None:
@@ -164,7 +192,30 @@ class GenerationWorker:
                 storage.delete_file(old.thumb_path)
                 db.delete(old)
             db.commit()
-            settings = settings_service.get_all(db)
+            # ══════════════════════════════════════════════════════════════
+            #  这一行决定「这次生图花谁的钱」——全系统只有这一处做这个决定。
+            # ══════════════════════════════════════════════════════════════
+            # 不能写成 settings_service.get_all(db)：那样拿到的永远是管理员配的
+            # 全局 Key，成员生的图照样出得来、他自己的余额一分不扣，账全记在管理员
+            # 头上，而且日志里没有任何痕迹能看出这次是谁花的。表面上一切正常，
+            # 是这一期最容易漏、漏了之后最难发现的一步。
+            #
+            # 下面这一份 settings 会被本次任务的三条线共用（挑风格参考、AI 写提示词、
+            # 生图），所以只取一次：同一个任务的三次外部调用必须落在同一个人的账上。
+            # 注意下面合成提示词那一段中途会 db.close() 再开一个新 session，
+            # 但 settings 是纯 Python 字典、不依附于 session，跨 session 继续有效，
+            # 不需要（也不该）重新取一次。
+            try:
+                settings = settings_service.resolve_for_user(db, job.user_id)
+            except settings_service.GatewayNotReady as exc:
+                # 「这个人没开通生图额度」不是网络抖动，重试多少次都是同一句话，
+                # 只会让他多等两轮退避才看到结果。所以这里传一个只含 max_attempts=1
+                # 的字典，让 _handle_failure 直接把任务判死、不再回队列。
+                # （_handle_failure 只从 settings 里读 max_attempts 这一个键，
+                #   传完整设置反而要求这个分支再去查一次库。）
+                # error 写异常原文：那句话本来就是写给非技术用户看的人话。
+                self._handle_failure(db, job_id, str(exc), {"max_attempts": 1})
+                return
             params = job.params or {}
             n = int(params.get("n") or 1)
             size = str(params.get("size") or settings.get("default_size") or "1024x1024")
@@ -287,8 +338,20 @@ class GenerationWorker:
 
     def _fire_webhook(self, db, job: GenerationJob, settings: Dict[str, Any]) -> None:
         public_base = str(settings.get("public_base_url") or "")
+        # 回调里的图片链接必须带签名，否则对接方收到回调、去下载图片时会全部 403
+        # （/files 现在默认只认凭证）。而回调是「机器发给机器」的一次性通知，
+        # 出了问题对方只会看到「你们的图挂了」，最难归因，所以这里不能漏。
+        #
+        # job.api_key_id 为空时**必须**传 sign=None：storage.to_url 收到
+        # (None, ttl) 会直接抛 StorageError。这是双方约好的刻意设计——宁可当场
+        # 报错，也不能悄悄发一条谁都能打开的无签名链接出去。
+        # 正常情况下走不到这个分支：callback_url 只有对外 API 才能设置，网页端
+        # 建的任务没有回调地址。留着是兜底（比如历史数据、或将来网页端也支持回调）。
+        sign = None
+        if job.api_key_id:
+            sign = (job.api_key_id, _erp_link_ttl_hours(settings))
         # 复用查询接口的序列化，保证回调里的 images 结构与 GET 任务完全一致
-        payload = job_to_dict(job, public_base, include_inputs=False)
+        payload = job_to_dict(job, public_base, include_inputs=False, sign=sign)
         payload["event"] = "generation.finished"
         secret = None
         if job.api_key_id:

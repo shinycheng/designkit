@@ -111,42 +111,169 @@ sudo docker compose ps
 > 部署用的配置模板默认已是**真实生图**模式，Key 没填之前点生成会报
 > 「尚未配置生图 API Key」。所以上面填 Key 这步要先做。
 
+给同事开账号：左侧导航「成员」→「新建成员」。系统**不提供自助注册**，
+所有账号都由你来建、初始密码由你当面给。详细步骤（含停用、重置密码、
+给每个人配自己的网关 Key）见 [README 第七章](../README.md#七给同事开账号成员账号)。
+
 ---
 
 ## 第 6 步：设置每日自动备份（建议做）
 
-⚠️ 数据库在 Docker 数据卷里，**只拷 `data` 文件夹不会备份到数据库**。
+⚠️ 要备的是**四样**：数据库、图片、`data/.secret_key`、`data/.enc_key`。
+数据库在 Docker 数据卷里，**只拷 `data` 文件夹不会备份到数据库**；
+后两个是隐藏文件（File Station 默认看不见），下面的 `tar` 命令会把它们
+一起打包，不用另外操作，但**备完一定要按本节末尾的两条命令检查一遍**。
+
+它们各自丢了会怎样：
+
+| 文件 | 丢了的表现 |
+|---|---|
+| `data/.secret_key` | 所有人被踢下线要重新登录；发给 ERP 对接方的 Webhook Secret 全部作废，对方一路验签失败且没有任何提示 |
+| `data/.enc_key` | **全体成员突然都不能生图**，而数据库看起来完好、界面上还写着「已配置 Key」。只能到网关后台把每个人的 Key 重新抄一遍再逐个填回去 |
 
 DSM → 控制面板 → 任务计划 → 新增 → 计划的任务 → 用户定义的脚本
 
 - 用户：`root`
 - 计划：每天，选个你不用 NAS 的时间（比如凌晨 3 点）
-- 脚本内容：
+- 脚本内容（整段复制粘贴）：
 
 ```bash
+set -e
 cd /volume1/docker/designkit
-mkdir -p /volume1/docker/designkit-backup
+BACKUP_DIR=/volume1/docker/designkit-backup
+mkdir -p "$BACKUP_DIR"
 DATE=$(date +%Y%m%d)
-docker compose exec -T db pg_dump -U designkit designkit | gzip > /volume1/docker/designkit-backup/db-$DATE.sql.gz
-tar czf /volume1/docker/designkit-backup/images-$DATE.tar.gz -C /volume1/docker/designkit data
-find /volume1/docker/designkit-backup -name '*.gz' -mtime +14 -delete
+
+# 数据库：先导成 .part 临时文件，成功了再改成正式名字。
+# 为什么不直接 `pg_dump | gzip > 文件`：数据库容器没起来时 pg_dump 会失败，
+# 但 gzip 照样会生成一个看起来正常、其实是空的 .gz，整条命令还返回「成功」，
+# 任务计划里显示绿色的「已完成」——等真要恢复那天才发现备份是空的。
+# 配合开头的 set -e，导出一失败脚本就中止，不会留下假备份，DSM 也会报失败。
+#
+# --clean --if-exists 让导出的 SQL 自带「先删旧表」的语句，
+# 否则这份备份只能灌进一个空库，往有数据的库里灌会全程报「表已存在」。
+docker compose exec -T db pg_dump --clean --if-exists -U designkit designkit > "$BACKUP_DIR/db-$DATE.sql.part"
+gzip -f "$BACKUP_DIR/db-$DATE.sql.part"
+mv "$BACKUP_DIR/db-$DATE.sql.part.gz" "$BACKUP_DIR/db-$DATE.sql.gz"
+
+# 图片 + 两把钥匙：整个 data 目录，隐藏的 .secret_key / .enc_key 都在里面
+tar czf "$BACKUP_DIR/images-$DATE.tar.gz" -C /volume1/docker/designkit data
+
+# 只保留最近 14 天
+find "$BACKUP_DIR" -type f \( -name '*.gz' -o -name '*.part' \) -mtime +14 -delete
 ```
+
+**建好之后手工跑一次**（任务计划里选中它 → 运行），然后 SSH 上去检查一遍，
+确认备份不是空的——这两条都要有输出：
+
+```bash
+cd /volume1/docker/designkit-backup
+gunzip -c db-$(date +%Y%m%d).sql.gz | grep -c 'CREATE TABLE'
+# ↑ 应该是个大于 0 的数字（表的数量）
+
+tar tzf images-$(date +%Y%m%d).tar.gz | grep -E 'data/\.(secret|enc)_key$'
+# ↑ 必须打印出**两行**：data/.enc_key 和 data/.secret_key。只有一行就是没备全
+```
+
+> 备份文件建议再往别的地方拷一份（另一块硬盘 / 另一台机器）。
+> 放在同一台 NAS 上，硬盘坏了就一起没了。
+
+---
+
+## 第 7 步：让同事们用起来之前，先过一遍这个清单
+
+只有你一个人用的时候，下面这些都不重要；一旦要给同事开账号，
+每一条不做都会变成一次说不清原因的故障。
+
+- [ ] **管理员自己的密码已经改掉了**，不是还在用 `admin123456`
+- [ ] **每个同事一个账号，不要共用一个**。共用的话，生成记录混在一起分不清是谁的，
+      任何一个人离职都得让全组改密码。建号方式见
+      [README 第七章](../README.md#七给同事开账号成员账号)
+- [ ] **初始密码当面给**，别发在群里。他登录后系统会强制他改掉
+- [ ] **决定钱怎么算**：
+      - 大家花一个账户的钱 → 什么都不用做（默认就是这样）
+      - 各花各的 → 先在「成员账号」页给**每个人**配好网关 Key，
+        **最后**再到「系统设置 → 图片访问与多用户」把「生图费用怎么算」
+        改成「每人一把 Key」。顺序反了的话，没配 Key 的人一点生成就被拦住
+- [ ] **`DESIGNKIT_PUBLIC_BASE_URL` 填的是同事们真正能打开的地址**
+      （NAS 的局域网 IP，不是 `127.0.0.1`）。填错的表现是：你自己一切正常，
+      同事那边图片全裂
+- [ ] **备份任务已经建好并手工跑过一次**，而且用第 6 步末尾那两条命令检查过。
+      成员的网关 Key 存在数据库里、解密钥匙在 `data/.enc_key`，
+      两样缺一，恢复出来就是「全体都不能生图」
+- [ ] **知道人走了怎么办**：用「停用」，不要想着删除（系统也没有删除功能）。
+      停用是立刻生效的——他的登录、他手上的图片链接同时失效。
+      但**他名下的 API Key 不受影响**，如果他建过对外对接的 Key，
+      要到「API 对接」页单独停用
+
+**怎么恢复**：见 [README 的「怎么恢复」](../README.md#怎么恢复)。关键是恢复时
+`psql` 必须带 `-v ON_ERROR_STOP=1`，否则出错也会一路往下跑，最后得到一个
+新旧数据混在一起的库，还显示成功。
 
 ---
 
 ## 以后怎么更新
 
-代码推到 GitHub 后，GitHub 会自动构建新镜像。在 NAS 上执行：
+代码推到 GitHub 后，GitHub 会自动构建新镜像。**但升级前有两步不能省**，
+顺序照下面来。
+
+### 第 1 步：先备份
+
+把第 6 步那个备份任务手工跑一次（任务计划 → 选中 → 运行），
+并按第 6 步末尾的两条命令确认备份不是空的。
+
+升级会改数据库的表结构。万一新版本有问题，光把镜像换回旧版是不够的——
+表结构已经变了，还得把数据也灌回去，那就只能靠这份备份。
+
+### 第 2 步：钉住当前版本，并抄在纸上
+
+`.env` 里的 `DESIGNKIT_VERSION` 默认是 `latest`（永远跟最新）。这个默认值的问题是：
+出事要往回退的时候，你说不清楚「原来跑的是哪一版」——`latest` 今天指向的东西
+和上周不是一回事。所以升级前先查出当前版本并钉住：
+
+```bash
+cd /volume1/docker/designkit
+
+# 打印出来是 7 位字符，例如 6ca035d
+sudo docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' designkit | cut -c1-7
+```
+
+把这 7 位字符**抄在纸上**，前面加 `sha-`（例如 `sha-6ca035d`），
+然后编辑 `.env`，把这一行改成：
+
+```
+DESIGNKIT_VERSION=sha-6ca035d
+```
+
+> 每次推送代码，GitHub 都会自动为该次提交打一个 `sha-` 开头的镜像标签，
+> 所以任何一版都能这样退回去。
+> 如果上面那条命令打印出来是空的（早期镜像没带这个标记），就去 GitHub 仓库页面 →
+> 右侧 **Packages** → `designkit`，在标签列表里挑日期对得上的 `sha-xxxxxxx`。
+
+### 第 3 步：升级
+
+想升到最新，把 `.env` 里的 `DESIGNKIT_VERSION` 改回 `latest`（或改成新版本的标签），
+然后：
 
 ```bash
 cd /volume1/docker/designkit
 sudo docker compose pull && sudo docker compose up -d
 ```
 
-数据库和图片都在卷/data 目录里，换镜像不会丢。
+数据库和图片都在卷 / `data` 目录里，换镜像不会丢。
 
-想锁定某个版本不自动跟进，把 `.env` 里的 `DESIGNKIT_VERSION` 从 `latest`
-改成具体标签（如 `v1.0.0`）即可。
+### 新版本有问题，怎么退回去
+
+把 `.env` 里的 `DESIGNKIT_VERSION` 改回纸上抄的那个 `sha-xxxxxxx`，然后：
+
+```bash
+cd /volume1/docker/designkit
+sudo docker compose up -d
+```
+
+如果退回旧镜像后页面还是不正常（一般是因为新版本已经改过表结构），
+就再按 [README 的「怎么恢复」](../README.md#怎么恢复) 把升级前那份备份灌回去。
+**注意灌之前必须已经把版本钉回旧版**，否则新表结构配旧数据只会更乱。
 
 ---
 
@@ -163,6 +290,11 @@ sudo docker compose pull && sudo docker compose up -d
 | 重启后有个任务卡在「生成中」，既不能重试也删不掉 | 服务重启时只会捞回已开始超过 75 分钟的中断任务。等一个多小时后再重启一次服务，它会自动回到队列重新执行 |
 | 测试连接失败 | NAS 能不能连到网关：`curl http://192.168.31.235:8090/v1/models`。不通就是两台机器不在同一网段，或网关那台机器关机了 |
 | 灵感库同步失败 | NAS 访问 GitHub 受限。到「系统设置 → 运行参数 → 同步代理」填代理地址（如 `http://192.168.31.x:7890`），保存后点「测试同步连接」。注意代理要填 **NAS 能访问到的地址**，不能填 `127.0.0.1`——那指的是容器自己 |
+| 页面能打开，但图片全是裂的 | 图片现在要凭登录状态才能取。先退出登录再重新登录一次（会重新下发取图凭证）。还是不行就看 `DESIGNKIT_PUBLIC_BASE_URL` 是不是填成了 `127.0.0.1`——那样别人的浏览器会去找他们自己的电脑要图 |
+| 某个成员点生成就报「你的账号还没有开通生图额度」 | 计费方式已经是「每人一把 Key」，但这个人还没配 Key。到「成员账号」页给他配上即可。**这种失败重试多少次都一样**，别让他反复点 |
+| 恢复备份之后，所有人突然都不能生图 | 恢复时漏了 `data/.enc_key`（只灌了数据库）。把备份里的那个文件放回 `data` 目录再 `sudo docker compose up -d`。找不回来的话，只能到网关后台把每个人的 Key 重抄一遍、在「成员账号」页逐个重填 |
+| 对接方说所有历史图片突然打不开 | 图片链接带签名、默认 7 天有效，且**停用一把 API Key 会让它发出的所有链接立刻失效**。先确认那把 Key 是不是被停用了；长期留存图片请让对方改用 `docs/erp-api.md` 3.6 节那条直取端点 |
+| 在「系统设置」改了「允许跨站调用的地址」，保存成功但没生效 | 这一项**必须重启服务**才生效：`cd /volume1/docker/designkit && sudo docker compose up -d`。反复保存没有用 |
 
 ---
 
