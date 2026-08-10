@@ -396,9 +396,10 @@ def v1_get_generation_image(
     if job is None or job.api_key_id != key.id:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    # 显式按 id 升序取，不用 job.images：那个关系没写 order_by，顺序由数据库
-    # 决定（SQLite 和 PostgreSQL 不保证一致）。序号必须和查询接口返回的
-    # images 数组对得上，否则对接方按 index=1 取到的可能不是同一张图。
+    # 显式按 id 升序取，和 models.py 里 GenerationJob.images 的 order_by 保持一致
+    # ——那边现在也排好序了，这里再排一次是第二道保险，**两处任改一处**都会让
+    # 这个 index 与查询接口返回的 images 数组对不上，而对接方按 index=1 取到别人的
+    # 那一张时是**不会报错的**，只会悄悄拿错图。
     # id 升序 = 入库顺序 = 生成时的第几张（storage 存盘用的也是同一个序号）。
     images = (
         db.query(GeneratedImage)

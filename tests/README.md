@@ -32,23 +32,28 @@ rm -rf /tmp/dk-unittest && DESIGNKIT_DATA_DIR=/tmp/dk-unittest DESIGNKIT_PROVIDE
 末尾出现 `Ran 185 tests ... OK (skipped=10)` 就是全过了
 （那 10 项 skipped 是 PostgreSQL 迁移，见上面的 ⚠️）。
 
-> **⚠️ 开头那句 `rm -rf` 不能省。** 有几组测试会往库里建固定用户名的账号
-> （比如 `fa_alice`），跑完不删。同一个数据目录跑第二遍，
-> 这些账号就会撞上唯一索引，报出来的是
-> `sqlalchemy.exc.IntegrityError: UNIQUE constraint failed: users.username`，
-> 而且是在 `setUpModule` 阶段炸，显示成 `Ran 0 tests ... FAILED (errors=1)`——
-> 一条用例都没跑，看起来却像是代码坏了。**每次跑之前先删目录**就没这个问题。
->
 > **`DESIGNKIT_DATA_DIR=/tmp/dk-unittest` 是干什么的**：把测试用的数据目录
 > 挪到 `/tmp` 里，免得碰到项目里的 `data/`——那里面放着你的网关 Key、
 > 数据库和历史生成记录。
 >
-> 忘了写也不会出事，而且**反而更省心**：不设这个变量时，每个测试文件会自己
-> 开一个全新的临时目录、跑完自动删掉，所以连着跑几遍都不会撞车。
-> **单元测试在任何跑法下都不会动你的 `data/`**（已实测）。
-> 显式写上它的唯一好处是所有测试共用一个目录，看得见它们写到哪儿去了。
+> 忘了写也不会出事：不设这个变量时，整次运行会自己开一个临时目录（八个文件共用
+> 这一个），跑完自动删掉。**单元测试在任何跑法下都不会动你的 `data/`**（已实测）。
+> 显式写上它的好处是看得见测试写到哪儿去了。
+>
+> **`rm -rf` 可以省**：同一个数据目录反复跑不会撞车（已实测连跑三次、
+> 以及「整套 → 单组 → 整套」都正常）。加上它只是让每次都从干净状态开始，
+> 排查问题时更好定位。
+>
+> 早期不是这样：有测试会建固定用户名的账号、还会把 `designkit.db` 和 `.secret_key`
+> 覆写成假文件来验证「这两个文件绝对下载不到」——那等于**把数据库和登录密钥写坏**，
+> 第二遍跑直接 `database disk image is malformed`，显示成
+> `Ran 0 tests ... FAILED (errors=1)`，看起来像代码坏了。
+> 现在改成用户名带随机后缀、且那两个文件**只在不存在时才造假的**
+> （已存在就原样不动，那反而是更强的用例）。
+> 提这一段是因为：**将来再写测试时，绝对不要往数据目录里写这两个文件名**——
+> 万一有人把 `DESIGNKIT_DATA_DIR` 指向真实数据目录跑一次，数据库会当场报废。
 
-想单独跑某一组，把 `-p` 后面换成那一组的文件名即可（`rm -rf` 同样别省）：
+想单独跑某一组，把 `-p` 后面换成那一组的文件名即可：
 
 ```bash
 rm -rf /tmp/dk-unittest && DESIGNKIT_DATA_DIR=/tmp/dk-unittest DESIGNKIT_PROVIDER=mock \
@@ -219,12 +224,9 @@ PYTHONPATH=/tmp/pgtest-lib .venv/bin/python -c "
 import pgserver, time
 s = pgserver.get_server('/tmp/pgtest-data', cleanup_mode=None)
 s.psql('CREATE DATABASE designkit_test')
-print('把下面这行整个复制走：', flush=True)
-print('DESIGNKIT_TEST_DATABASE_URL=' + s.get_uri(database='designkit_test'), flush=True)
-try:
-    time.sleep(3600)
-finally:
-    s.cleanup()
+print('把下面这行整个复制走（只有地址，不含变量名）：', flush=True)
+print(s.get_uri(database='designkit_test'), flush=True)
+time.sleep(3600)
 "
 ```
 
@@ -239,7 +241,22 @@ DESIGNKIT_TEST_DATABASE_URL=<粘贴上面打印的地址> \
   .venv/bin/python -m unittest discover -s tests -p 'test_migrations.py' -v
 ```
 
-跑完回到第一个窗口按 Ctrl+C，它会自己把临时数据库停掉删掉。
+跑完要**手工收尾**，两条命令（按 `Ctrl+C` 只会停掉那个 python 脚本，
+数据库进程是它在后台另起的，**不会跟着退出**，会一直留在你的 Mac 上跑）：
+
+```bash
+PYTHONPATH=/tmp/pgtest-lib .venv/bin/python -c "
+import pgserver
+pgserver.get_server('/tmp/pgtest-data', cleanup_mode='delete').cleanup()"
+```
+
+```bash
+rm -rf /tmp/pgtest-data /tmp/pgtest-lib
+```
+
+不收拾也不影响用电脑，只是白占着约 45 MB 和一个后台进程；重启 Mac 后进程会没，
+但 `/tmp/pgtest-data` 可能还在。想确认停干净了，执行 `pgrep -fl postgres`，
+没有输出就是干净的。
 
 > **三道保险，别绕过去**。这组测试会建表、灌数据、删 schema，指错库就是一场事故：
 > 1. 变量名是 `DESIGNKIT_TEST_DATABASE_URL`，**不是** `DESIGNKIT_DATABASE_URL`。

@@ -66,16 +66,23 @@ def setUpModule():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
-    alice = User(username="fa_alice", password_hash="x", role="member", token_version=0)
-    bob = User(username="fa_bob", password_hash="x", role="member", token_version=0)
-    boss = User(username="fa_boss", password_hash="x", role="admin", token_version=0)
+    # 用户名和 key_hash 都带一段本次运行才有的随机后缀。
+    # 不这么写的话，只要数据目录被复用（tests/README.md 恰好推荐指定
+    # DESIGNKIT_DATA_DIR），第二次跑就会撞上 users.username 的唯一约束，
+    # setUpModule 直接抛异常，整组 50 项一项都不跑——输出是
+    # 「Ran 0 tests / FAILED (errors=1)」，看起来像功能坏了，其实是测试自己没洗干净。
+    run = uuid.uuid4().hex[:8]
+
+    alice = User(username="fa_alice_" + run, password_hash="x", role="member", token_version=0)
+    bob = User(username="fa_bob_" + run, password_hash="x", role="member", token_version=0)
+    boss = User(username="fa_boss_" + run, password_hash="x", role="admin", token_version=0)
     db.add_all([alice, bob, boss])
     db.commit()
 
     key = ApiKey(user_id=alice.id, name="erp", key_prefix="dk_fa1",
-                 key_hash="h1", webhook_secret="w")
+                 key_hash="h1_" + run, webhook_secret="w")
     key2 = ApiKey(user_id=bob.id, name="erp2", key_prefix="dk_fa2",
-                  key_hash="h2", webhook_secret="w")
+                  key_hash="h2_" + run, webhook_secret="w")
     db.add_all([key, key2])
     db.commit()
 
@@ -106,9 +113,20 @@ def setUpModule():
         path = DATA_DIR / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(PNG)
-    # 假的数据库文件与密钥文件，用来确认它们绝对下载不到
-    (DATA_DIR / "designkit.db").write_bytes(b"fake")
-    (DATA_DIR / ".secret_key").write_bytes(b"fake")
+    # 数据库文件与密钥文件必须绝对下载不到。这里**只在它们还不存在时**才造个假的，
+    # 已经存在就原样不动——那正好是更强的用例（真的敏感文件摆在那里，照样 404）。
+    #
+    # 为什么要加这个判断：designkit.db 就是 SQLite 数据库本体、.secret_key 是签发
+    # 登录令牌的密钥。无条件 write_bytes(b"fake") 等于把它们**当场写坏**：
+    # 同一次跑里后面的模块会拿不到有效密钥，下一次跑连库都打不开
+    # （sqlite3.DatabaseError: database disk image is malformed），
+    # 表现是「Ran 0 tests / FAILED」，看起来像功能坏了。
+    # 最坏的情况是有人把 DESIGNKIT_DATA_DIR 指向真实数据目录跑一次测试——
+    # 那会直接报废他的数据库和全部登录状态。
+    for name in ("designkit.db", ".secret_key"):
+        target = DATA_DIR / name
+        if not target.exists():
+            target.write_bytes(b"fake")
 
     app = FastAPI()
     app.include_router(files_router.router)

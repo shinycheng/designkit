@@ -241,8 +241,20 @@ class GenerationJob(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # order_by 是对外契约的一部分，不要删：
+    # docs/erp-api.md 承诺「直取图端点的 index 与查询任务返回的 images 数组下标
+    # 一一对应」。查询接口走的是这里的 job.images，直取图端点走的是
+    # routers/v1.py 里显式的 order_by(GeneratedImage.id.asc())——两边必须是同一个
+    # 顺序。不写 order_by 时顺序由数据库决定（SQLite 和 PostgreSQL 不保证一致），
+    # 对接方按 index=1 取回来的就可能不是它在查询结果里看到的第 2 张图，
+    # **而且两边都不会报错**，出了问题也查不到这里。
+    # id 升序 = 入库顺序 = 生成时的第几张（storage 存盘用的也是同一个序号）。
     images = relationship(
-        "GeneratedImage", back_populates="job", cascade="all, delete-orphan", lazy="selectin"
+        "GeneratedImage",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="GeneratedImage.id",
     )
 
 

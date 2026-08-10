@@ -48,7 +48,17 @@ services:
       timeout: 10s
       retries: 5
       start_period: 40s
+    # 停容器时多等 30 秒再强杀（Docker 默认只等 10 秒）。
+    # 生图任务单张要跑 1~5 分钟，被硬杀的任务会停在「生成中」不动，
+    # 要等 75 分钟后重启服务才会自动回到队列（services/worker.py 的 STUCK_RESET_SECONDS）。
+    # 30 秒等不完一整张图，但足够让已经出好的那几张把图片写盘、把任务状态和回调
+    # 写进数据库——不至于「钱花了、图却没落地，界面上还一直转圈」。
+    # 嫌升级时停容器慢可以调小，代价就是上面这一段。
     stop_grace_period: 30s
+    # 容器真的退出了（崩溃、NAS 重启、断电恢复）才会自动拉起。
+    # 两点注意：① unhealthy 不触发重启，见上面 healthcheck 的说明；
+    # ② 启动期一旦抛异常就会变成无限重启，运营同学连界面都进不去，
+    #    所以启动阶段的失败一律不许挡住启动（services/worker.py、backfill.py 都为此兜了底）。
     restart: always
 
   db:
@@ -77,6 +87,8 @@ services:
       retries: 30
       start_period: 20s
     # 数据库只在 compose 内部网络可达，不对外开端口。
+    # 数据库掉了自动拉起。上面应用侧的 depends_on 只保证「首次启动的先后顺序」，
+    # 数据库中途重启不会连带重启应用——应用自己会重连（连接池开了 pool_pre_ping）。
     restart: always
 
 volumes:

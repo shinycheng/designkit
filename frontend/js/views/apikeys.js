@@ -55,6 +55,18 @@ export function renderApiKeys(container) {
         button('创建密钥', { iconName: 'plus', onclick: createKey })),
     );
 
+    if (state.keys.length) {
+      // 这句必须留在页面上（docs/UI_REFACTOR_SPEC.md §16）：停用一把 Key，
+      // 后端会连它此前发出去的图片链接一起挡掉（backend/app/routers/files.py 里
+      // 「Key 已停用 → 403」那一段）。不写明的话，对接方反馈「历史图片集体打不开」时，
+      // 没有人会联想到是这里点了「停用」。
+      listSection.append(inlineAlert(
+        '停用一把 Key，不只是它以后调不通接口：这把 Key 此前发给对方的所有图片链接会立刻一起打不开（对方会看到「这把 API Key 已停用，图片链接同时失效」）。重新启用回来，还没过期的链接就又能打开了。',
+        'warning',
+        { title: '停用会连带影响已经发出去的图片链接' },
+      ));
+    }
+
     if (!state.keys.length) {
       listSection.append(emptyState('key-round', '还没有 API Key', {
         description: '建议为每个外部系统单独创建，以便控制额度和快速停用。',
@@ -195,6 +207,17 @@ export function renderApiKeys(container) {
 
   async function toggleKey(key) {
     if (state.pendingKeyIds.has(key.id) || state.stopped) return;
+    // 停用要二次确认：这一下是有对外后果的（对接方当场 401、已发出的图片链接
+    // 同时打不开），和「删除」一样不该点一下就生效。启用没有破坏性，不拦。
+    if (key.is_active) {
+      const confirmed = await confirmDialog(
+        `停用密钥「${key.name}」？用它对接的系统会立刻调不通（收到 401），`
+        + '它此前发出去的图片链接也会立刻打不开。之后可以在这一页把它重新启用。',
+        { danger: true, okText: '停用密钥' },
+      );
+      if (!confirmed || state.stopped) return;
+      if (state.pendingKeyIds.has(key.id)) return;
+    }
     state.pendingKeyIds.add(key.id);
     renderKeyList();
     try {
