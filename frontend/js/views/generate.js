@@ -700,16 +700,28 @@ export function renderGenerate(container, user) {
 
     templateSection.categoryList.replaceChildren();
     if (extra.length) {
-      const extraGrid = h('div', { class: 'dk-template-grid', role: 'listbox', hidden: true },
+      const extraGridId = 'dk-more-categories-grid';
+      const selectedExtra = Boolean(state.selected
+        && extra.some((category) => category.slug === state.selected.slug));
+      const extraGrid = h('div', {
+        id: extraGridId,
+        class: 'dk-template-grid dk-template-grid--extra',
+        role: 'listbox',
+        'aria-label': '更多生成分类',
+        hidden: !selectedExtra,
+        onkeydown: handleTemplateGridKey,
+      },
         ...extra.map(categoryCard));
       const toggle = button(`更多分类（${extra.length}）`, {
         variant: 'quiet', size: 'sm', type: 'button', iconName: 'chevron-down',
+        className: 'dk-more-categories-toggle',
+        'aria-controls': extraGridId,
         onclick: () => {
           extraGrid.hidden = !extraGrid.hidden;
           toggle.setAttribute('aria-expanded', String(!extraGrid.hidden));
         },
       });
-      toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-expanded', String(selectedExtra));
       templateSection.categoryList.append(toggle, extraGrid);
     }
     updateTemplateSelection();
@@ -802,15 +814,19 @@ export function renderGenerate(container, user) {
 
   function handleTemplateGridKey(event) {
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
-    const controls = [...templateSection.grid.querySelectorAll('[role="option"]:not([hidden]):not([disabled])')];
+    const grid = event.currentTarget?.matches?.('[role="listbox"]')
+      ? event.currentTarget
+      : templateSection.grid;
+    const controls = [...grid.querySelectorAll('[role="option"]:not([hidden]):not([disabled])')];
     if (!controls.length) return;
     event.preventDefault();
     const current = Math.max(0, controls.indexOf(document.activeElement));
+    const columnCount = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(' ').length);
     let next = current;
     if (event.key === 'ArrowLeft') next = Math.max(0, current - 1);
     if (event.key === 'ArrowRight') next = Math.min(controls.length - 1, current + 1);
-    if (event.key === 'ArrowUp') next = Math.max(0, current - 2);
-    if (event.key === 'ArrowDown') next = Math.min(controls.length - 1, current + 2);
+    if (event.key === 'ArrowUp') next = Math.max(0, current - columnCount);
+    if (event.key === 'ArrowDown') next = Math.min(controls.length - 1, current + columnCount);
     if (event.key === 'Home') next = 0;
     if (event.key === 'End') next = controls.length - 1;
     controls[next].focus();
