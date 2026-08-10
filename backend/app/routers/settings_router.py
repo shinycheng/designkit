@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..deps import get_db, require_admin
 from ..models import User
-from ..services import jobs, prompt_studio, provider, settings_service, sizing
+from ..services import inspiration, jobs, prompt_studio, provider, settings_service, sizing
 
 router = APIRouter(prefix="/api/web/settings", tags=["网页-系统设置"])
 
@@ -36,6 +36,14 @@ def update_settings(
             raise HTTPException(status_code=422, detail="%s 必须是 true 或 false" % bool_key)
     if "provider" in updates and updates["provider"] not in ("mock", "openai"):
         raise HTTPException(status_code=422, detail="provider 只能是 mock 或 openai")
+    if "inspiration_proxy" in updates:
+        proxy = str(updates["inspiration_proxy"] or "").strip()
+        if proxy and not proxy.startswith(("http://", "https://", "socks5://", "socks5h://")):
+            raise HTTPException(
+                status_code=422,
+                detail="代理地址要以 http:// 或 socks5:// 开头，例如 http://127.0.0.1:7890",
+            )
+        updates["inspiration_proxy"] = proxy
     if "image_background" in updates and updates["image_background"] not in ("auto", "transparent"):
         raise HTTPException(status_code=422, detail="出图底色只能是 auto 或 transparent")
     if "default_size" in updates:
@@ -88,3 +96,18 @@ def test_text_model(_: User = Depends(require_admin), db: Session = Depends(get_
         return {"ok": True, "message": prompt_studio.test_text_model(settings)}
     except provider.ProviderError as e:
         return {"ok": False, "message": str(e)}
+
+
+@router.post("/test_sync_proxy")
+def test_sync_proxy(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """测试能不能拉到上游提示词库（走当前配置的代理）。
+
+    只下载一个很小的 manifest.json，不写缓存、不入库，几秒就有结果——
+    比让用户点「同步上游」等两分钟才发现代理不通要好得多。
+    """
+    proxy = str(settings_service.get(db, "inspiration_proxy") or "").strip()
+    try:
+        info = inspiration.probe_upstream(proxy)
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)[:300]}
+    return {"ok": True, "message": info}

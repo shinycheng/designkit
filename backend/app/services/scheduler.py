@@ -211,7 +211,13 @@ def run_sync(trigger: str = "auto") -> Tuple[bool, str]:
     renewer.start()
 
     try:
-        manifest = inspiration.fetch_to_cache()
+        # 代理只用于访问 raw.githubusercontent.com；生图网关是局域网地址，不受影响
+        proxy_db = SessionLocal()
+        try:
+            proxy = str(settings_service.get(proxy_db, "inspiration_proxy") or "").strip()
+        finally:
+            proxy_db.close()
+        manifest = inspiration.fetch_to_cache(proxy=proxy)
         stats = inspiration.import_cache_to_db()
         message = "新增 %d、更新 %d、未变化 %d（上游快照 %s）" % (
             stats["created"], stats["updated"], stats["unchanged"],

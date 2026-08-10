@@ -189,7 +189,7 @@ export function renderSettings(container) {
       title: '运行参数',
       description: '调整生成并发、重试、超时和新任务的默认输出。',
       keys: ['worker_concurrency', 'max_attempts', 'request_timeout', 'default_size', 'default_n',
-        'inspiration_auto_sync', 'inspiration_sync_interval_hours'],
+        'inspiration_auto_sync', 'inspiration_sync_interval_hours', 'inspiration_proxy'],
       validate: (draft) => {
         const ranges = [
           ['worker_concurrency', 1, 8, '并发生成数'],
@@ -215,6 +215,10 @@ export function renderSettings(container) {
         const defaultCount = h('input', { class: 'input', type: 'number', min: 1, max: 4, inputmode: 'numeric' });
         const autoSync = h('input', { type: 'checkbox' });
         const syncInterval = h('input', { class: 'input', type: 'number', min: 1, max: 168, inputmode: 'numeric' });
+        const syncProxy = h('input', {
+          class: 'input', type: 'text', autocomplete: 'off',
+          placeholder: 'http://127.0.0.1:7890（留空即直连）',
+        });
         form.register('worker_concurrency', concurrency, numberBinding());
         form.register('max_attempts', attempts, numberBinding());
         form.register('request_timeout', timeout, numberBinding());
@@ -222,6 +226,7 @@ export function renderSettings(container) {
         form.register('default_n', defaultCount, numberBinding());
         form.register('inspiration_auto_sync', autoSync, checkboxBinding(true));
         form.register('inspiration_sync_interval_hours', syncInterval, numberBinding());
+        form.register('inspiration_proxy', syncProxy);
         return h('div', { class: 'dk-panel-stack' },
           inlineAlert('修改并发生成数后需要重启服务才能对 worker 生效。', 'info', { title: '需要重启' }),
           h('div', { class: 'dk-field-grid' },
@@ -237,9 +242,44 @@ export function renderSettings(container) {
                 h('small', { class: 'dk-checkbox-row__description' },
                   '后台执行，不影响使用；多进程部署时只有一个进程会真正同步。'
                   + '连续失败会自动退避重试，不会反复冲击上游。'))),
-            { help: '关闭后只能在「灵感库」页手动点「同步上游」。' }));
+            { help: '关闭后只能在「灵感库」页手动点「同步上游」。' }),
+          field('同步代理', syncProxy, {
+            help: '同步灵感库要访问 GitHub（raw.githubusercontent.com），部分地区直连不通，'
+              + '这时填一个代理地址。留空即直连。'
+              + '只影响灵感库同步——生图网关是局域网地址，永远直连、不走代理。'
+              + '改完先保存，再点下方「测试同步连接」。',
+          }));
+      },
+      extraActions: (form) => {
+        const testSync = button('测试同步连接', {
+          variant: 'secondary',
+          iconName: 'refresh-cw',
+          onclick: async () => {
+            if (form.dirty) {
+              form.setStatus('请先保存当前更改，测试只使用已保存的配置。', 'warning');
+              return;
+            }
+            testSync.disabled = true;
+            testSync.setAttribute('aria-busy', 'true');
+            form.setStatus('正在测试…（只拉一个很小的文件，几秒出结果）', 'saving');
+            try {
+              const result = await api.post('/api/web/settings/test_sync_proxy');
+              form.setStatus(result.message, result.ok ? 'success' : 'error');
+            } catch (error) {
+              form.setStatus(error.message, 'error');
+            } finally {
+              testSync.disabled = false;
+              testSync.removeAttribute('aria-busy');
+            }
+          },
+        });
+        return [testSync];
       },
       validate: (draft) => {
+        const proxy = String(draft.inspiration_proxy || '').trim();
+        if (proxy && !/^(https?|socks5h?):\/\//.test(proxy)) {
+          return '代理地址要以 http:// 或 socks5:// 开头，例如 http://127.0.0.1:7890。';
+        }
         if (!integerBetween(draft.worker_concurrency, 1, 8)) return '并发生成数必须为 1–8 的整数。';
         if (!integerBetween(draft.max_attempts, 1, 5)) return '失败尝试次数必须为 1–5 的整数。';
         if (!integerBetween(draft.request_timeout, 30, 900)) return '生图超时必须为 30–900 秒。';

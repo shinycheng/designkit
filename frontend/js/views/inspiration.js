@@ -18,7 +18,7 @@ export function renderInspiration(container, user) {
   const isAdmin = user.role === 'admin';
   const state = {
     q: '',
-    categoryId: null,
+    categorySlug: null,
     adaptableOnly: false,
     page: 1,
     data: null,
@@ -87,7 +87,7 @@ export function renderInspiration(container, user) {
     try {
       const params = new URLSearchParams({ page: String(state.page), page_size: String(PAGE_SIZE) });
       if (state.q) params.set('q', state.q);
-      if (state.categoryId != null) params.set('category_id', String(state.categoryId));
+      if (state.categorySlug) params.set('category_slug', state.categorySlug);
       if (state.adaptableOnly) params.set('adaptable_only', 'true');
       const data = await api.get('/api/web/inspiration?' + params);
       if (state.stopped || sequence !== state.loadSequence) return;
@@ -125,24 +125,24 @@ export function renderInspiration(container, user) {
   function renderCats() {
     const cats = state.data?.categories || [];
     catBar.replaceChildren(
-      chip('全部', null, state.categoryId === null),
-      ...cats.map((cat) => chip(`${cat.name} ${cat.count}`, cat.id, state.categoryId === cat.id)),
+      chip('全部', null, !state.categorySlug),
+      ...cats.map((cat) => chip(`${cat.name} ${cat.count}`, cat.slug, state.categorySlug === cat.slug)),
     );
   }
 
-  function chip(label, id, active) {
+  function chip(label, slug, active) {
     return h('button', {
       type: 'button',
       class: 'chip' + (active ? ' active' : ''),
       'aria-pressed': String(active),
-      onclick: () => { state.categoryId = id; state.page = 1; void load(); },
+      onclick: () => { state.categorySlug = slug; state.page = 1; void load(); },
     }, label);
   }
 
   function renderGrid() {
     const { items, total } = state.data;
     if (!items.length) {
-      const hasLibrary = total > 0 || state.q || state.categoryId != null;
+      const hasLibrary = total > 0 || state.q || state.categorySlug;
       grid.replaceChildren(emptyState('lightbulb',
         hasLibrary ? '没有匹配的提示词' : '灵感库还是空的',
         {

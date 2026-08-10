@@ -5,6 +5,7 @@
 """
 import json
 import unittest
+import urllib.request
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -106,6 +107,40 @@ class CategoryFilterTests(unittest.TestCase):
             self.assertNotIn("Anime Poster", titles)
         finally:
             inspiration.DIGEST_LIMIT = original
+
+
+class SyncProxyTests(unittest.TestCase):
+    """同步代理只能作用于灵感库下载，绝不能影响生图网关。"""
+
+    def test_no_proxy_does_not_inject_our_proxy(self):
+        """留空时不能注入代理——否则内网环境下同步会被莫名其妙地导去代理。"""
+        plain = inspiration._build_opener("")
+        configured = inspiration._build_opener("http://127.0.0.1:7890")
+
+        def injected(opener):
+            return {
+                h.proxies.get("https")
+                for h in opener.handlers
+                if isinstance(h, urllib.request.ProxyHandler)
+            }
+
+        self.assertNotIn("http://127.0.0.1:7890", injected(plain))
+        self.assertIn("http://127.0.0.1:7890", injected(configured))
+
+    def test_proxy_is_applied_to_both_schemes(self):
+        opener = inspiration._build_opener("http://127.0.0.1:7890")
+        proxies = [h.proxies for h in opener.handlers
+                   if isinstance(h, urllib.request.ProxyHandler)]
+        self.assertTrue(any(p.get("https") == "http://127.0.0.1:7890" for p in proxies))
+        self.assertTrue(any(p.get("http") == "http://127.0.0.1:7890" for p in proxies))
+
+    def test_blank_proxy_variants_are_treated_as_direct(self):
+        for value in ("", "   ", None):
+            opener = inspiration._build_opener(value)
+            injected = [h.proxies for h in opener.handlers
+                        if isinstance(h, urllib.request.ProxyHandler)
+                        and h.proxies.get("https") == value]
+            self.assertEqual(injected, [])
 
 
 if __name__ == "__main__":

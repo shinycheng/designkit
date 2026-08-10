@@ -115,6 +115,11 @@ RUNTIME_DEFAULTS = {
     # 内部部署默认 True（ERP 常在内网）；转公网 SaaS 时改 False 以全面拦截私网 SSRF。
     # 无论此项如何，云元数据(169.254.x)等链路本地/保留地址始终被拦截。
     "allow_internal_targets": os.environ.get("DESIGNKIT_ALLOW_INTERNAL_TARGETS", "true").lower() in ("1", "true", "yes"),
+    # 同步灵感库要访问 raw.githubusercontent.com，部分地区直连不通。
+    # 填了就走代理，留空即直连。形如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080
+    # （socks5 需要装 PySocks，一般用 http 代理即可）。只影响灵感库同步，
+    # 生图网关是局域网地址，永远直连、不走代理。
+    "inspiration_proxy": os.environ.get("DESIGNKIT_INSPIRATION_PROXY", ""),
     # 灵感库自动同步：上游每天更新两次，默认 12 小时对齐即可
     "inspiration_auto_sync": os.environ.get("DESIGNKIT_INSPIRATION_AUTO_SYNC", "true").lower() in ("1", "true", "yes"),
     "inspiration_sync_interval_hours": int(os.environ.get("DESIGNKIT_INSPIRATION_SYNC_INTERVAL_HOURS", "12")),

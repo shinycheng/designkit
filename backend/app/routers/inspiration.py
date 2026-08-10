@@ -28,7 +28,7 @@ def _to_public_dict(t: PromptTemplate, adopted_refs: set) -> dict:
 @router.get("")
 def browse(
     q: Optional[str] = None,
-    category_id: Optional[int] = None,
+    category_slug: Optional[str] = None,
     requires_image: Optional[bool] = None,
     adaptable_only: bool = False,
     page: int = Query(1, ge=1),
@@ -37,8 +37,10 @@ def browse(
     db: Session = Depends(get_db),
 ):
     query = db.query(PromptTemplate).filter(PromptTemplate.source == "youmind")
-    if category_id is not None:
-        query = query.filter(PromptTemplate.category_id == category_id)
+    if category_slug:
+        # 按**全部标签**筛，不是主分类：一条提示词常同属多个分类，
+        # 只认主分类会让「电商主图」416 条只显示出 18 条
+        query = query.filter(inspiration.slug_filter(category_slug))
     if requires_image is not None:
         query = query.filter(PromptTemplate.requires_input_image.is_(requires_image))
     if adaptable_only:
@@ -79,18 +81,26 @@ def browse(
             .all()
         }
 
-    # 各分类的条目数（用于前端分类筛选）
-    facets = [
-        {"id": cid, "name": name, "count": count}
-        for cid, name, count in (
-            db.query(PromptCategory.id, PromptCategory.name, func.count(PromptTemplate.id))
-            .join(PromptTemplate, PromptTemplate.category_id == PromptCategory.id)
-            .filter(PromptTemplate.source == "youmind")
-            .group_by(PromptCategory.id)
-            .order_by(PromptCategory.sort.asc())
-            .all()
-        )
+    # 各分类的条目数：同样按全部标签统计，且与生成页用同一套顺序
+    # （电商相关的排前面），免得两个页面看到的数字和排序对不上
+    order = inspiration.ECOMMERCE_SLUGS + [
+        s for s in inspiration.CATEGORIES if s not in inspiration.ECOMMERCE_SLUGS
     ]
+    facets = []
+    for slug in order:
+        count = (
+            db.query(func.count(PromptTemplate.id))
+            .filter(PromptTemplate.source == "youmind")
+            .filter(inspiration.slug_filter(slug))
+            .scalar()
+        )
+        if count:
+            facets.append({
+                "slug": slug,
+                "name": inspiration.CATEGORIES[slug],
+                "count": count,
+                "recommended": slug in inspiration.ECOMMERCE_SLUGS,
+            })
 
     return {
         "total": total,

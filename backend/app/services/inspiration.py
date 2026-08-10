@@ -141,22 +141,40 @@ def convert_prompt(content: str) -> Tuple[str, List[dict]]:
 
 # ------------------------------------------------------------------ 拉取
 
-def fetch_to_cache(timeout: int = 120) -> Dict[str, Any]:
+def _build_opener(proxy: str = ""):
+    """按需带上代理。
+
+    只给灵感库同步用：它访问的是 raw.githubusercontent.com，部分地区直连不通。
+    **不能用全局 urllib 代理或环境变量**——那会把生图请求也带进代理，
+    而生图网关是局域网地址（192.168.x），走代理必然连不上。
+    """
+    proxy = str(proxy or "").strip()
+    if not proxy:
+        return urllib.request.build_opener()
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+    )
+
+
+def fetch_to_cache(timeout: int = 120, proxy: str = "") -> Dict[str, Any]:
     """下载 manifest + 全部分类文件；全部校验合法后才写入缓存目录。"""
     staged: Dict[str, bytes] = {}
     manifest: Dict[str, Any] = {}
+    opener = _build_opener(proxy)
+    via = "（经代理 %s）" % proxy if proxy else ""
     for slug in list(CATEGORIES) + ["manifest"]:
         url = "%s/%s.json" % (RAW_BASE, slug)
-        _set_status(message="正在下载 %s.json" % slug)
+        _set_status(message="正在下载 %s.json%s" % (slug, via))
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "DesignKit/1.0"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with opener.open(req, timeout=timeout) as resp:
                 raw = resp.read()
         except urllib.error.URLError as exc:
-            raise RuntimeError(
-                "下载 %s.json 失败：%s（如果服务器访问 GitHub 受限，可配置代理后重试）"
-                % (slug, exc)
-            ) from exc
+            hint = (
+                "（当前已配置代理 %s，请确认代理可用）" % proxy if proxy
+                else "（若服务器访问 GitHub 受限，请到「系统设置 → 运行参数」填写同步代理）"
+            )
+            raise RuntimeError("下载 %s.json 失败：%s%s" % (slug, exc, hint)) from exc
         try:
             data = json.loads(raw.decode("utf-8"))
         except json.JSONDecodeError as exc:
@@ -449,3 +467,26 @@ def backfill_slugs_if_needed() -> int:
     result = import_cache_to_db()
     logger.info("分类标签回填完成：%s", result)
     return pending
+
+
+def probe_upstream(proxy: str = "", timeout: int = 20) -> str:
+    """只拉一个 manifest.json 验证上游可达，用于设置页的「测试同步连接」。
+
+    不写缓存、不入库。整轮同步要下 11 个文件、1~2 分钟，让用户等两分钟才发现
+    代理不通太浪费——这里几秒就能给出结论。
+    """
+    url = "%s/manifest.json" % RAW_BASE
+    opener = _build_opener(proxy)
+    req = urllib.request.Request(url, headers={"User-Agent": "DesignKit/1.0"})
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        raise RuntimeError(
+            "连不上上游提示词库：%s%s"
+            % (exc, "（当前代理 %s）" % proxy if proxy else "（当前直连，未配置代理）")
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("上游返回的不是合法 JSON，可能是代理返回了错误页") from exc
+    via = "经代理 %s" % proxy if proxy else "直连"
+    return "上游可达（%s），快照时间 %s" % (via, data.get("updatedAt", "未知"))
