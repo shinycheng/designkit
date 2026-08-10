@@ -95,6 +95,31 @@ class CategoryFilterTests(unittest.TestCase):
     def test_fetch_references_empty_input(self):
         self.assertEqual(inspiration.fetch_references(self.db, []), [])
 
+    def test_digest_can_reach_newly_synced_entries(self):
+        """超额分类必须能选到新同步进来的条目。
+
+        上游每天更新两次，新条目 id 总是最大。以前按 id 升序取前 N 条，
+        「产品营销」这种超额分类里新条目永远进不了候选——同步了也白同步。
+        """
+        for pid in range(10, 20):
+            _entry(self.db, pid, "Packshot %d" % pid,
+                   ["product-marketing"], "packshot on seamless background")
+        self.db.commit()
+        newest = self.db.query(PromptTemplate).order_by(PromptTemplate.id.desc()).first()
+
+        original = inspiration.DIGEST_LIMIT
+        inspiration.DIGEST_LIMIT = 3
+        try:
+            seen = set()
+            for _ in range(50):
+                digest = inspiration.category_digest(self.db, "product-marketing")
+                self.assertEqual(len(digest), 3)          # 上限仍然生效
+                seen.update(d["id"] for d in digest)
+            self.assertIn(newest.id, seen)                # 最新的一条够得着
+            self.assertGreater(len(seen), 3)              # 也不再是固定的同一批
+        finally:
+            inspiration.DIGEST_LIMIT = original
+
     def test_digest_prefilters_oversized_categories(self):
         """上万条的分类要先按「像不像商品摄影」预筛，否则一次调用几十万 token。"""
         original = inspiration.DIGEST_LIMIT

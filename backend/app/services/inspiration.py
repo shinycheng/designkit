@@ -386,7 +386,14 @@ def _is_product_like(row) -> bool:
 
 def _digest_rows(db, slug: str) -> List[PromptTemplate]:
     """取该分类下的条目。超过 DIGEST_LIMIT 时先按「像不像商品摄影」预筛，
-    避免把上万条标题塞进一次调用（社交媒体帖子这类有 5000+ 条）。"""
+    避免把上万条标题塞进一次调用（社交媒体帖子这类有 5000+ 条）。
+
+    超额时用**随机抽样**而不是取前 N 条。按 id 升序切片看着更稳妥，实际有两个
+    要命的毛病：上游每天更新两次，新条目 id 总是更大，在「产品营销」（4063 条、
+    商品向 1281 条）这种分类里会被永远挡在 700 之外——同步了也用不上；而且
+    每次都是同一批 700 条，所有商品共享同一小撮参考，出图风格越用越雷同。
+    抽样每个任务只做一次，同一批次内的多张图仍共用同一份参考，风格照样一致。
+    """
     rows = (
         db.query(PromptTemplate)
         .filter(PromptTemplate.source == "youmind")
@@ -398,9 +405,11 @@ def _digest_rows(db, slug: str) -> List[PromptTemplate]:
         return rows
     preferred = [r for r in rows if _is_product_like(r)]
     if len(preferred) >= DIGEST_LIMIT:
-        return preferred[:DIGEST_LIMIT]
-    rest = [r for r in rows if not _is_product_like(r)]
-    return preferred + rest[: DIGEST_LIMIT - len(preferred)]
+        picked = random.sample(preferred, DIGEST_LIMIT)
+    else:
+        rest = [r for r in rows if not _is_product_like(r)]
+        picked = preferred + random.sample(rest, DIGEST_LIMIT - len(preferred))
+    return sorted(picked, key=lambda r: r.id)
 
 
 def category_digest(db, slug: str) -> List[dict]:
