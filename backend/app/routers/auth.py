@@ -7,55 +7,57 @@
 详细缘由见 services/file_access.py 的文件头。
 """
 import logging
-import threading
-import time
-from collections import defaultdict, deque
-from typing import Deque, Dict, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..deps import get_current_user, get_db
+from ..deps import client_ip, get_current_user, get_db
 from ..models import User
 from ..security import create_token, hash_password, verify_password
-from ..services import file_access, settings_service
+from ..services import file_access, ratelimit, settings_service
 
 logger = logging.getLogger("designkit.auth")
 
 router = APIRouter(prefix="/api/web/auth", tags=["网页-登录"])
 
-# 简单的内存登录限速：同一 IP+用户名 15 分钟内最多 10 次失败，超过锁 15 分钟。
-# 内部工具够用；对外规模化时应换成 Redis/反代层限速。
-_LOGIN_WINDOW = 15 * 60
-_LOGIN_MAX_FAILS = 10
-_login_fails: Dict[str, Deque[float]] = defaultdict(deque)
-_login_lock = threading.Lock()
+# ═══════════════════════════════════════════════════════════════════
+#  登录限速：交给 services/ratelimit.py（落库，全进程共用一份计数）
+# ═══════════════════════════════════════════════════════════════════
+#
+# 这里以前是一个进程内的 `defaultdict(deque)`。参数没变（15 分钟内 10 次失败、
+# 之后锁 15 分钟，见 config.py 的 ratelimit_login_*），换掉的是**存放位置**，
+# 因为原来那套在公网部署下有三个具体问题：
+#
+#   1. **多进程各存一份**。上了公网就要开多 worker（或多容器），
+#      设置里写的「10 次」实际变成「10 × 进程数」，而界面上完全看不出来。
+#   2. **失败记录永久驻留在内存里**。原实现只在**登录成功**时清账，
+#      而 key 由「IP + 用户名」拼成、两段都是攻击者能随便写的——
+#      拿随机用户名撞一轮，这个字典就只涨不减，没人会去看它有多大。
+#   3. **取的是 request.client.host**。反代后面它恒等于反代自己的地址，
+#      全站共用一个桶：一个人被锁，所有人一起登不进来。
+#
+# 现在：计数落库（重启不丢、多进程共用、过期行由 ratelimit 自己清理），
+# IP 走 deps.client_ip —— 按设置项 trusted_proxy_hops 从 X-Forwarded-For
+# **右边**数第几段，绝不取最左边那一段（那一段是客户端自己写的，
+# 攻击者每次换一个假 IP 就能让限速彻底失效，详见 deps.client_ip 的注释）。
+#
+# ⚠ 公网部署前必须把 trusted_proxy_hops 配对：套一层 Nginx/Caddy/群晖反代就填 1，
+#   前面还有 CDN 就填 2。填 0（默认）而实际有反代时，行为退化成改造前那样——
+#   全站共用一个桶，严但没有安全问题；宁可这样，也不能填多了去信伪造的地址。
+_LOGIN_SCOPE = "login"
 
 
-def _rate_key(request: Request, username: str) -> str:
-    ip = request.client.host if request.client else "?"
+def _rate_key(request: Request, username: str, db: Session) -> str:
+    """限速的桶 key：「来源 IP|用户名」。
+
+    两段一起用，是为了让「同一个人反复输错自己的密码」和「同一个 IP 拿一堆用户名
+    撞库」互不影响：前者只锁住他自己那一个桶，别人照常登录。
+    key 进库前会被 ratelimit 截断到 128 字符（用户名来自请求体，可以很长）。
+    """
+    ip = client_ip(request, ratelimit.trusted_proxy_hops(db))
     return "%s|%s" % (ip, username.lower())
-
-
-def _check_login_allowed(key: str) -> None:
-    now = time.time()
-    with _login_lock:
-        fails = _login_fails[key]
-        while fails and now - fails[0] > _LOGIN_WINDOW:
-            fails.popleft()
-        if len(fails) >= _LOGIN_MAX_FAILS:
-            raise HTTPException(status_code=429, detail="登录尝试过于频繁，请 15 分钟后再试")
-
-
-def _record_login_fail(key: str) -> None:
-    with _login_lock:
-        _login_fails[key].append(time.time())
-
-
-def _clear_login_fails(key: str) -> None:
-    with _login_lock:
-        _login_fails.pop(key, None)
 
 
 class LoginBody(BaseModel):
@@ -170,15 +172,29 @@ def login(
     db: Session = Depends(get_db),
 ):
     username = body.username.strip()
-    key = _rate_key(request, username)
-    _check_login_allowed(key)
+    key = _rate_key(request, username, db)
+    # 先问一句「现在能不能试」。**必须在校验密码之前**：verify_password 是 20 万轮
+    # PBKDF2，一次约 0.1 秒 CPU，不先拦住的话光靠反复 POST 就能把机器压满。
+    decision = ratelimit.check(db, _LOGIN_SCOPE, key)
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=429,
+            # decision.message 已经是中文人话，而且**写明了还要等几分钟**——
+            # 只说「过于频繁」的话用户只会一直点，直到确信系统坏了。
+            detail=decision.message,
+            # 标准头，给脚本和反代看；浏览器不看它，所以话还要写在 detail 里。
+            headers={"Retry-After": str(max(1, decision.retry_after))},
+        )
     user = db.query(User).filter(User.username == username).first()
     if user is None or not verify_password(body.password, user.password_hash):
-        _record_login_fail(key)
+        ratelimit.record_failure(db, _LOGIN_SCOPE, key)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     if not user.is_active:
+        # 停用账号**不计一次失败**：密码是对的，这不是撞库，是本人在敲自己的门。
+        # 计进去只会让他连「你的账号已停用」这句话都看不到（被 429 顶掉），
+        # 然后去问管理员「我登不上」，管理员看到的也是一个语焉不详的限速。
         raise HTTPException(status_code=403, detail="账号已停用")
-    _clear_login_fails(key)
+    ratelimit.reset(db, _LOGIN_SCOPE, key)
     _issue_file_cookie(response, db, user, request)
     return {"token": create_token(user.id, user.token_version or 0), "user": _user_to_dict(user)}
 

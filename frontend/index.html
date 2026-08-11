@@ -6,7 +6,9 @@
   <meta name="theme-color" content="#f3f5f7">
   <meta name="description" content="DesignKit 商品视觉生成与管理工作台">
   <title>DesignKit · 商品视觉工作台</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <!-- 这里以前有一条 preconnect 到 cdn.jsdelivr.net。前端依赖已全部搬进仓库
+       （frontend/vendor/ 与 frontend/assets/），页面不再请求任何外部域名，
+       预连接自然也一并删掉——留着只会白开一条到第三方的 TLS 连接。 -->
   <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>

@@ -32,8 +32,13 @@ services:
       - ${DESIGNKIT_DATA_LOCATION:-./data}:/app/data
     ports:
       # 默认监听所有网卡，同局域网的电脑、手机、ERP 都能访问。
-      # ⚠️ 切勿把这个端口转发到公网——当前是 HTTP 明文，登录密码会裸奔。
-      # 只想本机访问就在 .env 里设 DESIGNKIT_BIND_HOST=127.0.0.1
+      # ⚠️ 切勿把这个端口直接转发到公网——它说的是 HTTP 明文，登录密码会裸奔。
+      #
+      # 公网部署的正确做法：在 .env 里设 DESIGNKIT_BIND_HOST=127.0.0.1
+      #（让 8787 只监听本机），前面用 Nginx / Caddy 配好 HTTPS 再转发进来；
+      # 同时把 .env 里的 DESIGNKIT_TRUSTED_PROXY_HOPS 按反代层数填上（一层填 1），
+      # 否则限速看到的是反代自己的地址，全站所有人共用一个桶。
+      # 完整清单见 README 第五章「公网服务器上必须做的四件事」。
       - "${DESIGNKIT_BIND_HOST:-0.0.0.0}:${DESIGNKIT_HOST_PORT:-8787}:8787"
     depends_on:
       db:

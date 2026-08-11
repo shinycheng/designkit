@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -41,6 +42,199 @@ class User(Base):
     # 预留：转对外产品时的每月生成额度（None = 不限制）
     monthly_quota: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  身份体系：一个人 = 一行 users + 若干种登录方式
+# ══════════════════════════════════════════════════════════════════════
+
+# auth_identities.provider 的取值：这个人是用哪一种方式登录进来的。
+# **本期只会出现 "password" 一种**，其余三个先把名字定下来，是为了让以后加
+# 手机号 / 微信 / QQ 时只需要往这张表里插行，不用回头改任何已有的表或代码。
+#
+# 为什么本期只做 password：手机号验证码要先申请短信签名和模板（需备案主体、
+# 1~3 个工作日），而且短信是真花钱、被刷就是费用黑洞；微信 / QQ 要开放平台的
+# 企业资质和应用审核，周期以周计。邀请码零成本、当天能上、随时能撤。
+AUTH_IDENTITY_PROVIDERS = (
+    "password",  # 用户名 + 密码（identifier = 用户名）
+    "phone",     # 手机号 + 短信验证码（identifier = 手机号，11 位纯数字）
+    "wechat",    # 微信开放平台（identifier = openid）
+    "qq",        # QQ 互联（identifier = openid）
+)
+
+
+class AuthIdentity(Base):
+    """一种「登录方式」和它指向的人。一个 User 可以有多行。
+
+    为什么要单独一张表，而不是继续往 users 上加 phone / wechat_openid 这些列：
+    ① 每加一种登录方式就要给 users 加一列，而「给老表加列」在本项目里是有类型
+       陷阱的一条路（详见 migrations.py 文件头），新表则是零成本；
+    ② 「这个标识有没有被别人占用」需要唯一约束，摊在 users 上就是每种方式一个
+       部分唯一索引，SQLite 和 PostgreSQL 的写法还不一样；
+    ③ 一个人绑了几种方式、哪种是什么时候绑的、最近一次用哪种登的，摊平在 users
+       上就只能靠一堆互相矛盾的空值去猜。
+
+    这张表是**新表**，由 create_all 自动建出、带齐全部列和索引，对存量数据零影响
+    （新表随时能建，老表加列才有风险——见 migrations.py 的「纪律三」）。
+    所以这里故意一次把四种方式要用的列都留好，以后加手机号是纯增量。
+
+    ⚠ 本期的登录仍然走 users.password_hash（routers/auth.py 读的是那里），
+    这张表在本期只用于**记录一个账号是怎么来的、绑了哪些方式**，不是登录的判据。
+    存量用户在这张表里没有任何行，这是正常的、也不需要回填——回填与否都不影响
+    任何人登录。真要把密码校验搬到这张表来，是一次单独的、需要连同 auth.py
+    和 users.password_hash 一起改的动作，不要顺手做。
+    """
+
+    __tablename__ = "auth_identities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 这行身份属于谁。删用户时连带删掉他的所有登录方式（CASCADE）：
+    # 登录方式脱离了人没有任何意义，留着反而会让那个手机号 / openid 永久被占着，
+    # 本人换个账号重新绑时会撞唯一约束，而错误信息里完全看不出是被自己的旧号占了。
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # 取值见上面的 AUTH_IDENTITY_PROVIDERS
+    provider: Mapped[str] = mapped_column(String(16))
+    # 这种方式下的标识：用户名 / 手机号 / openid。
+    # **写进来之前必须先归一化**（用户名统一小写、手机号只留 11 位数字、
+    # openid 原样），归一化由写入方负责。不归一的话，"Tom" 和 "tom" 会各占一行、
+    # 都能建出来，然后登录时按哪一个查就成了玄学。
+    identifier: Mapped[str] = mapped_column(String(128))
+    # 这种方式自带的凭据（密码类方式的哈希）。**本期恒为 NULL**：
+    # 密码的唯一真相仍在 users.password_hash，两处都存必然会出现「改了一处、
+    # 另一处还是老密码」，而且是那种「有时能登进去有时登不进去」的鬼故事。
+    # 留这一列是为了将来搬家时不用给老表加列，不是让本期两头写。
+    credential: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    # 这个标识核验过了没（手机号收到过验证码 / 第三方回调验过 openid）。
+    # password 方式没有「核验」这一说，建行时直接填上创建时间即可。
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 第三方带回来的附加信息（微信 unionid、昵称等）。用 JSON 是因为每家字段都不同，
+    # 为它们各加几列会把这张表撑成一张只有零星几格有值的宽表。
+    # ⚠ 别往这里塞 access_token / refresh_token 之类的凭据：这一列是明文的。
+    extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        # 唯一约束建在 (provider, identifier) 上：**同一种方式下的标识不能重复**。
+        # 不能只对 identifier 建唯一——手机号 13800000000 和某个恰好长一样的
+        # 用户名会互相撞车；也不能不建——那样同一个微信号能绑到两个人身上，
+        # 登录时查出两行，代码只会拿第一行，等于随机登进别人的账号。
+        Index(
+            "uq_auth_identities_provider_identifier",
+            "provider", "identifier",
+            unique=True,
+        ),
+        # 一个人同一种方式只留一行：换手机号是「改这一行」或「删了重绑」，
+        # 不是「再加一行」。少了这条，一个人会绑上两个手机号，管理员想解绑时
+        # 解掉一个还剩一个，而界面上只显示一个，怎么解都解不干净。
+        # 将来真要支持「一人多号」，把这条索引去掉就行（DROP INDEX 两边写法一致，
+        # 是个纯放宽的变更）；反过来事后再加就得先清理存量重复，代价大得多。
+        Index(
+            "uq_auth_identities_user_provider",
+            "user_id", "provider",
+            unique=True,
+        ),
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  邀请码：本期「让用户自己开户」的唯一入口
+# ══════════════════════════════════════════════════════════════════════
+
+
+class InviteCode(Base):
+    """一张邀请码。发给谁、谁才能注册。
+
+    为什么用邀请码开第一版：零成本、不用等任何资质、当天能上，限速压力也小，
+    出了事随手作废即可。手机号 / 微信排在后面（要资质、要审核、短信要花钱）。
+
+    ⚠ 码是**明文**存在这一列里的，这是有意的取舍：
+    运营同学要在界面上看见码、复制下来发给人，还要能重发给同一个人——哈希之后
+    这三件事全做不了（只剩「作废重发一张新码」这一条路，对方手里的旧码会突然失效，
+    而他完全不知道为什么）。代价是：拿到数据库或备份的人就拿到了所有未用的码。
+    这个代价可以接受，因为一张码只能换来一个**普通成员**账号（拿不到管理员权限、
+    拿不到别人的数据、也拿不到网关 Key），而且管理员随时能作废。
+    → 但这也意味着：**别把 max_uses 设得很大又不设有效期**，那等于一张长期
+      有效的万能通行证躺在库里。界面上创建时的默认值见 config.RUNTIME_DEFAULTS
+      里的 invite_code_default_*。
+
+    并发要点（写给实现兑换接口的人）：`used_count < max_uses` 这个判断
+    **不能先 SELECT 再 UPDATE**——两个人同时用最后一次名额时会双双通过检查，
+    结果一张一次性码开出两个号。要用带条件的原子 UPDATE + 看 rowcount：
+
+        UPDATE invite_codes SET used_count = used_count + 1
+         WHERE id = :id AND used_count < max_uses AND revoked_at IS NULL
+
+    rowcount == 1 才算抢到名额（SQLite 与 PostgreSQL 都支持这个写法，
+    与 SyncState 那把分布式锁是同一个套路）。
+    """
+
+    __tablename__ = "invite_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 码本身。**存归一化后的形式**（统一大写、去掉空格和连字符），
+    # 校验时也要先按同样的规则归一化再查——否则用户从聊天记录里复制过来带个
+    # 尾随空格，或者手打成小写，就会得到「邀请码无效」，而他看着屏幕上一模一样的
+    # 字符完全无法理解。长度给到 32 是给将来换更长的码留余地，今天用不满。
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # 这张码最多能用几次 / 已经用了几次。
+    # max_uses = 1 是最常见的用法：一张码对一个人，谁用了一目了然。
+    max_uses: Mapped[int] = mapped_column(Integer, default=1)
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 有效期。NULL = 永不过期（**不推荐**，理由见类文档）。
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 作废时间。NULL = 没作废。
+    # 为什么用时间戳而不是一个 is_revoked 布尔：出事时第一个要回答的问题是
+    # 「这码是什么时候停的、停之前有没有被用过」——布尔答不了，时间戳一眼就能
+    # 和下面 invite_redemptions 的 created_at 对上。
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 备注：这张码是发给谁的（「给仓库小王」）。纯给人看的，回收时全靠它。
+    note: Mapped[str] = mapped_column(String(128), default="")
+    # 谁建的。人被删掉时置空而不是连带删码——码可能还在别人手里等着用，
+    # 因为发码的管理员离职就让码悄悄消失，对方会遇到「昨天还好好的今天就无效了」。
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class InviteRedemption(Base):
+    """一次「用邀请码注册成功」的记录。**只在真的开出账号之后才写**。
+
+    为什么必须有这张表：出问题时（比如某张码被人转发到群里刷号）要能回答
+    「这张码到底被谁、什么时候、注册成了哪个账号」。光看 InviteCode.used_count
+    只知道被用了几次，查不出是谁——那时候唯一能做的就是把所有新号一起停掉。
+
+    注意与 used_count 的关系：used_count 是抢名额用的原子计数器，
+    这张表是给人看的流水。两者理论上应当一一对应，但**不要拿这张表的行数
+    去当作名额判据**（并发下先加计数、后写流水，中间那一瞬间对不上是正常的）。
+    """
+
+    __tablename__ = "invite_redemptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 用的哪张码。码被删掉时置空，但下面 code_snapshot 里还留着码的字面值——
+    # 用 CASCADE 的话，管理员删掉一张有问题的码，正好把「这张码开了哪些号」
+    # 这份唯一的证据一起删了，而那恰恰是他删码时最需要的东西。
+    invite_code_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("invite_codes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # 码的字面快照，供上面那种「码已删」的情况下仍能对上号
+    code_snapshot: Mapped[str] = mapped_column(String(32), default="")
+    # 注册成了哪个账号。删用户时置空，同样靠下面的快照留痕。
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    username_snapshot: Mapped[str] = mapped_column(String(64), default="")
+    # 注册请求来自哪个 IP。45 是 IPv6 字符串的最大长度（含 IPv4 映射写法）。
+    # ⚠ 群晖上套了反代时，request.client.host 是反代自己的地址、全站一个值，
+    # 这一列会全是同一个 IP。它只是个线索，不要拿来当判据。
+    client_ip: Mapped[str] = mapped_column(String(45), default="")
+    # 浏览器 UA，截断存。用来看「同一张码的几次使用是不是同一台设备」。
+    user_agent: Mapped[str] = mapped_column(String(256), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 # user_gateway_accounts.state 的取值。用字符串而不是布尔，是因为「开通网关账号」
@@ -301,3 +495,47 @@ class SyncState(Base):
     last_status: Mapped[str] = mapped_column(String(16), default="idle")  # idle/running/success/failed
     last_message: Mapped[str] = mapped_column(Text, default="")
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class RateLimitState(Base):
+    """限速计数器（登录失败次数、以后的短信验证码/注册次数）。
+
+    为什么要落到数据库、而不是继续用进程内的字典（原来 routers/auth.py 就是那样）：
+      1. 多进程 / 多容器部署时每个进程各存一份，配的「10 次」实际是「10 × 进程数」；
+      2. 服务一重启，攻击者攒下的失败记录全部清零，重启就等于解封；
+      3. 进程内的字典**只在登录成功时才清**，失败记录会一直留着，而 key 由
+         「IP + 用户名」拼成、两段都是攻击者随便写的，等于给了一条无上限的内存增长路径。
+    落库之后三条一起解决：全进程共用同一份计数、重启不丢、过期行由 services/ratelimit.py
+    定期删掉（还带每个 scope 的行数上限）。
+
+    ⚠️ **这是新表**，由 create_all 自动建出、带齐全部列，对存量数据零影响
+    （见 migrations.py 纪律三：能建新表就别给老表加列）。
+
+    主键是 (scope, key) 两列：
+      - scope 是「哪一类限速」，例如 login；以后加 sms_code / register 只是多一个取值，
+        不用改表结构，也不会和登录那一路互相干扰。
+      - key 是「限谁」，登录这一路是 "IP|用户名"。它的内容由外部输入拼出来，
+        所以 services/ratelimit.py 会先截断到 128 字符再写进来——列宽在 PostgreSQL 上
+        是硬约束，超长会直接报错（SQLite 反而会照单全收），两边行为不一致最难查。
+
+    计数用「带条件的 UPDATE + 看 rowcount」保证原子性，写法照抄上面 SyncState 的锁，
+    SQLite 与 PostgreSQL 都适用；不引入 Redis（用户是群晖 NAS 单机部署，
+    多一个中间件就多一份她要维护、要备份、会挂掉的东西）。
+    """
+
+    __tablename__ = "rate_limit_state"
+
+    scope: Mapped[str] = mapped_column(String(32), primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    # 当前计数窗口的起点。窗口过期后整行会被重置成「新窗口的第 1 次」，
+    # 而不是删掉再插入——重置是一条带条件的 UPDATE，并发下天然只有一个人做得成。
+    window_start: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    # 本窗口内已经失败了几次。列名不叫 count：count 在 PostgreSQL 里是聚合函数名，
+    # 拿它当列名虽然合法，但拼出来的 SQL 读起来极易误会。
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    # 封锁到什么时候（None = 没被封）。计数超过阈值时才写上，
+    # 到点自动失效，不需要任何人去手工解封。
+    blocked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 最后一次动这行的时间。带索引是给定期清理用的：清理就是按它排序删旧行，
+    # 没有索引的话，行数一多每次清理都要全表扫。
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

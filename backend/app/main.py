@@ -60,8 +60,8 @@ from .config import FRONTEND_DIR, RUNTIME_DEFAULTS
 from .database import SessionLocal, engine
 from .migrations import run_schema_upgrade
 from .routers import (
-    account, apikeys, auth, files, generations, inspiration, settings_router,
-    templates, uploads, users, v1,
+    account, apikeys, auth, files, generations, inspiration, invites, register,
+    settings_router, templates, uploads, users, v1,
 )
 from .seed import seed
 from .services import inspiration as inspiration_service
@@ -188,6 +188,14 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(auth.router)
+# 自助注册（免登录）与邀请码管理（管理员）。
+# register 是**全系统唯一一条不需要登录的写接口**，它自己会在每次请求里重新确认
+# 「注册总开关开着 + 允许访问内网关着」这个组合（见 routers/register.py 文件头），
+# 所以放在这里不需要额外包一层依赖。开放注册的**前置闸门**在
+# routers/settings_router.py 的 _apply_self_register_updates 里，两处是一套闸门的两半：
+# 设置层负责「物理上打不开」，注册层负责「万一被绕过也开不了门」。
+app.include_router(register.router)
+app.include_router(invites.router)
 app.include_router(account.router)
 app.include_router(users.router)
 app.include_router(uploads.router)

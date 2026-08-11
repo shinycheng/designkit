@@ -1,3 +1,4 @@
+import ipaddress
 import re
 import threading
 import time
@@ -224,6 +225,176 @@ def _apply_sub2api_updates(current: Dict[str, Any], updates: Dict[str, Any]) -> 
         )
 
 
+# ══════════════════════════════════════════════════════════════════
+#  开放自助注册的**硬前置闸门**
+# ══════════════════════════════════════════════════════════════════
+#
+# 打开「自助注册」等于把这个系统的大门对陌生人敞开：谁都能自己建号、登录、
+# 建 ERP Key、驱动服务端去访问它指定的地址。所以打开它之前有几件事必须先做完。
+#
+# **这些前提写在代码里，不写在文档里。** 项目里已经有过教训：文档说了、
+# 用户照着做的时候漏了一条，出事之后谁也分不清是文档错了还是自己做错了。
+# 只要有一条不满足，这个开关在接口层就**打不开**——不是提示、不是警告，是 422。
+#
+# 闸门是**双向**的：注册开着的时候，把下面任何一条改回不安全的值同样会被拒。
+# 只做「打开时检查一次」等于没做——管理员可以先打开注册、再把内网访问改回来，
+# 而那正是最危险的组合，界面上还什么都看不出来。
+#
+# 三条前提，以及各自「不满足会发生什么」：
+#
+#   ① allow_internal_targets 必须是 False。
+#      开着它，v1 接口的 image_urls / callback_url 可以让**服务端**去访问内网的
+#      任意 http 地址——包括同一内网里那台 Sub2API 的管理端口，上面挂着能建号、
+#      能改余额、能读任意用户明文 API Key 的接口。而自助注册意味着陌生人能自己
+#      拿到 ERP Key。两者叠在一起，就是把内网的门连同钥匙一起发出去。
+#
+#   ② public_base_url（对外访问地址）必须填成别人真能打开的地址。
+#      新注册的用户拿到的图片链接、给 ERP 的签名直链、webhook 回调地址全基于它拼。
+#      留着默认的 http://127.0.0.1:8787 的话，每个新用户拿到的链接都指向他自己的
+#      电脑，全部打不开，而系统这边一条报错都不会有。
+#      公网域名还必须是 https：注册页要提交密码，http 上是明文过网。
+#
+#   ③ files_signed_only 必须是 True（图片必须带凭证才能看）。
+#      关掉它，知道地址就能下载任何人的商品图和出图结果。内部几个人用还能靠
+#      「地址没人知道」凑合，一旦谁都能注册，「谁都能注册」也就意味着谁都能进来
+#      翻别人的图。
+#
+# ⚠ 这三项的**默认值一个都没改**（allow_internal_targets 仍是 True）：改默认会
+#   静默打断现有的 ERP 内网取图。要开放注册的人自己去把它关掉，这是有意的顺序。
+
+# 一填就等于「谁也访问不到」的主机名。ip6-localhost 是 Debian 系 /etc/hosts 里的写法。
+_LOOPBACK_HOSTNAMES = frozenset({"localhost", "localhost.localdomain", "ip6-localhost"})
+
+# 只在局域网里解析得出来的域名后缀（mDNS、路由器自建域、RFC 8375）。
+_LAN_DOMAIN_SUFFIXES = (".local", ".lan", ".internal", ".intranet", ".home.arpa", ".localdomain")
+
+# 触发前置检查的几项。只要这次保存动到了其中任何一项，就重算一遍闸门。
+#
+# 为什么不是「每次保存都查」：万一库里已经处在一个不合法的组合里（老库遗留、
+# 或者有人直接改了数据库），那样会把管理员锁死在设置页上——改任何一项都存不了，
+# 包括「把注册关掉」这个唯一的出路。只在动到相关项时查，既堵死了所有会造成
+# 危险组合的**改动**，又永远留着一条改回来的路。
+_SELF_REGISTER_GATE_KEYS = (
+    "self_register_enabled", "allow_internal_targets", "files_signed_only", "public_base_url",
+)
+
+
+def _host_is_lan_only(host: str) -> bool:
+    """这个主机名/地址是不是「只在局域网里能访问」。
+
+    判断不出来的（一个普通域名）一律当作**公网**——保守方向是把话说严：
+    最坏结果是让管理员把内网地址也填成 https，而反过来（把公网域名误判成内网）
+    会放过一个明文传密码的部署。
+    """
+    text = (host or "").strip().lower().strip(".")
+    if not text:
+        return False
+    try:
+        # is_private 覆盖 10/8、172.16/12、192.168/16、169.254/16、fc00::/7 等
+        return bool(ipaddress.ip_address(text).is_private)
+    except ValueError:
+        pass
+    if "." not in text:
+        # 光一个主机名（nas、designkit）只可能在局域网里解析得出来
+        return True
+    return text.endswith(_LAN_DOMAIN_SUFFIXES)
+
+
+def _public_base_url_problem(raw: Any) -> str:
+    """「对外访问地址」够不够格用来开放注册。没问题返回空串。
+
+    注意这比 update_settings 里那条基础校验（只看有没有 http:// 开头）严得多，
+    而且**只在开放注册时才要求**——内部部署填个 http://192.168.x.x:8787 是完全
+    正常的，不该因为加了这个功能就把现有部署判成配置错误。
+    """
+    url = str(raw or "").strip().rstrip("/")
+    if not url:
+        return (
+            "现在是空的。请填成别人在浏览器里访问这个系统时用的那个完整地址，"
+            "例如 https://designkit.example.com"
+        )
+    if not url.startswith(("http://", "https://")):
+        return "要以 http:// 或 https:// 开头，例如 https://designkit.example.com"
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        return "里面没看到域名或 IP，例如 https://designkit.example.com"
+    if host in _LOOPBACK_HOSTNAMES:
+        return (
+            "现在填的是 %s，那是「服务器自己」的意思，别人打不开。"
+            "请填成别人访问时用的那个地址" % host
+        )
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None and (address.is_loopback or address.is_unspecified):
+        return (
+            "现在填的是 %s，那是「服务器自己」的意思，别人打不开。"
+            "请填成别人访问时用的那个地址" % host
+        )
+    if parsed.scheme == "http" and not _host_is_lan_only(host):
+        return (
+            "现在填的是 http://（明文）。自助注册页要让陌生人在上面填密码，"
+            "明文传输等于把密码贴在路上。请配好 https 证书之后，把这里改成 "
+            "https://%s" % host
+        )
+    return ""
+
+
+def _self_register_blockers(merged: Dict[str, Any]) -> List[str]:
+    """按合并后的设置算一遍：还有哪几条前提没满足。每一条都写清「怎么改」。"""
+    problems: List[str] = []
+    if bool(merged.get("allow_internal_targets")):
+        problems.append(
+            "①「允许对外接口访问内网地址」还开着，请把它关掉。"
+            "开着它，注册进来的陌生人可以让本系统替他去访问你内网里的任意地址"
+            "（包括生图网关的管理端口，那上面能建号、改余额、读别人的 Key）。"
+        )
+    problem = _public_base_url_problem(merged.get("public_base_url"))
+    if problem:
+        problems.append(
+            "②「对外访问地址」还不能用：%s。新用户拿到的图片链接和回调地址都按它拼，"
+            "填错了他们会拿到一堆打不开的链接，而系统这边不会有任何报错。" % problem
+        )
+    if not bool(merged.get("files_signed_only")):
+        problems.append(
+            "③「图片必须带凭证才能访问」是关的，请把它打开。"
+            "关着它，只要知道图片地址就能下载任何人的商品图和出图结果——"
+            "内部几个人用还能凑合，谁都能注册之后就等于谁都能进来翻别人的图。"
+        )
+    return problems
+
+
+def _apply_self_register_updates(current: Dict[str, Any], updates: Dict[str, Any]) -> None:
+    """自助注册的硬前置闸门（双向）。不满足就 422，并说清是哪一条、怎么改。
+
+    current 是**改之前**库里的值，updates 是这次要改的。两者合并之后再判断，
+    所以「一次保存里同时打开注册并关掉内网访问」是允许的（也是推荐的做法），
+    而「打开注册但内网还开着」和「注册开着却把内网改回来」都会被拦下。
+    """
+    if not any(key in updates for key in _SELF_REGISTER_GATE_KEYS):
+        return
+    merged = dict(current)
+    merged.update(updates)
+    if not bool(merged.get("self_register_enabled")):
+        # 注册是关的（或者这次正要关掉）→ 上面那三条都不是前提，随便改。
+        # 关掉注册这条路必须永远畅通，否则库里一旦处在危险组合里就没法收场。
+        return
+    problems = _self_register_blockers(merged)
+    if not problems:
+        return
+    was_on = bool(current.get("self_register_enabled"))
+    if not was_on:
+        head = "还不能开放自助注册，请先把下面这几条改好（可以在这一页一起改完再保存）："
+    else:
+        head = (
+            "这一步会让「自助注册」失去它的前提条件，所以没有保存。"
+            "自助注册现在是开着的，要么先把它关掉，要么保持下面这几条："
+        )
+    raise _fail(head + "\n" + "\n".join(problems))
+
+
 @router.get("")
 def get_settings(_: User = Depends(require_admin), db: Session = Depends(get_db)):
     return _settings_payload(db)
@@ -250,7 +421,11 @@ def update_settings(
                      "allow_internal_targets", "inspiration_auto_sync",
                      "files_signed_only", "sub2api_auto_provision",
                      "sub2api_keep_password", "sub2api_verify_tls",
-                     "gateway_shared_fallback"):
+                     "gateway_shared_fallback",
+                     # self_register_enabled 少了这一条会出大事：前端传字符串 "false"
+                     # 时 Python 会当成真值存进去，注册就被**静默打开**了——
+                     # 而下面那道前置闸门读的也是这个值，会以为管理员确实想开。
+                     "self_register_enabled"):
         if bool_key in updates and not isinstance(updates[bool_key], bool):
             raise HTTPException(status_code=422, detail="%s 必须是 true 或 false" % bool_key)
     if "provider" in updates and updates["provider"] not in ("mock", "openai"):
@@ -329,6 +504,20 @@ def update_settings(
         # 于是白白消耗一次重试次数。上限 120 秒：再长会让后台 worker
         # 卡在一个连不上的地址上，把排在后面的人一起拖住。
         "sub2api_timeout": (3, 120, "连接 Sub2API 的超时（秒）"),
+        # ── 自助注册 ──
+        # 同一个来源每小时最多尝试几次。下限 1 而不是 0：填 0 等于「一个人都注册不了」，
+        # 那应该去把总开关关掉，而不是留着开关、在限速里悄悄堵死。
+        # 上限 1000 只是防手滑（填成 100000 等于没限速）。
+        "self_register_ip_per_hour": (1, 1000, "同一来源每小时注册尝试次数"),
+        # 全站每天最多成功注册几个。这是最后一道兜底，每多一个账号就多一个
+        # 要开通网关、要花钱的人头，所以宁可小。上限 10000 同样只是防手滑。
+        "self_register_daily_limit": (1, 10000, "全站每天最多新增账号数"),
+        # 新建邀请码时预填的默认值（创建时还能改，范围与 invites.py 里一致）。
+        "invite_code_default_max_uses": (1, 1000, "邀请码默认可用次数"),
+        # 下限是 0，**0 表示永不过期**（invites.py 就是这么解释这个值的）。
+        # 这里若写成 1，界面上就再也填不出「永久码」，而接口那边却支持——
+        # 两边对不上时用户只会觉得系统坏了。
+        "invite_code_default_valid_days": (0, 365, "邀请码默认有效天数（0=永不过期）"),
     }
     for int_key, (low, high, label) in int_ranges.items():
         if int_key not in updates:
@@ -343,6 +532,10 @@ def update_settings(
             )
         updates[int_key] = value
     _apply_sub2api_updates(current, updates)
+    # 自助注册的硬前置闸门。**必须排在 public_base_url 那段规整之后**：
+    # 它要按规整过的值（去掉末尾斜杠）判断，否则同一个地址会因为多一个 "/"
+    # 时而通过时而不过。也必须排在 set_many 之前——闸门的意义就是「存不进去」。
+    _apply_self_register_updates(current, updates)
     settings_service.set_many(db, updates)
     # 地址/管理员 Key/分组 id 一改，上一次的自检结论立刻就作废了。
     # 不清掉的话，管理员改完配置马上点自检，看到的还是 60 秒前那份旧结果——

@@ -1,0 +1,219 @@
+/*
+ * 邀请码页。
+ * 行卡片的骨架照抄 users.css（同样是「列表 + 行内操作」），
+ * 管理员在「成员账号」和「邀请码」之间来回切时不用重新认一遍布局。
+ */
+
+.dk-invite-list {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-3);
+}
+
+.dk-invite-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  /* 具名区域必须各自连成一个矩形，否则整张 grid-template-areas 会被浏览器
+     当成无效值整个丢弃（表现是所有元素挤在左上角互相压住）。
+     users.css 里踩过一次，这里保持同样的三行两列写法。 */
+  grid-template-areas:
+    "main stats"
+    "actions stats";
+  align-items: start;
+  gap: var(--dk-space-3) var(--dk-space-4);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface);
+  padding: var(--dk-space-4);
+}
+
+/* 不能再用的码整行压暗，扫一眼就能把「还能发的」挑出来 */
+.dk-invite-row:not([data-state="active"]) {
+  background: var(--dk-surface-subtle);
+}
+
+.dk-invite-row[data-state="revoked"] .dk-invite-code {
+  color: var(--dk-text-tertiary);
+  text-decoration: line-through;
+}
+
+.dk-invite-row__main {
+  display: grid;
+  min-width: 0;
+  grid-area: main;
+  align-content: start;
+  gap: var(--dk-space-2);
+}
+
+.dk-invite-row__code {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--dk-space-2);
+}
+
+/* 码是要被人用眼睛读、用手抄的，所以给等宽字体和字距，
+   并且允许直接选中（有人习惯拖蓝复制，不点复制按钮）。 */
+.dk-invite-code {
+  border-radius: var(--dk-radius-sm);
+  background: var(--dk-surface-subtle);
+  color: var(--dk-text);
+  padding: 4px 8px;
+  font-family: var(--dk-font-mono);
+  font-size: var(--dk-text-md);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  user-select: all;
+}
+
+.dk-invite-row__note,
+.dk-invite-row__empty {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--dk-space-2);
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+  line-height: var(--dk-leading);
+}
+
+.dk-invite-row__note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--dk-text-tertiary);
+}
+
+.dk-invite-row__empty {
+  color: var(--dk-text-tertiary);
+}
+
+.dk-invite-redemptions {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-1);
+  border-left: 2px solid var(--dk-border-strong);
+  padding-left: var(--dk-space-3);
+}
+
+.dk-invite-redemptions__title {
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+  font-weight: 650;
+}
+
+.dk-invite-redemptions__list {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dk-invite-redemptions__list li {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--dk-space-2);
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+}
+
+.dk-invite-redemptions__list strong {
+  color: var(--dk-text);
+  font-weight: 650;
+}
+
+.dk-invite-redemptions__ip {
+  color: var(--dk-text-tertiary);
+  font-family: var(--dk-font-mono);
+}
+
+.dk-invite-row__stats {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--dk-space-3) var(--dk-space-4);
+  margin: 0;
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+  grid-area: stats;
+}
+
+.dk-invite-row__stats > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dk-invite-row__stats dt {
+  color: var(--dk-text-tertiary);
+}
+
+.dk-invite-row__stats dd {
+  margin: 0;
+  color: var(--dk-text-secondary);
+  white-space: nowrap;
+}
+
+/* 永不过期的码需要管理员回头处理，用警示色标出来 */
+.dk-invite-row__stats dd[data-tone="warn"] {
+  color: var(--dk-warning);
+  font-weight: 600;
+}
+
+.dk-invite-row__stats dd small {
+  color: var(--dk-text-tertiary);
+  font-weight: 400;
+}
+
+.dk-invite-row > .dk-inline-actions {
+  grid-area: actions;
+}
+
+/* 刚生成完那一屏里的码列表 */
+.dk-invite-new-list {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dk-invite-new-list li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--dk-space-2);
+}
+
+.dk-invite-new-list .dk-invite-code {
+  font-size: var(--dk-text-lg);
+}
+
+.dk-invite-hint {
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+  line-height: var(--dk-leading);
+}
+
+/* 窄屏：右侧那一列数据放不下，整行改成上下堆叠 */
+@media (max-width: 780px) {
+  .dk-invite-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "main"
+      "stats"
+      "actions";
+  }
+
+  .dk-invite-row__stats {
+    justify-content: flex-start;
+  }
+}

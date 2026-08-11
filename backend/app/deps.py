@@ -35,6 +35,82 @@ def get_db():
         db.close()
 
 
+# ───────────────────────── 请求来自哪个 IP ─────────────────────────
+# IPv6 最长 45 个字符（含 IPv4 映射写法 ::ffff:255.255.255.255）。
+# 截断是为了别让一个伪造的超长 X-Forwarded-For 变成超长的限速 key。
+_MAX_IP_LENGTH = 45
+
+
+def _normalize_ip(raw: str) -> str:
+    """把一段 X-Forwarded-For 收拾成干净的地址。
+
+    实际会收到的几种写法（各家反代都不一样，没有统一标准）：
+        1.2.3.4           普通 IPv4
+        1.2.3.4:56789     有的反代会把源端口也带上
+        [2001:db8::1]     IPv6，用方括号包着
+        [2001:db8::1]:443 IPv6 带端口
+    端口必须去掉：同一个人每次请求的源端口都不一样，留着的话每次都算成新的 key，
+    限速直接失效，而且会让限速表疯狂涨行。
+    """
+    text = (raw or "").strip()
+    if text.startswith("["):                      # [IPv6] 或 [IPv6]:port
+        end = text.find("]")
+        if end > 0:
+            text = text[1:end]
+    elif text.count(":") == 1:                    # IPv4:port（IPv6 冒号多于一个，不能碰）
+        text = text.split(":", 1)[0]
+    return text[:_MAX_IP_LENGTH]
+
+
+def client_ip(request: Request, trusted_proxy_hops: int = 0) -> str:
+    """这次请求真正来自哪个 IP —— 用于限速等「按来源计数」的场合。
+
+    ════════════════════════════════════════════════════════════════
+     为什么不能取 X-Forwarded-For 的**第一个**
+    ════════════════════════════════════════════════════════════════
+    这个头是一路上每个代理往**右边追加**自己看到的对端地址拼出来的：
+
+        X-Forwarded-For: <客户端自己写的任意内容>, <反代看到的真实来源>
+
+    最左边那一段完全由客户端控制——请求里直接写 `X-Forwarded-For: 1.1.1.1` 就行。
+    照最左边算，攻击者每次换一个假 IP，限速就等于不存在（而且限速表还会被撑爆）。
+    可信的只有「我们信任的那几层反代自己追加的那几段」，也就是**右边数过来**的。
+
+    所以规则是：`trusted_proxy_hops` 配几层，就从右往左数第几段。
+      - 0（默认）：没有反代，直接用连接的对端地址，整个头一个字都不看。
+      - 1：群晖反向代理 / 一层 Nginx / Caddy 这种最常见的形态，取最后一段。
+      - 2：套了 CDN 再进 Nginx 之类，取倒数第二段。
+    数错了的后果不对称，所以默认值取 0、宁可少不可多：
+      - 配少了（真有两层却填 1）：拿到的是中间那层反代的地址，所有人共用一个限速桶，
+        严一点，但攻击者伪造不出别人的桶来；
+      - 配多了（只有一层却填 2）：会去读攻击者自己写的那一段，限速当场作废。
+
+    ════════════════════════════════════════════════════════════════
+     和 uvicorn 自带的代理头处理是什么关系
+    ════════════════════════════════════════════════════════════════
+    uvicorn 也会处理这个头，但只有当**连接的对端**在它的 `--forwarded-allow-ips`
+    （默认只有 127.0.0.1）里时才会动手，而且它取的是「从右往左第一个不受信任的地址」，
+    与这里的算法方向一致，结论也一致（一层反代时两边都得到同一个地址）。
+    所以两者叠加不会打架。**但绝对不要给 uvicorn 加 `--forwarded-allow-ips='*'`**：
+    那会让它无条件相信整串头并取最左边那一段，正好就是客户端能随便伪造的那一段，
+    我们在这里做的所有事都会被它先一步毁掉。
+
+    request.client 在极少数场景下会是 None（Unix socket、某些测试客户端），
+    那时返回 "-"：一个固定的桶总比抛异常把登录接口打挂强。
+    """
+    peer = _normalize_ip(request.client.host) if request.client else ""
+    if trusted_proxy_hops <= 0:
+        return peer or "-"
+    parts = [p.strip() for p in (request.headers.get("x-forwarded-for") or "").split(",")]
+    parts = [p for p in parts if p]
+    index = len(parts) - trusted_proxy_hops
+    if index < 0:
+        # 头比配置的层数还短：要么是请求绕过反代直连进来的，要么是这一项配大了。
+        # 两种情况都退回连接对端——那是唯一伪造不了的东西。
+        return peer or "-"
+    return _normalize_ip(parts[index]) or peer or "-"
+
+
 def _request_path(request: Request) -> str:
     """取出用于比对的接口路径，去掉反代挂载前缀和末尾斜杠。
 

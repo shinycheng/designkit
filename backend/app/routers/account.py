@@ -13,15 +13,16 @@
 所以这一页只回答三个问题：我是谁、我现在能不能生图、不能的话该找谁。
 另外还管一件本人自己的安全事：把其他设备上的登录一次性踢掉（/logout_all）。
 """
-from typing import Any, Dict, Tuple
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from ..deps import get_current_user, get_db
-from ..models import User
+from ..models import User, UserGatewayAccount, utcnow
 from ..security import create_token
-from ..services import prompt_studio, provider, settings_service, user_gateway
+from ..services import prompt_studio, provider, scheduler, settings_service, user_gateway
 # 取图 Cookie 的签发只有 auth.py 里那一个实现，这里**直接复用、不要抄一份**：
 # 那个函数里攒着有效期、Secure 标记、以及「签发失败不能连累主流程」的兜底，
 # 抄一份出来只会在将来某次只改了一边时，变成「改完密码能看图、退出所有设备后满屏裂图」
@@ -31,6 +32,17 @@ from ..services import prompt_studio, provider, settings_service, user_gateway
 from .auth import _issue_file_cookie
 
 router = APIRouter(prefix="/api/web/account", tags=["网页-我的账户"])
+
+# 余额快照多久没更新就算「落后了」。
+#
+# 间隔常量直接从 scheduler 引，**不要在这里另抄一个 10 分钟**：抄一份之后，
+# 哪天有人把后台同步间隔调稀到 30 分钟，这一页就会给全体用户显示「同步失败」，
+# 而「两个文件里的数字对不上」这件事，光看页面是永远查不出来的。
+#
+# 取 3 倍是刻意留的余量：后台一轮最多扫 BALANCE_BATCH（25）个人，人一多，
+# 个别人天然会晚一两轮才轮到。阈值卡死在一个间隔上，会让一切正常的系统
+# 天天在页面上喊「同步失败」——喊多了，真出事那次也没人当回事了。
+BALANCE_STALE_AFTER = scheduler.BALANCE_SYNC_INTERVAL * 3
 
 
 def _readiness(db: Session, user_id: int) -> Tuple[bool, str]:
@@ -50,6 +62,83 @@ def _readiness(db: Session, user_id: int) -> Tuple[bool, str]:
     except settings_service.GatewayNotReady as exc:
         return False, str(exc)
     return True, ""
+
+
+def _iso_utc(dt: Optional[datetime]) -> Optional[str]:
+    """裸 UTC 时间 → 带 Z 的 ISO 串。
+
+    **这个 Z 一个字母都不能省**：库里存的是不带时区的 UTC（models.utcnow），
+    少了它，浏览器会按**本地时区**解释这串时间，中国时区直接差 8 小时——
+    「1 分钟前刚同步的余额」在页面上会变成「8 小时前同步」，
+    用户以为余额早就停更了。routers/users.py 的 _iso 也是为同一个坑写的。
+    """
+    return dt.isoformat() + "Z" if dt else None
+
+
+def _balance_view(account: Optional[UserGatewayAccount]) -> Dict[str, Any]:
+    """本人那份专属额度的余额快照。**没有数据时绝不返回 0。**
+
+    这是这一块最要紧的一条规矩：「余额是 0」和「读不到余额」在界面上必须
+    长得完全不一样。把「读不到」显示成 0，运营看到的就是「我的钱没了」，
+    第一反应是停下手上的活去追着管理员问；而真相可能只是服务器有一分钟
+    连不上网关。所以没数据时 usd 一律是 null，由前端改说「余额数据 X 分钟前」。
+
+    state 的取值（前端只看这一个字段决定显示哪一套话）：
+      none    —— 本人没有一份在用的专属额度（还没开通，或 Key 已失效/被停用）。
+                 这时**连旧数字都不返回**：非 active 的账号后台根本不会再去同步
+                 （见 scheduler._balance_due_user_ids 的过滤条件），
+                 留一个永远不动的旧数字在页面上，比什么都不显示更误导人。
+      pending —— 已开通，但还没拿到过余额数字（刚开通、后台还没扫到；
+                 或者网关的响应里压根没有余额字段）。
+      ok      —— 有快照，同步时间还新鲜。
+      stale   —— 有快照，但最近一次同步明显落后了（多半是连不上网关）。
+
+    为什么 age_seconds 由后端算好、而不是让前端拿时间戳去减：用户那台 Mac 或
+    群晖的时钟不一定准，浏览器用自己的「现在」去减服务器给的时间戳，
+    时钟差几分钟就能算出「余额数据 -3 分钟前」这种鬼话。后端这两个时间
+    出自同一台机器的同一个时钟，怎么都不会算反。
+    """
+    view: Dict[str, Any] = {
+        "state": "none",
+        # 单位固定美元，**这里不做任何汇率换算**。人民币定价是以后的事，
+        # 现在编一个汇率进来，等真按人民币定价那天，页面上的数和账单上的数
+        # 就是两个值，谁也说不清哪个才对。
+        "currency": "USD",
+        "usd": None,
+        "synced_at": None,
+        "age_seconds": None,
+        # 下面两个给前端写文案用（「后台每 X 分钟同步一次」），
+        # 免得前端把间隔也硬编一遍，将来改一处、漏一处。
+        "sync_interval_seconds": int(scheduler.BALANCE_SYNC_INTERVAL.total_seconds()),
+        "stale_after_seconds": int(BALANCE_STALE_AFTER.total_seconds()),
+    }
+    # 「有一份在用的专属额度」= active 且有 Key。口径必须和另外两处一致：
+    # settings_service.resolve_for_user 只认 active 的账号才用他自己的 Key，
+    # scheduler 也只给 active + 有 Key 的账号同步余额。三处口径一旦不一致，
+    # 就会出现「页面显示着余额、点生成却说没开通」这种自相矛盾。
+    if account is None or not account.api_key_enc or account.state != "active":
+        return view
+
+    synced_at = account.balance_synced_at
+    age: Optional[int] = None
+    if synced_at is not None:
+        # 夹到 0：服务器时钟被 NTP 往回拨过时这里会算出负数，
+        # 页面上显示「-2 分钟前」比不显示还让人心慌。
+        age = max(0, int((utcnow() - synced_at).total_seconds()))
+    view["synced_at"] = _iso_utc(synced_at)
+    view["age_seconds"] = age
+
+    if account.balance_usd is None:
+        # 开通好了但一个数字都还没拿到。对用户来说该做的事只有一件：再等一会儿。
+        view["state"] = "pending"
+        return view
+
+    view["usd"] = float(account.balance_usd)
+    # age 为 None 却有余额，理论上不会发生（provisioning 写余额时一定同时写时间），
+    # 真出现了就按「不可信」处理——宁可让页面说「这个数可能旧了」，
+    # 也不能让一个来路不明的数字冒充实时余额。
+    view["state"] = "ok" if (age is not None and age <= BALANCE_STALE_AFTER.total_seconds()) else "stale"
+    return view
 
 
 @router.get("")
@@ -78,6 +167,10 @@ def my_account(user: User = Depends(get_current_user), db: Session = Depends(get
             "can_generate": can_generate,
             # 不能生图时的原因，已经是给非技术用户看的中文，直接显示即可
             "message": message,
+            # 余额快照（后台定时任务同步的，见 services/provisioning.sync_balance）。
+            # 这里给的是**快照 + 快照有多旧**，前端必须把「多旧」也显示出来：
+            # 只显示数字，用户会拿它当实时余额，然后为「刚花的钱怎么没扣」来问一圈。
+            "balance": _balance_view(account),
         },
     }
 

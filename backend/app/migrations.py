@@ -122,6 +122,17 @@ _INDEX_MIGRATIONS_SAFE = [
     "ON prompt_templates (thumbnail_path)",
 ]
 
+# 这里**故意没有** auth_identities / invite_codes / invite_redemptions
+# （以及更早的 user_gateway_accounts）的索引，不是漏了。
+# 它们都是**新表**：create_all 建表时会把 models.py 上声明的 index= 和
+# __table_args__ 里的 Index(..., unique=True) 一并建出来，一步到位，
+# 老库上也一样（那些表在老库里根本不存在，属于「缺的表」）。
+# 这一组只负责**给已经存在的老表补后来才加上的索引**。
+#
+# 别顺手把新表的索引也抄进来「保险一点」：这一组是 fail-closed 的
+# （见文件头「纪律二」），表还没建出来时执行 CREATE INDEX 会直接报
+# 「no such table」并挡死启动，而现象只是容器无限重启，没人查得到这里。
+
 
 class _RiskyIndex(NamedTuple):
     """一条「可能因为存量数据而建不出来」的索引。
