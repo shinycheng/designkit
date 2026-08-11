@@ -1,6 +1,6 @@
 # 回归测试
 
-每次改动代码后，跑一遍**全部 16 组**测试确认没把已有功能改坏，共 516 项：
+每次改动代码后，跑一遍**全部 16 组**测试确认没把已有功能改坏，共 520 项：
 
 | 组 | 文件 | 项数 | 要不要起服务 |
 |---|---|---|---|
@@ -9,7 +9,7 @@
 | 端到端·多用户隔离 | `e2e_multiuser.py` | 52 | 要 |
 | 图片访问鉴权（/files） | `test_file_access.py` | 50 | 不要 |
 | 登录限速落库与真实客户端 IP | `test_ratelimit.py` | 44 | 不要 |
-| 自动开通·端到端六条线 | `test_provision_regression.py` | 36 | 不要 |
+| 自动开通·端到端六条线 | `test_provision_regression.py` | 40 | 不要 |
 | 端到端·安全边界 | `e2e_security.py` | 30 | 要 |
 | 多用户隔离与按人计费 | `test_multiuser_isolation.py` | 29 | 不要 |
 | 端到端·核心流程 | `e2e_core.py` | 27 | 要 |
@@ -21,7 +21,7 @@
 | 跨库兼容与定时同步 | `test_db_and_scheduler.py` | 14 | 不要 |
 | 按分类生成与同步代理 | `test_category_mode.py` | 11 | 不要 |
 
-三组端到端要起服务，另外十三组是纯单元测试（共 407 项），不联网、不花钱、不用起服务。
+三组端到端要起服务，另外十三组是纯单元测试（共 411 项），不联网、不花钱、不用起服务。
 
 > `fake_sub2api.py` 不是测试，是上面三组「自动开通」共用的**假网关**（一台按真实
 > 接口契约模拟的本地 HTTP 服务，含 409/429/两步验证/未绑分组等失败形态）。
@@ -40,7 +40,7 @@ rm -rf /tmp/dk-unittest && DESIGNKIT_DATA_DIR=/tmp/dk-unittest DESIGNKIT_PROVIDE
   .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-末尾出现 `Ran 407 tests ... OK (skipped=10)` 就是全过了
+末尾出现 `Ran 411 tests ... OK (skipped=10)` 就是全过了
 （那 10 项 skipped 是 PostgreSQL 迁移，见上面的 ⚠️）。
 
 > **跑完大约要两三分钟，中间会安静好一阵子，不是卡住了。**（实测 407 项用了

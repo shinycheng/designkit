@@ -31,6 +31,7 @@ import atexit
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -738,6 +739,88 @@ class NoLeakTests(Scaffold):
         self.assertNotIn("key_tail", resp.text)
         self.assertNotIn("remote_password", resp.text)
         self.assertNotIn("api_key_enc", resp.text)
+
+
+class BadInputTests(Scaffold):
+    """第七条线：**「测试能不能自动开通」这个按钮，无论填了什么都不许崩**。
+
+    这一组来自一次真实事故。用户把输入框里那句灰色提示文字
+    「粘贴网关后台生成的管理员 Key」当成内容粘进了管理员 Key 栏，保存成功了；
+    点自检时 httpx 要把它塞进 x-api-key 请求头，而 HTTP 头只能装 latin-1，
+    于是抛 UnicodeEncodeError，界面上原样显示成：
+
+        自检过程中出现意外错误（UnicodeEncodeError）。请确认 Sub2API 地址填得对不对
+
+    两处都错得很严重：一是把 Python 的异常类名甩给了一个非技术用户，
+    二是那句「请确认地址」把她引向了完全错误的方向——真因在 Key 那一栏。
+
+    为什么必须长期跑：这个按钮是她遇到问题时**唯一的自助工具**。
+    它自己崩掉，她就彻底没有下一步了——既看不出哪里错，也没有别的地方可查。
+    """
+
+    #: 保存时就该被拦下的输入，以及提示里必须出现的关键词（点出真因，不是泛泛而谈）
+    REJECTED = (
+        ("含中文（把提示文字粘进来了）", {"sub2api_admin_key": "粘贴网关后台生成的管理员 Key"}, "中文"),
+        ("超长（整段文字都粘进来了）", {"sub2api_admin_key": "a" * 5000}, "太长"),
+        ("夹着换行/制表符", {"sub2api_admin_key": "admin-abc\n\tdef"}, "换行"),
+        ("地址里带用户名密码", {"sub2api_base_url": "http://user:pass@127.0.0.1:9"}, "用户名"),
+        ("端口不是数字", {"sub2api_base_url": "http://127.0.0.1:abc"}, "端口"),
+    )
+
+    def test_bad_values_are_rejected_on_save_with_a_real_reason(self):
+        for name, patch, keyword in self.REJECTED:
+            with self.subTest(name):
+                resp = self.client.put(
+                    "/api/web/settings", json=patch, headers=self.admin_headers())
+                self.assertEqual(resp.status_code, 422, name)
+                detail = str(resp.json().get("detail") or "")
+                self.assertIn(keyword, detail,
+                              "提示没点出真因，用户会照着它去改错的地方：%s" % detail)
+
+    def test_selfcheck_never_leaks_a_python_exception_name(self):
+        """脏数据已经躺在库里的情况——保存时的校验只挡新值，挡不住升级前存进去的。
+
+        所以绕过接口直接写库（用户的实例当时就是这个状态），再点自检。
+        """
+        settings_service.set_many(self.db, {
+            "sub2api_admin_key": "粘贴网关后台生成的管理员 Key",
+            "sub2api_base_url": _dead_port_base_url(),
+        })
+        self.db.commit()
+
+        resp = self.client.post(
+            "/api/web/settings/test_provisioning", headers=self.admin_headers())
+        self.assertEqual(resp.status_code, 200, "自检本身不许 500")
+
+        # 整个响应里不许出现任何 XxxError —— 那是把内部实现甩给用户看
+        leaked = sorted(set(re.findall(r"[A-Za-z]+Error", resp.text)))
+        self.assertEqual(leaked, [], "自检把 Python 异常名泄露给用户了：%s" % leaked)
+
+        # 而且必须真的指出是 Key 那一栏的问题，不能含糊成「请确认地址」
+        self.assertIn("中文", resp.text)
+
+    def test_selfcheck_survives_every_bad_value_that_is_already_in_the_db(self):
+        """把每一种脏值都直接写进库跑一遍，断言自检永远给出结构化结果。"""
+        for name, patch, _ in self.REJECTED:
+            with self.subTest(name):
+                settings_service.set_many(self.db, patch)
+                self.db.commit()
+                resp = self.client.post(
+                    "/api/web/settings/test_provisioning", headers=self.admin_headers())
+                self.assertEqual(resp.status_code, 200, name)
+                body = resp.json()
+                self.assertIn(body.get("level"), ("red", "yellow", "green"), name)
+                leaked = sorted(set(re.findall(r"[A-Za-z]+Error", resp.text)))
+                self.assertEqual(leaked, [], "%s：泄露了 %s" % (name, leaked))
+
+    def test_a_valid_admin_key_still_saves(self):
+        """别把校验写得太紧——真实的 Key 是 admin- 加 64 位十六进制，必须能存进去。"""
+        good = "admin-" + "3f9c1a2b" * 8
+        resp = self.client.put(
+            "/api/web/settings", json={"sub2api_admin_key": good},
+            headers=self.admin_headers())
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(settings_service.get(self.db, "sub2api_admin_key"), good)
 
 
 if __name__ == "__main__":

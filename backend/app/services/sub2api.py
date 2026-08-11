@@ -52,6 +52,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 import httpx
 
@@ -253,6 +254,176 @@ def _tail(secret: Optional[str], n: int = 4) -> str:
     """取末 4 位。这是本模块允许对凭据做的唯一一种「展示」。"""
     s = secret or ""
     return s[-n:] if len(s) > n else "?"
+
+
+# ══════════════════════════════════════════════════════════════════
+#  「这个值能不能发出去」——请求头与地址的入口校验
+# ══════════════════════════════════════════════════════════════════
+#
+# 这一段是被一次真实事故逼出来的，改之前请先读完：
+#
+# 管理员把输入框里那句灰色提示文字「粘贴网关后台生成的管理员 Key」
+# 当成 Key 本身粘进了设置页。这串字是中文，而 **HTTP 请求头只能放 ASCII**
+# （httpx 就是拿 ascii 编码去编头部的），于是 httpx 在编码那一刻抛出
+# UnicodeEncodeError——一个非技术用户完全看不懂的词。
+#
+# 更要命的是它**绕过了本模块整套「把失败翻译成人话」的机制**：
+# UnicodeEncodeError 不是 Sub2ApiError，也不是 httpx.HTTPError，
+# 所以 _send 里那几个 except 一个都接不住，它一路穿到自检的兜底分支，
+# 在界面上变成「自检过程中出现意外错误（UnicodeEncodeError）。
+# 请确认 Sub2API 地址填得对不对」——连方向都是错的（真因在 Key 不在地址）。
+#
+# 所以规矩定成这样：**凡是要拼进请求头或地址的值，发出去之前先自己查一遍**，
+# 查不过就抛一个带人话的 Sub2ApiError，绝不让它走到 httpx 那一层去炸。
+# 这几个函数都做成模块级公开的，好让设置页在**保存那一刻**用同一套判断
+# 提前把人拦住——同一件事只有一处判断标准，不会出现「存得进去、用不了」。
+
+# 管理员 Key 的长度护栏。Sub2API 后台生成的形如 "admin-" + 64 位十六进制
+#（一共 70 个字符），这里放宽到 8~256 是留给别的部署形态，不写死成 70：
+# 写死了万一对方换了形态，用户会被拦在一个「明明是从后台复制来的」的值上，
+# 而那种拦截比不拦更让人无从下手。
+ADMIN_KEY_MIN_LEN = 8
+ADMIN_KEY_MAX_LEN = 256
+
+# 地址长度护栏。正常地址不到 60 个字符；几百个字符的「地址」只可能是
+# 整段文档、整段日志被粘了进来。
+MAX_BASE_URL_LEN = 300
+
+
+def header_value_problem(value: str, label: str) -> str:
+    """这个值能不能安全地放进 HTTP 请求头。能就返回空串，不能就返回一句人话。
+
+    **绝不回显原值**——它多半是一把密钥，而这句话会上界面、会进日志。
+    只说「哪里不对、该怎么办」。
+    """
+    text = value or ""
+    if not text:
+        return ""
+    if any(ord(ch) > 127 for ch in text):
+        # 最常见的那一种：把提示文字整段粘进来了。所以要点名这个可能。
+        return (
+            "%s 里有中文（或别的非英文字符），而这一栏只能填英文、数字和符号。"
+            "常见的误会是把输入框里那句灰色提示文字当成内容粘了进去——"
+            "要填的是网关后台生成的那串密钥本身，形如 admin- 后面跟一长串英文数字" % label
+        )
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        return (
+            "%s 里夹着换行或制表符，多半是从网页上复制时多选了一行。"
+            "请只选中密钥本身再复制一次" % label
+        )
+    if " " in text:
+        return (
+            "%s 中间有空格。密钥本身不带空格，多半是复制时多选了旁边的文字" % label
+        )
+    return ""
+
+
+def admin_key_problem(raw: Any) -> str:
+    """Sub2API 管理员 Key 有没有问题。没问题返回空串，有问题返回一句人话。
+
+    留空**不算问题**（等于「还没配」），那种情况由 missing() / _admin_headers
+    那条路去说「还没填」，两处各管各的，免得同一件事出现两种说法。
+    """
+    key = str(raw or "").strip()
+    if not key:
+        return ""
+    problem = header_value_problem(key, "管理员 Key")
+    if problem:
+        return problem
+    if len(key) < ADMIN_KEY_MIN_LEN:
+        return (
+            "管理员 Key 只有 %d 个字符，太短了，不像是一把真的密钥。"
+            "Sub2API 后台生成的那串是 admin- 开头再跟 64 位英文数字（一共 70 个字符）"
+            % len(key)
+        )
+    if len(key) > ADMIN_KEY_MAX_LEN:
+        return (
+            "管理员 Key 有 %d 个字符，太长了，多半是把整段文字都粘进来了。"
+            "只需要 admin- 开头那一串（一共 70 个字符左右）" % len(key)
+        )
+    return ""
+
+
+def base_url_problem(raw: Any, label: str = "Sub2API 地址") -> str:
+    """地址里有没有会让请求当场炸掉的东西。没问题返回空串。
+
+    这里只查「一定发不出去」的那几种（非英文字符、空格、端口不是数字、
+    地址里带用户名密码、长得离谱）。「填成了哪个服务的地址」这种判断查不了，
+    那要靠自检真发一次请求看对方回什么（见 probe_public_settings）。
+    """
+    url = str(raw or "").strip()
+    if not url:
+        return ""
+    if len(url) > MAX_BASE_URL_LEN:
+        return (
+            "%s 有 %d 个字符，太长了，多半是把整段文字都粘进来了。"
+            "正常的地址长这样：http://192.168.31.235:8080" % (label, len(url))
+        )
+    if any(ord(ch) > 127 for ch in url):
+        # 最常见的是中文输入法下打出的全角冒号「：」和全角句点「。」，
+        # 它们和半角的长得几乎一样，肉眼根本分辨不出来。
+        return (
+            "%s 里有中文或全角符号（最常见的是全角冒号「：」，它和英文的 : 长得几乎一样）。"
+            "请把这一栏整个删掉，切回英文输入法重新敲一遍，例如 http://192.168.31.235:8080"
+            % label
+        )
+    if any(ch.isspace() for ch in url):
+        return (
+            "%s 里有空格或换行，多半是复制时多选了。请只留下地址本身，"
+            "例如 http://192.168.31.235:8080" % label
+        )
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        port = parsed.port          # 端口不是数字时**在这一句**抛 ValueError
+        username = parsed.username
+    except ValueError:
+        return (
+            "%s 看不懂（端口那一段不是数字，或者中括号没配对）。"
+            "正确写法是 http://机器地址:端口，例如 http://192.168.31.235:8080" % label
+        )
+    if not hostname:
+        return (
+            "%s 里没看到机器地址，正确写法例如 http://192.168.31.235:8080" % label
+        )
+    if username or parsed.password:
+        # 带 user:pass@ 的地址会把凭据塞进 URL，进日志、进反代访问日志，
+        # 而且和「Key 填在专门那一栏」的做法冲突。
+        return (
+            "%s 里不要带用户名和密码（@ 前面那一段）。密钥请填在下面那个专门的输入框里，"
+            "那里会加密保存、界面上也不会再显示出来" % label
+        )
+    if port is not None and not (0 < port < 65536):
+        return "%s 的端口号超出范围，只能是 1 到 65535" % label
+    return ""
+
+
+def _network_message(exc: Exception) -> str:
+    """把 httpx 的传输层异常翻成人话。**不出现异常类名**。
+
+    分成这几类是因为对用户来说「该做的事」完全不同：证书问题去关校验开关，
+    连不上去查机器和端口，「对方不说 HTTP」几乎必然是端口填错了。
+    技术细节（异常类名和原文）由调用处写进服务端日志，不上界面。
+    """
+    text = str(exc).lower()
+    if "certificate" in text or "ssl" in text or "tls" in text or "handshake" in text:
+        return (
+            "连接 Sub2API 时证书没通过校验。如果这台 Sub2API 用的是自己签的 https 证书，"
+            "请把「校验 https 证书」这个开关关掉；如果它本来就是 http 的，"
+            "请把地址里的 https 改回 http"
+        )
+    if isinstance(exc, httpx.ConnectError):
+        return (
+            "连不上 Sub2API：这个地址上没有服务应答。请确认那台机器开着、端口填对了"
+            "（管理后台和生图接口通常不是同一个端口），中间也没有防火墙挡着"
+        )
+    if isinstance(exc, httpx.RemoteProtocolError):
+        return (
+            "这个地址上的服务没有按 HTTP 的规矩应答，多半是端口填错了——"
+            "那个端口上跑的不是 Sub2API 的管理后台。请填你登录 Sub2API 后台时"
+            "浏览器地址栏里的那个地址"
+        )
+    return "连不上 Sub2API：网络不通，或者地址、端口填得不对"
 
 
 def _redact(payload: Any) -> Any:
@@ -623,6 +794,12 @@ class Sub2ApiClient:
                 "Sub2API 地址必须以 http:// 或 https:// 开头",
                 retryable=False,
             )
+        # 库里存着的值不一定过过设置页那道校验（老库遗留、有人直接改了数据库、
+        # 或者这一版之前存进去的）。所以这里再查一遍——查不过就在**发出去之前**
+        # 变成人话，而不是让 httpx 抛一个 InvalidURL 出来。
+        problem = base_url_problem(self.base_url)
+        if problem:
+            raise Sub2ApiError("E_CONFIG", problem, retryable=False)
 
     def _admin_headers(self) -> Dict[str, str]:
         """admin 接口的鉴权头是 **x-api-key**，不是 Authorization: Bearer。"""
@@ -630,6 +807,15 @@ class Sub2ApiClient:
             raise Sub2ApiError(
                 "E_CONFIG",
                 "还没有填写 Sub2API 的管理员 Key（系统设置 → 网关自动开通）",
+                retryable=False,
+            )
+        # Key 会被原样拼进请求头，而请求头只能放 ASCII（见上面那段事故说明）。
+        # 含中文时必须在这里就变成人话，绝不能让它走到 httpx 去抛 UnicodeEncodeError。
+        problem = admin_key_problem(self._admin_key)
+        if problem:
+            raise Sub2ApiError(
+                "E_CONFIG",
+                "%s。请到「系统设置 → 网关自动开通」把管理员 Key 重新填一次" % problem,
                 retryable=False,
             )
         return {"x-api-key": self._admin_key}
@@ -660,13 +846,48 @@ class Sub2ApiClient:
             )
         except httpx.TimeoutException:
             raise Sub2ApiError(
-                "E_NETWORK", "连接 Sub2API 超时，稍后自动重试",
+                "E_NETWORK",
+                "连接 Sub2API 超时：一直等不到回应。请确认那台机器开着、地址和端口填对了",
                 retryable=True,
             )
-        except httpx.HTTPError as exc:
-            # 异常文本里只有地址，没有请求体，可以安全入日志/入 last_error
+        except UnicodeEncodeError:
+            # 兜底。正常情况下 _admin_headers 已经把含中文的 Key 拦在前面了，
+            # 走到这里说明**别的**请求头里也混进了非 ASCII 字符。
+            # 无论如何都不能让这个异常跑出去——它就是本次事故的原样重演。
+            logger.warning("请求头里有非 ASCII 字符，请求没有发出（%s %s）", method, path)
             raise Sub2ApiError(
-                "E_NETWORK", "连不上 Sub2API（%s）" % type(exc).__name__,
+                "E_CONFIG",
+                "填给网关的某一栏里有中文（或别的非英文字符），请求根本发不出去。"
+                "请检查「网关自动开通」里的管理员 Key 和地址两栏——"
+                "最常见的是把输入框里那句灰色提示文字当成内容粘了进去",
+                retryable=False,
+            )
+        except httpx.InvalidURL as exc:
+            # 端口不是数字、中括号没配对之类。httpx 的 InvalidURL **不是** HTTPError
+            # 的子类，下面那个 except 接不住它，必须单列一条。
+            logger.warning("Sub2API 地址不合法，请求没有发出：%s", exc)
+            raise Sub2ApiError(
+                "E_CONFIG",
+                base_url_problem(self.base_url) or
+                "Sub2API 的地址填得不对（端口那一段不是数字，或者地址里有多余的符号）。"
+                "正确写法是 http://机器地址:端口，例如 http://192.168.31.235:8080",
+                retryable=False,
+            )
+        except httpx.HTTPError as exc:
+            # 人话给用户，异常类名只进服务端日志——界面上出现 "RemoteProtocolError"
+            # 这种词，对运营人员来说和没有报错是一样的。
+            logger.warning("Sub2API 请求失败 %s %s：%s: %s",
+                           method, path, type(exc).__name__, exc)
+            raise Sub2ApiError("E_NETWORK", _network_message(exc), retryable=True)
+        except Exception as exc:  # noqa: BLE001
+            # 最后一道网。本模块的契约是「只抛 Sub2ApiError」，调用方（状态机、
+            # 自检）全按这个契约写的兜底；漏一个别的异常出去，就会重演这次事故。
+            # 技术细节连同调用栈只写进服务端日志。
+            logger.exception("Sub2API 请求出现未预料的错误 %s %s", method, path)
+            raise Sub2ApiError(
+                "E_NETWORK",
+                "向 Sub2API 发请求时出了意外，没能发出去。请检查「网关自动开通」里"
+                "填的地址和管理员 Key；一直这样的话，把服务器日志给技术支持看一下",
                 retryable=True,
             )
 
@@ -998,18 +1219,109 @@ class Sub2ApiClient:
     # refresh token 家族。想验证代登录只能靠管理员手动点「深度自检」，
     # 那是上层的事，不在这个模块自动跑。
 
+    # ── 「地址其实填成了生图接口」的识别 ──
+    #
+    # 这是这个设置页上最容易犯的错，而且犯了之后**几乎看不出来**：
+    # 一台 Sub2API 上「生图接口」和「管理后台」是两个端口，两个地址长得一模一样，
+    # 只差最后那几个数字（比如生图 8090、后台 8080）。而设置页上方「生图服务」
+    # 那一节填的正好就是生图那个地址，管理员很自然地把同一个地址又填了一遍。
+    # 填错的表现是一连串「404 / 接口地址不存在」，从字面上完全指不到端口上去。
+    #
+    # 识别办法是**探响应的形态**，不是拿它跟「生图服务」那一栏的地址比对：
+    # 那两栏完全可能真的是同一个端口（有的部署就是一个端口全包），
+    # 比对法会把正常配置误报成错误，而误报比不报更糟。
+    #
+    # 探的是 OpenAI 兼容接口的形态特征：/v1/models 这条路存在，而且回的是
+    # {"object":"list","data":[...]}（模型清单）或 {"error":{...}}（OpenAI 风格
+    # 的错误对象）。Sub2API 管理后台的信封是 {"code","message","data"}，
+    # 错误里的 error 是**字符串**不是对象，两者形态区分得开。
+    _SNIFF_PATHS = ("/v1/models", "/models")   # 第二条是给「地址已经带了 /v1」的人兜的
+
+    def _sniff_image_gateway(self) -> bool:
+        """不带任何凭据地探一探：这个地址上跑的是不是「生图接口」。
+
+        **一定不能带管理员 Key**：走到这一步就说明这个地址很可能不是我们以为的
+        那台服务，往一个来路不明的地址上送最高权限的密钥是绝对不行的。
+        探不出来一律返回 False（宁可少说一句，不能说错方向）。
+        """
+        for path in self._SNIFF_PATHS:
+            try:
+                resp = self._http().request(
+                    "GET", self.base_url + path,
+                    timeout=min(self.timeout, 5.0),   # 只是加一句提示，不值得让自检变慢
+                )
+            except Exception:  # noqa: BLE001 —— 探不到就算了，这一步永远不许抛
+                continue
+            if resp.status_code == 404:
+                continue  # 这条路在这台服务上不存在，说明不是生图接口
+            body = _parse_json(resp)
+            if not isinstance(body, dict):
+                continue
+            # ① 模型清单：OpenAI 兼容接口的标志性响应
+            if body.get("object") == "list" and isinstance(body.get("data"), list):
+                return True
+            items = body.get("data")
+            if isinstance(items, list) and items and all(
+                isinstance(x, dict) and "id" in x for x in items
+            ):
+                return True
+            # ② OpenAI 风格的错误对象（没带 Key 时最常见的就是这个）
+            err = body.get("error")
+            if isinstance(err, dict) and any(
+                k in err for k in ("message", "type", "code", "param")
+            ):
+                return True
+            # ③ 只有一个裸 error 字段、没有管理后台那套 {code,message,data} 信封
+            if (
+                resp.status_code in (400, 401, 403)
+                and isinstance(err, str)
+                and "code" not in body
+                and "message" not in body
+            ):
+                return True
+        return False
+
+    def _public_settings_failure_text(self, exc: "Sub2ApiError") -> str:
+        """公开设置读不到时，给一句**指得到方向**的话。
+
+        只有「这条路在这台服务上不存在」（404 / 响应不是信封）才值得怀疑地址填错；
+        连不上、超时、5xx 那些是「现在不通」，跟填没填对是两码事，
+        原样把已经翻译好的人话传出去就行。
+        """
+        if exc.code not in ("E_ROUTE_MISSING", "E_PROTOCOL"):
+            return "读不到 Sub2API 的公开设置：" + exc.message
+        if self._sniff_image_gateway():
+            return (
+                "你填的这个地址看起来是「生图接口」的地址，不是 Sub2API 的管理后台。"
+                "这两个是同一台机器上的两个不同端口（比如生图在 8090、管理后台在 8080），"
+                "地址长得几乎一样，很容易填串。"
+                "请填你平时登录 Sub2API 后台时、浏览器地址栏里的那个地址，"
+                "只填到端口为止，不要带 /v1 或 /api/v1"
+            )
+        return (
+            "这个地址上没有找到 Sub2API 的管理后台（接口都是 404）。"
+            "请核对两件事：一是端口——管理后台和生图接口通常不是同一个端口，"
+            "别把「生图服务」那一节的地址照抄过来；"
+            "二是地址只填到端口为止，不要带 /v1 或 /api/v1。"
+            "最保险的做法是把你登录 Sub2API 后台时浏览器地址栏里的地址复制过来"
+        )
+
     def probe_public_settings(self) -> ProbeResult:
         """探针 1：GET /api/v1/settings/public（无鉴权）。
 
         判定：backend mode 或任一验证码开关为 true → 红（代登录必然全断）；
         totp_enabled 为 true → 黄（不是立刻断，但用户随时可能自己开 2FA
         把自己踢出自动化）。
+
+        这一项也是「地址填错了」最先撞上的地方（它是第一个真发请求的探针，
+        而且不需要管理员 Key），所以失败时要负责把方向指对，见
+        _public_settings_failure_text。
         """
         name = "公开设置"
         try:
             data = self._send("GET", _PATH_PUBLIC_SETTINGS, op="public", envelope=True)
         except Sub2ApiError as exc:
-            return ProbeResult(name, "red", "读不到 Sub2API 的公开设置：" + exc.message,
+            return ProbeResult(name, "red", self._public_settings_failure_text(exc),
                                {"code": exc.code})
         item = data if isinstance(data, dict) else {}
         backend_mode = bool(item.get("backend_mode_enabled"))

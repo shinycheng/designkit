@@ -61,6 +61,7 @@ export function renderSettings(container) {
       // 这一节在后端还没有自动开通功能时返回 null（见函数内注释），
       // 所以这里要把 null 过滤掉，否则 stack.append 会抛异常、整页设置打不开。
       createProvisioningSection(),
+      createSelfRegisterSection(),
       createPasswordSection(),
     ].filter(Boolean);
     stack.append(...state.controllers.map((controller) => controller.element));
@@ -741,6 +742,121 @@ export function renderSettings(container) {
     }
 
     loadSummary();
+    return controller;
+  }
+
+  /** 自助注册（邀请码）。
+   *
+   * 这一节存在的唯一理由，就是给管理员一个「把自助注册打开」的地方。
+   * 后端的开关（self_register_enabled）、双向硬前置闸门、注册接口、邀请码接口
+   * 早就做好了，但界面上一直没有开关——结果是「后端能开、管理员没地方开」，
+   * 她在设置页翻遍了也找不到，只能得出「这功能没做」的结论。
+   * 这是一次真实发生过的事故，别把这一节删掉。
+   *
+   * 开关旁边那份「前提条件」清单是刻意做的：后端拒绝时会返回一大段说明，
+   * 但那要等她点了保存、被拒之后才看得到。先摆出来，她就不用先撞一次墙。
+   * 清单的判断条件必须和后端 _self_register_blockers 保持一致——
+   * 两边写岔了的表现是「界面显示全绿、保存却被拒」，比不显示还糟。
+   */
+  function createSelfRegisterSection() {
+    // 后端还没有这个功能时（老镜像）整节不渲染，理由同 createProvisioningSection：
+    // 画一个点了必报错的开关，比不画更让人困惑。
+    if (!state.settings || !('self_register_enabled' in state.settings)) return null;
+
+    const gateRoot = h('div', { class: 'dk-panel-stack', 'aria-live': 'polite' });
+
+    /** 按当前草稿算一遍还差哪几条。文案与后端 _self_register_blockers 一一对应。 */
+    function blockers(draft) {
+      const list = [];
+      if (draft.allow_internal_targets) {
+        list.push('「安全与网络」那一节的**允许访问内网图片和回调地址**还开着，请先关掉。'
+          + '开着它，注册进来的陌生人可以让本系统替他去访问你内网里的任意地址——'
+          + '包括生图网关的管理端口，那上面能建号、改余额、读别人的 Key。');
+      }
+      const url = String(draft.public_base_url || '').trim();
+      if (!isHttpUrl(url) || /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/i.test(url)) {
+        list.push('「安全与网络」那一节的**对外访问地址**还不能用。'
+          + '新用户拿到的图片链接和回调地址都按它拼，填成 127.0.0.1 的话别人打不开，'
+          + '而系统这边不会有任何报错。');
+      }
+      if (!draft.files_signed_only) {
+        list.push('「图片访问与多用户」那一节的**图片必须带凭证才能访问**是关的，请打开。'
+          + '关着它，只要知道图片地址就能下载任何人的商品图——'
+          + '内部几个人用还能凑合，谁都能注册之后就等于谁都能进来翻别人的图。');
+      }
+      return list;
+    }
+
+    // 「重新检查」按钮不是可有可无的装饰：这三条前提分别住在本页**另外两节**里，
+    // 而每一节都是独立保存的（createSettingsController 保存后只同步自己那几个键，
+    // 不重绘别的 section）。所以她在上面改完并保存之后，这里的清单不会自己变。
+    // 没有这个按钮的话，她会看着一份过期的「还差 3 条」去怀疑自己没改对。
+    function renderGate() {
+      const draft = state.settings || {};
+      const list = blockers(draft);
+      const recheck = button('重新检查', {
+        variant: 'ghost', iconName: 'refresh-cw', onclick: renderGate,
+      });
+      if (!list.length) {
+        gateRoot.replaceChildren(inlineAlert(
+          '三项前提都满足了，可以打开自助注册。打开之后记得到左侧「邀请码」页发码——'
+          + '没有码谁也注册不进来。', 'success', { title: '前提条件已满足' }), recheck);
+        return;
+      }
+      gateRoot.replaceChildren(inlineAlert(
+        '还差下面 ' + list.length + ' 条，不满足的话开关保存不了：\n\n'
+        + list.map((x, i) => (i + 1) + '. ' + x.replace(/\*\*/g, '')).join('\n\n')
+        + '\n\n这几项都在本页上面两节里。改完那两节各自的「保存此区域」之后，'
+        + '点一下下面的「重新检查」，这份清单才会更新。',
+        'warning', { title: '打开之前要先满足三个前提' }), recheck);
+    }
+
+    const controller = createSettingsController({
+      id: 'self-register-settings',
+      title: '自助注册（邀请码）',
+      description: '让新人自己拿邀请码注册，不用你一个个建号。注意它和上面「网关自动开通」'
+        + '不是一回事：那个管的是「你建号之后系统替他去网关领 Key」，这个管的是「他能不能自己建号」。',
+      keys: ['self_register_enabled', 'self_register_ip_per_hour', 'self_register_daily_limit',
+        'invite_code_default_max_uses', 'invite_code_default_valid_days'],
+      renderFields: (form) => {
+        const enabled = h('input', { type: 'checkbox' });
+        const ipPerHour = h('input', { class: 'input', type: 'number', min: 1, max: 1000, inputmode: 'numeric' });
+        const dailyLimit = h('input', { class: 'input', type: 'number', min: 1, max: 10000, inputmode: 'numeric' });
+        const defaultUses = h('input', { class: 'input', type: 'number', min: 1, max: 1000, inputmode: 'numeric' });
+        const defaultDays = h('input', { class: 'input', type: 'number', min: 0, max: 365, inputmode: 'numeric' });
+
+        form.register('self_register_enabled', enabled, checkboxBinding(false));
+        form.register('self_register_ip_per_hour', ipPerHour, numberBinding());
+        form.register('self_register_daily_limit', dailyLimit, numberBinding());
+        form.register('invite_code_default_max_uses', defaultUses, numberBinding());
+        form.register('invite_code_default_valid_days', defaultDays, numberBinding());
+
+        renderGate();
+
+        return h('div', { class: 'dk-panel-stack' },
+          gateRoot,
+          field('开放自助注册',
+            h('label', { class: 'dk-checkbox-row' }, enabled,
+              h('span', { class: 'dk-checkbox-row__copy' }, '打开（打开前先看上面那三条）',
+                h('small', { class: 'dk-checkbox-row__description' },
+                  '打开之后，登录页会多出一个「我有邀请码，去注册」的入口。'
+                  + '没有邀请码的人注册不进来，所以你随时可以只发给想让他进来的人。'))),
+            { help: '关掉之后注册入口立刻消失，已经注册进来的账号不受影响。' }),
+          h('div', { class: 'dk-field-grid' },
+            field('每个 IP 每小时最多注册几次', ipPerHour, {
+              help: '防止有人写脚本刷注册。注册会连锁去网关建账号，被刷的话你的网关后台会被塞满垃圾账号。',
+            }),
+            field('全站每天最多注册几人', dailyLimit, {
+              help: '再加一道总闸。填小一点更稳，不够了随时能改大。',
+            }),
+            field('新建邀请码：默认可用几次', defaultUses, {
+              help: '在「邀请码」页建码时的默认值，建的时候还能单独改。填 1 就是一码一人。',
+            }),
+            field('新建邀请码：默认几天后过期', defaultDays, {
+              help: '同上，是建码时的默认值。填 0 表示永不过期（不建议，发出去就收不回来了）。',
+            })));
+      },
+    });
     return controller;
   }
 

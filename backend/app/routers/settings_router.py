@@ -121,14 +121,16 @@ def _normalize_sub2api_base_url(raw: Any) -> str:
         raise _fail(
             "Sub2API 地址要以 http:// 或 https:// 开头，例如 http://192.168.31.235:3000"
         )
+    # 「一定发不出去」的那几种（中文/全角符号、空格、端口不是数字、带用户名密码、
+    # 长得离谱、中括号没配对）统一交给 sub2api.base_url_problem 判断——
+    # 客户端那边发请求前也用同一个函数再查一遍，两处标准必须是同一份，
+    # 否则会出现「设置页存得进去、一点自检就炸」这种最难自查的状态。
+    # 尤其是端口：以前这里从没取过 parsed.port，所以 http://x:abc 能存进去，
+    # 然后在 httpx 那层抛一个 InvalidURL，界面上只剩一句看不懂的话。
+    problem = sub2api.base_url_problem(url)
+    if problem:
+        raise _fail(problem)
     parsed = urlparse(url)
-    if not parsed.hostname:
-        raise _fail("Sub2API 地址里没看到主机名，正确写法例如 http://192.168.31.235:3000")
-    if parsed.username or parsed.password:
-        raise _fail(
-            "Sub2API 地址里不要带用户名和密码。管理员 Key 请填在下面那个专门的输入框里，"
-            "那里会加密保存、界面上也不会再显示出来"
-        )
     if parsed.query or parsed.fragment:
         raise _fail("Sub2API 地址不要带 ? 或 # 后面的内容，填到端口为止就行")
     # 这一条是最容易踩的：管理员常把接口文档里的 http://host:3000/api/v1 整段贴过来。
@@ -141,6 +143,32 @@ def _normalize_sub2api_base_url(raw: Any) -> str:
             "例如填 http://192.168.31.235:3000"
         )
     return url
+
+
+def _normalize_sub2api_admin_key(raw: Any) -> str:
+    """校验并规整管理员 Key。留空是允许的（等于「还没配」）。
+
+    为什么这一项必须在**保存这一刻**就拦住，而不是等点自检时再说：
+    这把 Key 是原样拼进 HTTP 请求头 `x-api-key` 发出去的，而请求头**只能放
+    ASCII**。里面只要有一个中文字符，httpx 就会在编码那一刻抛 UnicodeEncodeError，
+    那是个既不属于我们错误分类体系、也没法翻译成人话的异常——
+    它曾经在界面上原样变成「自检过程中出现意外错误（UnicodeEncodeError）。
+    请确认 Sub2API 地址填得对不对」，把人往完全错误的方向指（真因在 Key 不在地址）。
+
+    实际踩到的形态是：管理员把输入框里那句灰色提示文字「粘贴网关后台生成的
+    管理员 Key」当成内容粘了进来。所以提示语里必须点名这个可能——
+    只说「格式不对」的话，人会盯着那串看起来「明明有字」的内容百思不解。
+
+    判断标准和 sub2api.admin_key_problem 是同一份（就是直接调它）：
+    同一件事只有一处标准，才不会出现「设置页存得进去、一用就报错」。
+    """
+    key = str(raw or "").strip()
+    if not key:
+        return ""
+    problem = sub2api.admin_key_problem(key)
+    if problem:
+        raise _fail(problem)
+    return key
 
 
 def _normalize_sub2api_group_id(raw: Any) -> str:
@@ -198,9 +226,9 @@ def _apply_sub2api_updates(current: Dict[str, Any], updates: Dict[str, Any]) -> 
         )
     if "sub2api_admin_key" in updates:
         # 前端把掩码原样回传的情况在上面已经 pop 掉了，走到这里的都是新值。
-        # 只去两头空白：从网页上复制 Key 常带一个换行，带着它会让每一次请求都
+        # 去两头空白是必须的：从网页上复制 Key 常带一个换行，带着它会让每一次请求都
         # 401，而界面上两串字符看起来一模一样。
-        updates["sub2api_admin_key"] = str(updates["sub2api_admin_key"] or "").strip()
+        updates["sub2api_admin_key"] = _normalize_sub2api_admin_key(updates["sub2api_admin_key"])
 
     # —— 跨字段：没配齐就不许打开总开关 ——
     # 打开了也只会让每个新用户走一遍必然失败的流程，last_error 里堆一片红字，
