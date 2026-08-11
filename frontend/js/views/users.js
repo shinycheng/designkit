@@ -6,6 +6,11 @@
 // 上游账单三处各有一份「后 4 位」，凑一起就能把「谁 / 哪把 Key / 花了多少钱」串成一条线。
 // 后端接口本身也不返回 Key（backend/app/routers/users.py 文件头），
 // 所以这里就算想显示也拿不到——两边是一致的，不要试图给它加一个「查看」按钮。
+//
+// 同一条规矩对**自动开通**同样成立，而且更严：系统会在网关那边替每个成员建一个
+// 账号（邮箱 + 密码都是系统自己生成的），这一页既不显示那个邮箱，也不显示那个密码，
+// 更没有「查看密码」这种功能——后端 provisioning.account_view 是白名单序列化，
+// 压根不返回它们。管理员对凭据能做的只有两件事：「重新开通」和「改用手工填 Key」。
 import { api, getSessionEpoch } from '../api.js';
 import {
   button,
@@ -42,6 +47,108 @@ const GATEWAY_STATE_TEXT = {
   failed: '开通失败',
   pending: '开通中',
 };
+
+// 自动开通的四种「说法」。
+//
+// 这一层刻意把后端的 7 个状态（pending / user_created / key_issued / active /
+// failed / manual / disabled）压成运营看得懂的四句话，因为中间那三个状态
+// （已建号、已拿到 Key、还没冒烟通过）对管理员来说是同一件事：**还在办，别管它**。
+// 把它们逐个显示出来只会让人以为出了七种不同的毛病。
+//
+// tone 对应 dk-badge 的配色；下面的 needsHuman 决定这一行要不要给
+// 「重新开通 / 改用手工填 Key」这两个按钮。
+const PROVISION_VIEWS = {
+  working: { tone: 'info', label: '开通中', icon: 'loader-circle' },
+  done: { tone: 'success', label: '已开通', icon: 'circle-check' },
+  human: { tone: 'warning', label: '需要手工处理', icon: 'circle-alert' },
+  manual: { tone: 'neutral', label: '手工配置', icon: 'key-round' },
+  off: { tone: 'neutral', label: '已停用', icon: 'circle-x' },
+  // 连一行开通记录都还没有：自动开通上线之前建的号，或者建号那一刻登记失败了。
+  // **不能显示成「需要手工处理」**——后台每分钟会自己补上这一行，
+  // 标成红旗子会让管理员白跑一趟去处理一件根本不用他管的事。
+  none: { tone: 'neutral', label: '未开通', icon: 'clock' },
+};
+
+// 分类码 → 人话，**只在后端没给人话时兜底**。
+//
+// 正常情况下后端会把 last_error 写成「分类码|人话」，人话那半截由
+// services/sub2api.py 写好（已经是「该去哪里点什么」的口吻），前端原样显示即可。
+// 但只要有一条路径漏写了人话，界面上就会蹦出 E_LOGIN_2FA 这种字样——
+// 对非技术运营来说等同于没报错。所以这里再兜一层：见到裸分类码就翻译成人话。
+const ERROR_CODE_FALLBACK = {
+  E_LOGIN_2FA: '这个成员在网关那边开了两步验证，自动开通用不了，请手工填一把 Key。',
+  E_PASSWORD_MISMATCH: '这个成员在网关那边自己改过密码，系统进不去他的账号了，请手工填一把 Key。',
+  E_BACKEND_MODE: '网关开着「后台模式」，谁都自动开通不了。请管理员去网关后台关掉它。',
+  E_CAPTCHA_ON: '网关开着人机验证，系统没法代成员登录。请管理员去网关后台关掉，或改用手工填 Key。',
+  E_COMPLIANCE: '网关要求先签一次合规承诺，所有管理操作都被拦住了。请管理员登录网关后台重新签一次。',
+  E_ADMIN_AUTH: '「系统设置」里填的网关管理员 Key 不对或没权限，请重新填一次。',
+  E_NO_GROUP: '这个成员的 Key 没有绑到任何分组，网关不受理。请检查「系统设置」里填的分组 id。',
+  E_GROUP_DENIED: '网关不允许这个成员用你填的那个分组。请检查「系统设置」里填的分组 id。',
+  E_KEY_REJECTED: '网关不认这个成员的 Key（多半是在网关后台被删或被禁用了）。',
+  E_KEY_RATE_LIMITED: '建 Key 的次数被网关限制了（每小时有上限），已经停手。过一小时再点重试，着急就手工填一把。',
+  E_ROUTE_MISSING: '网关的接口地址找不到，多半是网关升级挪了位置，或者「系统设置」里的地址填错了。',
+  E_NETWORK: '连不上网关（超时或网络不通），会自动重试。',
+  E_SERVER: '网关内部出错了，会自动重试。',
+  E_RATE_LIMITED: '被网关限流了，会自动重试。',
+  E_LOCAL_CONFIG: '「系统设置」里的自动开通还没配齐（地址 / 管理员 Key / 分组 id），配齐了会自动继续。',
+  E_LOCAL_NO_PASSWORD: '系统这边已经没有这个成员在网关的登录凭据了，没法再自动建 Key，请手工填一把。',
+  E_LOCAL_EMAIL_GHOST: '网关说这个邮箱已经存在，但又查不到它，需要人工去网关后台看一眼。',
+  E_LOCAL_KEY_SQUATTED: 'Key 的名字被别人占了，换了几轮还占着，请手工填一把 Key。',
+  E_LOCAL_MAX_ATTEMPTS: '自动开通连着失败太多次，已经停手了，请手工填一把 Key。',
+  E_LOCAL_PAUSED: '自动开通被暂停了（自检发现网关那边有前提条件不满足）。',
+};
+
+/** 把后端给的 gateway 结构翻译成「开通状态」。
+ *
+ * 兼容两种后端：老的只给 { configured, state, last_error }，
+ * 新的还会给 { error_code, error_message, attempts, retry_due_at, auto }。
+ * 少了哪个字段都不能让这一行渲染不出来——成员列表是管理员的日常入口，
+ * 它挂了比开通功能没做还严重。
+ */
+function provisionOf(gateway) {
+  const g = gateway || {};
+  const st = String(g.state || '');
+  const configured = Boolean(g.configured);
+  let kind = 'working';
+  if (!st) kind = configured ? 'manual' : 'none';
+  else if (st === 'active') kind = 'done';
+  else if (st === 'disabled') kind = 'off';
+  else if (st === 'failed') kind = 'human';
+  else if (st === 'manual') kind = configured ? 'manual' : 'human';
+  return { kind, ...PROVISION_VIEWS[kind] };
+}
+
+/** 取「人话那半截」。分类码只给管理员排错用，永远不显示在界面上。 */
+function reasonOf(gateway) {
+  const g = gateway || {};
+  const raw = String(g.error_message || g.last_error || '').trim();
+  if (!raw) return ERROR_CODE_FALLBACK[String(g.error_code || '')] || '';
+  // 后端约定的格式是「分类码|人话」，取 '|' 之后那一段
+  const cut = raw.indexOf('|');
+  const human = cut >= 0 ? raw.slice(cut + 1).trim() : raw;
+  if (!human || /^E_[A-Z0-9_]+$/.test(human)) {
+    const code = cut >= 0 ? raw.slice(0, cut).trim() : human;
+    return ERROR_CODE_FALLBACK[code] || '自动开通没走通，请手工给这个成员填一把生图 Key。';
+  }
+  return human;
+}
+
+// 「下次自动重试」的时间点写成人话。已经过了就说「马上」，
+// 免得管理员看到一个过去的时间以为系统卡死了。
+function retryHint(iso) {
+  if (!iso) return '';
+  // 后端的时间戳有两种：带 Z 的（users.py 的 _iso 会补）和不带 Z 的裸 UTC。
+  // 不带 Z 时浏览器按**本地时区**解释，中国时区直接差 8 小时——
+  //「5 分钟后重试」会算成「8 小时前就该重试了」，显示成「马上会再试一次」，
+  // 管理员盯着看半天什么都不会发生。所以缺时区就当 UTC 补一个 Z。
+  const text = String(iso);
+  const at = new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(text) ? text : `${text}Z`);
+  if (Number.isNaN(at.getTime())) return '';
+  const mins = Math.round((at.getTime() - Date.now()) / 60000);
+  if (mins <= 0) return '马上会再试一次';
+  if (mins < 60) return `约 ${mins} 分钟后自动再试一次`;
+  return `约 ${Math.round(mins / 60)} 小时后自动再试一次`;
+}
 
 function passwordControl({ autocomplete = 'new-password', placeholder = '' } = {}) {
   const input = h('input', { class: 'dk-control input', type: 'password', autocomplete, placeholder });
@@ -124,7 +231,11 @@ export function renderUsers(container, currentUser) {
         h('div', {},
           h('h2', { id: 'user-list-title', class: 'dk-section-title' }, '成员账号'),
           h('p', { class: 'dk-section-meta' }, '给同事开账号、停用离职人员、给每个人配生图额度。没有「删除」——删了人他名下的历史任务会变成谁都查不到的无主数据，要让人登不进来请用「停用」。')),
-        button('新建成员', { iconName: 'user-plus', onclick: createUser })),
+        h('div', { class: 'dk-inline-actions' },
+          // 「开通中」是后台在跑，页面不会自己动。给一个刷新按钮，
+          // 好过让管理员去按浏览器的刷新键（那会连带把整页重新加载一遍）。
+          button('刷新', { variant: 'secondary', iconName: 'refresh-cw', onclick: load }),
+          button('新建成员', { iconName: 'user-plus', onclick: createUser }))),
       modeNotice(),
     );
 
@@ -144,6 +255,12 @@ export function renderUsers(container, currentUser) {
     const isSelf = currentUser && user.id === currentUser.id;
     const gateway = user.gateway || {};
     const stateText = gateway.state ? (GATEWAY_STATE_TEXT[gateway.state] || gateway.state) : '';
+    const provision = provisionOf(gateway);
+    const reason = reasonOf(gateway);
+    // 「需要手工处理」才给按钮：已开通和开通中的行不该出现「重新开通」，
+    // 那会诱导管理员去点一个只会把好好的账号推回队列的按钮。
+    // 「未开通」（连行都还没有）也给，虽然后台会自己补，但管理员想立刻办也该办得了。
+    const needsHuman = provision.kind === 'human' || provision.kind === 'none';
 
     return h('article', { class: 'dk-user-row', 'data-state': user.is_active ? 'enabled' : 'disabled' },
       h('div', { class: 'dk-user-row__main' },
@@ -160,18 +277,59 @@ export function renderUsers(container, currentUser) {
           user.must_change_password
             ? h('span', { class: 'dk-badge dk-badge--warning', title: '这个人还没有用初始密码登录过，或者登录后还没改密码' },
               icon('key-round', { size: 14 }), '未改初始密码')
+            : null,
+          // 开通状态。title 里放后端那套状态名，纯粹给管理员和技术支持对口径用，
+          // 界面正文只出现「开通中 / 已开通 / 需要手工处理 / 手工配置」这几句。
+          h('span', {
+            class: `dk-badge dk-badge--${provision.tone} dk-provision-badge`,
+            'data-kind': provision.kind,
+            title: stateText ? `内部状态：${stateText}` : '',
+          }, icon(provision.icon, { size: 14 }), provision.label)),
+        // 说明区。开通中给一句安心话，需要人管的给原因 + 已经试了几次。
+        // 不管哪种情况都**不显示 Key 的任何一部分**，也不显示这个人在网关那边的账号和密码。
+        //
+        // 放在 main 这一格（徽标下面、按钮上面）而不是单独占一行：
+        // 「为什么要点这个按钮」得先于按钮出现，不然管理员是先看到一排按钮、
+        // 挑一个点了，再往下看到原因说其实该做另一件事。
+        // 顺带也绕开了 grid-template-areas 的限制——具名区域必须各自连成矩形，
+        // 把说明插到 actions 和 stats 中间会把 stats 切成两块，整张表会被浏览器丢弃。
+        h('div', { class: 'dk-user-row__notes' },
+          provision.kind === 'working'
+            ? h('p', { class: 'dk-user-row__note' }, icon('info', { size: 14 }),
+              '系统正在为他开通生图额度，通常一分钟内完成，不用管它。'
+              + (retryHint(gateway.retry_due_at) ? `（${retryHint(gateway.retry_due_at)}）` : ''))
+            : null,
+          provision.kind === 'none'
+            ? h('p', { class: 'dk-user-row__note' }, icon('info', { size: 14 }),
+              '还没有这个人的开通记录。后台每分钟会自动补上并开始开通；'
+              + '想立刻办可以点「重新开通」，也可以直接手工给他填一把 Key。')
+            : null,
+          needsHuman && reason
+            ? h('p', { class: 'dk-user-row__error' }, icon('circle-alert', { size: 14 }),
+              h('span', {}, reason,
+                Number(gateway.attempts) > 0 ? h('small', {}, `　已自动试过 ${Number(gateway.attempts)} 次。`) : null,
+                retryHint(gateway.retry_due_at) ? h('small', {}, `　${retryHint(gateway.retry_due_at)}。`) : null))
             : null)),
       h('dl', { class: 'dk-user-row__stats' },
         h('div', {},
           h('dt', {}, '生图额度'),
           h('dd', { 'data-tone': gateway.configured ? 'ok' : 'muted' },
-            gateway.configured ? '已配置' : '未配置',
-            stateText ? h('small', {}, `（${stateText}）`) : null)),
+            gateway.configured ? '已配置' : '未配置')),
         h('div', {}, h('dt', {}, '创建时间'), h('dd', {}, fmtTime(user.created_at)))),
-      gateway.last_error
-        ? h('p', { class: 'dk-user-row__error' }, icon('circle-alert', { size: 14 }), gateway.last_error)
-        : null,
       h('div', { class: 'dk-inline-actions' },
+        // 按钮名字要和后端回的话逐字对上——后端有好几条提示里写着
+        //「再点一次「重新开通」」，这里要是叫「重试」，管理员会满页找一个不存在的按钮。
+        needsHuman
+          ? button('重新开通', {
+            variant: 'secondary',
+            size: 'sm',
+            iconName: 'refresh-cw',
+            loading: busy,
+            disabled: busy || !user.is_active,
+            disabledReason: !user.is_active ? '这个账号是停用状态，先点「启用」再来开通生图额度' : '',
+            onclick: () => retryProvision(user),
+          })
+          : null,
         button(user.is_active ? '停用' : '启用', {
           variant: 'secondary',
           size: 'sm',
@@ -195,13 +353,54 @@ export function renderUsers(container, currentUser) {
             : '',
           onclick: () => resetPassword(user),
         }),
-        button('配置生图 Key', {
+        // 卡住的行上，这个按钮就是设计文档里那条「所有失败路径的共同终点」，
+        // 所以直接把它的名字改成管理员此刻真正要做的事，别让他去猜
+        //「配置生图 Key」和「重试」哪个才是解法。
+        button(needsHuman ? '改用手工填 Key' : '配置生图 Key', {
           variant: 'secondary',
           size: 'sm',
           iconName: 'plug',
           disabled: busy,
           onclick: () => editGateway(user),
         })));
+  }
+
+  // ── 重新开通 ──────────────────────────────────────────────────────────
+  // 后端 POST /api/web/users/:id/gateway/provision 只做两件很快的事：
+  // 把这一行重新排进队（纯本地写库），然后叫醒后台线程。真正的开通要连网关、
+  // 要代登录（登录还被全局节流），慢的时候几十秒，所以**不等结果**——
+  // 页面上干等着会让管理员以为失败了，然后反复点，每点一次都在网关那边多排一个队。
+  //
+  // 这条接口永远返回 HTTP 200，「排不排得上」看响应体的 ok，不能靠 catch 判断。
+  // ok=false 时的 message 往往是一整段该怎么做（比如「先点清除把手工填的 Key 删掉」），
+  // 用 toast 几秒就没了，所以留在页面上让他读完。
+  async function retryProvision(user) {
+    if (state.pending.has(user.id) || state.stopped) return;
+    state.pending.add(user.id);
+    noticeRoot.replaceChildren();
+    renderList();
+    try {
+      const result = await api.post(`/api/web/users/${user.id}/gateway/provision`);
+      if (state.stopped) return;
+      if (result && result.gateway) {
+        state.users = state.users.map((item) => (
+          item.id === user.id ? { ...item, gateway: result.gateway } : item));
+      }
+      const message = result?.message || '已重新排队，稍后回来刷新看看';
+      if (result && result.ok === false) {
+        noticeRoot.replaceChildren(inlineAlert(message, 'warning', {
+          title: `「${user.display_name || user.username}」这次没能排上队`,
+        }));
+      } else {
+        toast(message, 'success');
+      }
+    } catch (error) {
+      if (state.stopped) return;
+      toast(error.message, 'error');
+    } finally {
+      state.pending.delete(user.id);
+      if (!state.stopped) renderList();
+    }
   }
 
   // ── 新建成员 ───────────────────────────────────────────────────────────

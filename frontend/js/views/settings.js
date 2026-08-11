@@ -58,8 +58,11 @@ export function renderSettings(container) {
       createRuntimeSection(),
       createSecuritySection(),
       createAccessSection(),
+      // 这一节在后端还没有自动开通功能时返回 null（见函数内注释），
+      // 所以这里要把 null 过滤掉，否则 stack.append 会抛异常、整页设置打不开。
+      createProvisioningSection(),
       createPasswordSection(),
-    ];
+    ].filter(Boolean);
     stack.append(...state.controllers.map((controller) => controller.element));
   }
 
@@ -410,6 +413,337 @@ export function renderSettings(container) {
     return fmtTime(new Date(seconds * 1000).toISOString());
   }
 
+  /* ── 网关自动开通 ─────────────────────────────────────────────────────
+   *
+   * 这一节管的是「新成员建号时，系统要不要自己跑到图片网关那边替他开个账号、
+   * 领一把 Key」。做这件事的全部理由就是省掉管理员在「成员账号」页手工粘 Key
+   * 那一步——**它永远只是省事，不是唯一通路**。所以这一节的文案要反复讲清楚：
+   * 开不通不影响任何人登录和使用，只是生图要等你手工发 Key。
+   *
+   * 界面上永远不出现的东西（后端接口也压根不返回）：
+   *   - 成员在网关那边的登录密码（系统自己生成的，开通成功后就删了）
+   *   - 任何一把 Key 的内容，包括末 4 位
+   *   - E_LOGIN_2FA 这类分类码
+   */
+
+  /** 后端的时间戳有两种：带 Z 的（users.py 的 _iso 会补）和不带 Z 的裸 UTC
+   * （provisioning.summary 里的 halted_at 就是裸的）。不带 Z 时浏览器会按**本地时区**
+   * 解释，中国时区直接差 8 小时——「刚刚暂停的」会显示成 8 小时前，
+   * 管理员会以为这是条陈年旧账，不当回事。所以这里统一补一个 Z 再交给 fmtTime。
+   */
+  function fmtServerTime(iso) {
+    const text = String(iso || '');
+    if (!text) return '';
+    const normalized = /(Z|[+-]\d{2}:?\d{2})$/.test(text) ? text : `${text}Z`;
+    return fmtTime(normalized);
+  }
+
+  // 总结论那一行的标题。单项的等级文字用后端给的 level_text
+  //（「正常 / 注意 / 有问题 / 未验证」），不在前端另写一份，免得两边说法不一致。
+  const OVERALL_TEXT = {
+    green: '可以自动开通',
+    yellow: '能用，但有几处要注意',
+    red: '现在开不通，需要先处理',
+    // unknown 只出现在单项上：库里一个已开通的成员都没有、手上没有登录令牌，
+    // 都会是这个。**必须照实写「未验证」**，画成绿灯会让管理员以为查过了、
+    // 其实根本没查。
+    unknown: '未验证',
+  };
+
+  function createProvisioningSection() {
+    // 后端还没上这套设置项（老版本）时，整节不出现。
+    // 与其画一个点了必报错的面板，不如干脆不给——运营看到按钮就会去点。
+    if (!state.settings || !('sub2api_base_url' in state.settings)) return null;
+
+    const summaryRoot = h('div', { class: 'dk-provision-summary', 'aria-live': 'polite' });
+    const checkRoot = h('div', { class: 'dk-provision-check', 'aria-live': 'polite' });
+    let testButton;
+
+    const controller = createSettingsController({
+      id: 'provisioning-settings',
+      title: '网关自动开通',
+      description: '新成员建号时，系统自动到图片网关那边替他开一个账号、领一把自己的 Key，'
+        + '省掉你手工发 Key 这一步。开不通不影响任何人登录和使用，只是生图要等你手工发。',
+      keys: ['sub2api_auto_provision', 'sub2api_base_url', 'sub2api_admin_key',
+        'sub2api_group_id', 'sub2api_email_domain', 'sub2api_keep_password',
+        'sub2api_max_attempts'],
+      renderFields: (form) => {
+        const enabled = h('input', { type: 'checkbox' });
+        const baseUrl = h('input', { class: 'input', type: 'url', autocomplete: 'off', placeholder: 'http://192.168.31.235:3000' });
+        // 管理员 Key 沿用项目里已有的打码约定：后端回吐的是 8 个星号（+ 末 4 位），
+        // 原样提交后端会认出这是占位符、判定为「没改」，不会覆盖原值。
+        // 所以这里是 type=password 而不是普通输入框——不是怕管理员看，
+        // 是怕他身后站着人，以及怕浏览器把它记进自动填充。
+        const adminKey = h('input', { class: 'input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: '粘贴网关后台生成的管理员 Key' });
+        const groupId = h('input', { class: 'input', type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: '例如 1' });
+        const emailDomain = h('input', { class: 'input', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'designkit.local' });
+        const keepPassword = h('input', { type: 'checkbox' });
+        const maxAttempts = h('input', { class: 'input', type: 'number', min: 1, max: 10, inputmode: 'numeric' });
+
+        form.register('sub2api_auto_provision', enabled, checkboxBinding(false));
+        form.register('sub2api_base_url', baseUrl);
+        form.register('sub2api_admin_key', adminKey);
+        form.register('sub2api_group_id', groupId);
+        form.register('sub2api_email_domain', emailDomain);
+        form.register('sub2api_keep_password', keepPassword, checkboxBinding(false));
+        form.register('sub2api_max_attempts', maxAttempts, numberBinding());
+
+        return h('div', { class: 'dk-panel-stack' },
+          summaryRoot,
+          field('自动给新成员开通',
+            h('label', { class: 'dk-checkbox-row' }, enabled,
+              h('span', { class: 'dk-checkbox-row__copy' }, '打开（建议先把下面四项填好再打开）',
+                h('small', { class: 'dk-checkbox-row__description' },
+                  '关着的时候，新成员建号后照常能登录、能进工作台，只是生图前要你到'
+                  + '「成员账号」页给他填一把 Key。打开之后系统会自己去办，办不成还是回到手工发 Key。'))),
+            { help: '这个开关只影响「以后新建的成员」和「还没开通成功的成员」，已经能生图的人不受任何影响。' }),
+          h('div', { class: 'dk-field-grid' },
+            field('网关地址', baseUrl, {
+              help: '就是图片网关管理后台的地址，形如 http://192.168.31.235:3000。'
+                + '注意它和上面「生图服务」那一节填的接口地址不是同一个：那个是发图的地址（带 /v1），这个是后台的地址。',
+            }),
+            field('网关管理员 Key', adminKey, {
+              help: '在网关后台自己生成一把管理员 Key 贴进来。已保存的值只显示星号，不改它就不会被覆盖。'
+                + '这把 Key 只用来建账号和查状态，系统不会拿它去充值或删任何东西。',
+            }),
+            field('目标分组 id', groupId, {
+              help: '填一个数字，就是网关后台里那个分组的编号。填错的表现是成员开通到最后一步失败，'
+                + '提示「没绑分组」——那时回来改这里就行。',
+            }),
+            field('成员邮箱后缀', emailDomain, {
+              help: '系统会用「dk + 成员编号 + @这个后缀」在网关那边建账号，例如 dk7@designkit.local。'
+                + '这个邮箱不用真实存在，也不会收信；填一个你自己认得出来的就行，不要用 .invalid 结尾（网关把它当保留后缀）。',
+            })),
+          field('保管成员在网关的登录密码',
+            h('label', { class: 'dk-checkbox-row' }, keepPassword,
+              h('span', { class: 'dk-checkbox-row__copy' }, '不保管（默认，更安全）时请保持关闭',
+                h('small', { class: 'dk-checkbox-row__description' },
+                  '关着：开通成功后系统立刻把那个密码删掉，以后只留着一把 Key。'
+                  + '代价是这个成员将来要换一把新 Key 的话，系统自己办不了，只能你手工填。'
+                  + '开着：密码一直存着（加密存放），将来能自动重新建 Key，但系统里就长期躺着一堆能登录网关的凭据。'))),
+            { help: '不管开还是关，界面上都永远看不到这个密码——任何接口都不返回它，这不是藏起来，是压根没有这个功能。' }),
+          field('最多自动重试几次', maxAttempts, {
+            help: '范围 1–10。连着失败这么多次之后，这个成员就不再自动重试了，'
+              + '会出现在「成员账号」页并标成「需要手工处理」，等你去点「重新开通」或手工填一把 Key。',
+          }),
+          checkRoot);
+      },
+      validate: (draft) => {
+        const on = Boolean(draft.sub2api_auto_provision);
+        const url = String(draft.sub2api_base_url || '').trim();
+        const groupId = String(draft.sub2api_group_id || '').trim();
+        const domain = String(draft.sub2api_email_domain || '').trim();
+        if (url && !isHttpUrl(url)) return '网关地址要以 http:// 或 https:// 开头，例如 http://192.168.31.235:3000。';
+        if (groupId && !/^\d+$/.test(groupId)) return '目标分组 id 只能填数字。';
+        if (domain) {
+          // 这三条规则要和后端 settings_router 的 _EMAIL_DOMAIN_RE /
+          // _RESERVED_EMAIL_DOMAIN_SUFFIXES 逐条对齐。前端先拦一道只是为了当场
+          // 给出中文提示，说了算的仍然是后端；但两边不一致的话，管理员会看到
+          //「前端说可以、点保存又被退回来」，那比不校验还糟。
+          if (domain.length > 100 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) {
+            return '成员邮箱后缀只能用小写字母、数字、减号和点，中间要带一个点，例如 designkit.local。';
+          }
+          // 网关自己占了几个 *-connect.invalid 后缀，撞上会被建号策略直接拒掉，
+          // 而报错只说「邮箱不被允许」，完全看不出是后缀的问题；
+          // .localhost / .example / .test 是 RFC 保留给文档和测试的，同理。
+          const reserved = ['.invalid', '.localhost', '.example', '.test'].find((s) => domain.endsWith(s));
+          if (reserved) return `成员邮箱后缀不能用 ${reserved} 结尾，这是保留后缀，网关会拒绝建号。换成 designkit.local 这种就行。`;
+        }
+        if (!integerBetween(draft.sub2api_max_attempts, 1, 10)) return '最多自动重试次数要填 1–10 之间的整数。';
+        // 开关打开时才强制要求填齐：没打开的时候允许先存半截，
+        // 否则管理员想先把地址存下来、明天再拿 Key 都做不到。
+        if (on) {
+          if (!isHttpUrl(url)) return '要打开自动开通，先把网关地址填好（以 http:// 或 https:// 开头）。';
+          if (!String(draft.sub2api_admin_key || '').trim()) return '要打开自动开通，先把网关管理员 Key 填好。';
+          if (!groupId) return '要打开自动开通，先把目标分组 id 填好（一个数字）。';
+          if (!domain) return '要打开自动开通，先把成员邮箱后缀填好，例如 designkit.local。';
+        }
+        return '';
+      },
+      extraActions: (form) => {
+        testButton = button('测试能不能自动开通', {
+          variant: 'secondary',
+          iconName: 'plug',
+          onclick: async () => {
+            if (form.dirty) {
+              form.setStatus('请先保存当前更改，测试只使用已保存的配置。', 'warning');
+              return;
+            }
+            testButton.disabled = true;
+            testButton.setAttribute('aria-busy', 'true');
+            checkRoot.replaceChildren(inlineAlert('正在检查…（只查看网关那边的设置，不建账号、不发 Key、不花钱）', 'info'));
+            try {
+              // 这条接口和「测试连接」一样永远返回 HTTP 200，成败看响应体，
+              // 不能靠 catch 判断——真挂了才会走到 catch。
+              const result = await api.post('/api/web/settings/test_provisioning');
+              if (state.stopped) return;
+              renderCheck(result);
+              // 自检发现「前提条件没了」时后端会当场把总开关关掉（paused_now）。
+              // 页面上那个勾还停在打开的位置，管理员保存一次别的字段就会把它又打开，
+              // 于是 worker 继续撞墙。所以拿返回值把开关和基线一起对回去。
+              controller.applyServerValues({ sub2api_auto_provision: result.auto_provision });
+              if (result.summary) renderSummary(result.summary);
+              else loadSummary();
+            } catch (error) {
+              if (state.stopped) return;
+              checkRoot.replaceChildren(inlineAlert(error.message, 'error', { title: '检查没跑起来' }));
+            } finally {
+              testButton.disabled = false;
+              testButton.removeAttribute('aria-busy');
+            }
+          },
+        });
+        return [testButton];
+      },
+    });
+
+    // ── 面板顶部：全局暂停红条 + 各状态人数 ──
+    function renderSummary(data) {
+      if (state.stopped) return;
+      const counts = (data && data.counts) || {};
+      const stuck = (data && data.stuck) || [];
+      const nodes = [];
+      if (data && data.halted) {
+        nodes.push(h('div', { class: 'dk-panel-stack' },
+          inlineAlert(
+            (data.halt_reason || '自检发现网关那边有前提条件不满足。')
+            + (data.halted_at ? `（暂停时间：${fmtServerTime(data.halted_at)}）` : ''),
+            'error',
+            { title: '自动开通已暂停，新成员现在开不出来' },
+          ),
+          h('div', { class: 'dk-inline-actions' },
+            // 名字要和后端提示里写的逐字一致：自检结论里写着
+            //「请点「我已处理，恢复自动开通」」，这里叫别的名字就等于指了个假路。
+            button('我已处理，恢复自动开通', {
+              variant: 'secondary',
+              iconName: 'refresh-cw',
+              onclick: resumeHalt,
+            }))));
+      }
+      // 口径要和「成员账号」页那一列逐字对上，否则两个页面的数字对不上，
+      // 管理员会以为系统在骗他。
+      // stuck 的定义（见后端 provisioning.summary）：开通失败的 + 转了手工但还没填 Key 的。
+      // 所以「手工配置」要把 stuck 里那些 manual 的人扣掉，不能直接用 counts.manual。
+      const active = Number(counts.active || 0);
+      const working = Number(counts.pending || 0) + Number(counts.user_created || 0) + Number(counts.key_issued || 0);
+      const manualStuck = stuck.filter((item) => item.state === 'manual').length;
+      const manual = Math.max(0, Number(counts.manual || 0) - manualStuck);
+      nodes.push(h('p', { class: 'dk-section-meta' },
+        `目前：已开通 ${active} 人 · 开通中 ${working} 人 · 手工配置 ${manual} 人 · 需要手工处理 ${stuck.length} 人。`
+        // 按钮在「成员账号」页叫「重新开通」，这里就得叫同一个名字。
+        // 指路指错名字，非技术用户会在页面上反复找一个不存在的按钮。
+        + (stuck.length ? '需要你处理的那几个人，在左侧「成员账号」页会标出来，那里可以直接点「重新开通」或手工填一把 Key。' : '')));
+      // config_problem 是后端算好的一句人话（「还没填目标分组 id」这种）。
+      // 它比自检更早能告诉管理员缺什么——不用等他点按钮。
+      if (data && data.config_problem) {
+        nodes.push(inlineAlert(`${data.config_problem}。填好并保存之后，自动开通才会真的开始干活。`, 'warning'));
+      }
+      summaryRoot.replaceChildren(...nodes);
+    }
+
+    async function loadSummary() {
+      try {
+        const data = await api.get('/api/web/settings/provisioning');
+        if (state.stopped) return;
+        renderSummary(data);
+        // 60 秒内跑过自检的话，后端会把那次结果一起带回来。直接画出来，
+        // 省得管理员刷一次页面就以为「还没查过」，然后又点一次按钮。
+        if (data.selfcheck) renderCheck(data.selfcheck);
+      } catch {
+        // 概览拿不到不影响改设置，安静跳过：这里蹦一个红条只会吓到人，
+        // 而他此刻要做的事（填地址、填 Key）一件都不受影响。
+        if (!state.stopped) summaryRoot.replaceChildren();
+      }
+    }
+
+    async function resumeHalt() {
+      try {
+        const data = await api.post('/api/web/settings/provisioning/resume');
+        if (state.stopped) return;
+        renderSummary(data);
+        // 这个接口除了解暂停，还会把总开关重新打开（两处都关着是暂停时的常态）。
+        // 不把页面上那个勾同步回去的话，管理员下次保存会又把它关掉，
+        // 表现就是「刚恢复完，一保存又停了」。
+        controller.applyServerValues({ sub2api_auto_provision: true });
+        toast(data.message || '自动开通已恢复', 'success');
+      } catch (error) {
+        // 配置没填齐时后端会 422 并说清缺什么，原样转给管理员
+        if (!state.stopped) toast(error.message, 'error');
+      }
+    }
+
+    /** 自检结果：三色灯 + 逐项结论 + 每项从网关读回来的实际取值。
+     *
+     * 字段全部来自后端（settings_router 的 _item / _run_selfcheck），前端不再自己
+     * 从 detail 里拼句子——同一个字段名在不同检查项里含义不一样（「公开设置」的
+     * version 是网关版本，「合规确认」的 version 是合规承诺版本），在前端拼必然拼错。
+     * 后端已经把每项的 actual / expected 写成人话了，照抄就好。
+     *
+     * 另外：detail 里那些名字带 key / token / password / email 的字段后端已经滤掉了
+     *（见 _SENSITIVE_DETAIL_HINTS）。这里也**不显示 detail**，只显示 actual / expected，
+     * 双保险——将来后端漏了一个字段，界面这边也不会把它捅出去。
+     */
+    function renderCheck(result) {
+      const level = String(result.level || 'unknown');
+      const probes = Array.isArray(result.probes) ? result.probes : [];
+      const actions = Array.isArray(result.actions) ? result.actions : [];
+
+      checkRoot.replaceChildren(
+        h('div', { class: 'dk-provision-result', 'data-level': level },
+          h('div', { class: 'dk-provision-result__head' },
+            h('span', { class: 'dk-provision-lamp', 'data-level': level, 'aria-hidden': 'true' }),
+            h('strong', {}, OVERALL_TEXT[level] || '检查完成'),
+            h('span', { class: 'dk-provision-result__time' },
+              (result.checked_at ? `检查时间 ${fmtServerTime(result.checked_at)}` : '')
+              // cached=true 表示这是 60 秒内那次的结果（打开页面时带回来的），
+              // 不说清楚的话管理员会以为是刚刚重新查的。
+              + (result.cached ? '（上一次的结果）' : ''))),
+          result.message ? h('p', { class: 'dk-provision-result__message' }, result.message) : null,
+          // 后端在发现「前提条件没了」时会当场暂停自动开通。这件事比任何一项检查
+          // 结论都重要，单独用红条讲，别让它混在列表里被划过去。
+          result.paused_now
+            ? inlineAlert('为了不让所有新成员一直白撞墙，系统已经自动把「自动给新成员开通」暂时关掉了。'
+              + '按下面说的处理完，再点上面的「我已处理，恢复自动开通」。', 'error',
+            { title: '自动开通已被暂停' })
+            : null,
+          // 自检查的是「网关那边行不行」，跟总开关是两件事。全绿但开关关着的时候
+          // 只写一句「可以自动开通」，管理员会以为已经在办了，然后等一个永远不来的结果。
+          // 用**后端这次回的**值判断，不是页面上那个还没保存的勾。
+          result.configured && !result.auto_provision && !result.paused_now
+            ? inlineAlert('网关这边没问题，但上面那个「自动给新成员开通」的开关现在是关着的，'
+              + '系统不会真的去开通。要用的话把它打开并保存。', 'warning')
+            : null,
+          actions.length
+            ? h('div', { class: 'dk-provision-facts' },
+              h('h3', {}, '要你去做的事'),
+              h('ul', {}, actions.map((line) => h('li', {}, line))))
+            : null,
+          probes.length
+            ? h('ul', { class: 'dk-provision-probes' }, probes.map((probe) => h('li', { 'data-level': probe.level || 'unknown' },
+              h('span', { class: 'dk-provision-lamp', 'data-level': probe.level || 'unknown', 'aria-hidden': 'true' }),
+              h('div', {},
+                h('strong', {}, probe.name || '检查项'),
+                // 等级文字照后端给的写。「未验证」必须原样出现——它不是绿也不是红，
+                // 是「这次根本没查」，画成绿会让管理员以为查过了。
+                h('span', { class: 'dk-provision-probes__tag', 'data-level': probe.level || 'unknown' },
+                  probe.level_text || OVERALL_TEXT[probe.level] || ''),
+                h('p', {}, probe.summary || ''),
+                // 「实际」是刚从这台网关上读回来的真值，「期望」是该长什么样。
+                // 两行并排，管理员不用懂技术也能自己比出哪里不对。
+                probe.actual === undefined || probe.actual === null || probe.actual === ''
+                  ? null
+                  : h('p', { class: 'dk-provision-probes__fact' }, `实际：${probe.actual}`),
+                probe.expected
+                  ? h('p', { class: 'dk-provision-probes__fact' }, `应该是：${probe.expected}`)
+                  : null))))
+            : inlineAlert('这台服务的自检接口没有返回检查明细，只能给出上面这个结论。', 'info')),
+      );
+    }
+
+    loadSummary();
+    return controller;
+  }
+
   function createPasswordSection() {
     const section = h('section', { class: 'dk-settings-section', 'aria-labelledby': 'password-settings-title' });
     const oldPassword = h('input', { class: 'input', type: 'password', autocomplete: 'current-password' });
@@ -586,6 +920,24 @@ export function renderSettings(container) {
       element: section,
       get dirty() { return dirty; },
       setStatus: formApi.setStatus,
+      /** 服务端自己改了某几项设置时，把控件、baseline、draft 一起对回去。
+       *
+       * 「网关自动开通」那一节需要它：自检发现前提条件没了会当场关掉总开关，
+       * 点「恢复自动开通」又会重新打开——这两件事都发生在后端。
+       * 只改控件不改 baseline/draft 的话，页面会以为「用户手动改了这个勾」，
+       * 管理员随手保存一次就把服务端刚做的决定又推翻了。
+       */
+      applyServerValues(values) {
+        Object.entries(values || {}).forEach(([key, value]) => {
+          if (!keys.includes(key) || value === undefined) return;
+          baseline[key] = value;
+          draft[key] = value;
+          state.settings[key] = value;
+          const registered = bindings.get(key);
+          if (registered) registered.binding.write(registered.control, value);
+        });
+        syncDirty();
+      },
     };
   }
 

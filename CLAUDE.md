@@ -12,6 +12,7 @@
 | `docs/PLAN.md` | 分期计划与完成状态 |
 | `docs/erp-api.md` | 对外 ERP 接口契约（**必须与 `backend/app/routers/v1.py` 逐字段一致**） |
 | `docs/deploy-synology.md` | 群晖 NAS 部署步骤 |
+| `docs/auto-provision.md` | 自动开通生图额度（Sub2API 代客建号）：怎么配、怎么自检、失败原因对照表、升级网关后的复核 |
 | `docs/UI_REFACTOR_SPEC.md` | 前端界面规范 |
 | `docs/AUTH_VISUAL_ATTRIBUTIONS.md` | 登录页视觉素材出处（版权合规） |
 | `tests/README.md` | 测试怎么跑（新增测试文件要在这里登记，含项数） |

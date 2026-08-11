@@ -226,4 +226,80 @@ RUNTIME_DEFAULTS = {
     #   per_user —— 每人一把自己的 Key，各花各的钱、账单分得清是谁用的
     # 默认保持 shared，等成员账号和各自的 Key 都配好了再切过去。
     "gateway_mode": os.environ.get("DESIGNKIT_GATEWAY_MODE", "shared"),
+
+    # ══════════════════════════════════════════════════════════════
+    #  网关自动开通（在 Sub2API 上代客建号、代客拿 Key）
+    # ══════════════════════════════════════════════════════════════
+    #
+    # 这一组**故意一个都不读环境变量**，全部由管理员在
+    # 「系统设置 → 网关自动开通」里填。两个理由：
+    # ① 管理员 Key 属于密钥，本项目的约定是「密钥一律让用户自己在网页界面填，
+    #    不代填、不写进代码或配置文件」，所以它不能有 .env 后备；
+    # ② 其余几项（地址、分组 id、邮箱域名）是跟着那一台 Sub2API 走的一次性配置，
+    #    放进 .env 只会多出「env 里填了、库里也存了、到底哪个生效」的困惑——
+    #    而这类困惑在这个项目里是真出过事的（文档和代码对不上，用户分不清是谁错了）。
+    #
+    # 默认值必须和 services/provisioning.py 的 PROVISIONING_SETTING_DEFAULTS
+    # **逐项一致**。那边是「config 里还没这个键时的后备」，两边写岔了的表现是
+    # 「设置页显示 A、实际按 B 跑」，界面上完全看不出来。改这里就去改那里。
+
+    # 总开关。**默认关闭**：管理员 Key 没填之前打开，只会让每个新用户都走一遍
+    # 必然失败的开通流程、last_error 里堆一片红字。填完地址 / 管理员 Key /
+    # 分组 id 之后再自己打开（接口层会拦住「没配齐就打开」这个动作）。
+    "sub2api_auto_provision": False,
+    # Sub2API 管理端地址，形如 http://192.168.31.235:3000（不带末尾斜杠、不带路径）
+    "sub2api_base_url": "",
+    # Sub2API 的管理员 Key（请求头 x-api-key）。
+    # **必须在 SECRET_KEYS 里打码**，见本文件末尾的 SECRET_SETTING_KEYS。
+    # 这里永远是空串：不预填、不读 env、不写进任何模板文件。
+    "sub2api_admin_key": "",
+    # 目标分组 id（数字）。为什么要管理员手填：admin 侧有没有「列出所有分组」的接口
+    # 至今没查明，而用户侧那个接口要先有 JWT（鸡生蛋）。填错的表现是建 Key 返回
+    # 403 GROUP_NOT_ALLOWED，或者号建好了、Key 也发了、一张图都发不出去
+    # （网关回「API Key is not assigned to any group」）——自检里专门查这一项。
+    "sub2api_group_id": "",
+    # 代客建号时用的合成邮箱域名，最终邮箱形如 dk7@designkit.local。
+    # 只允许 [a-z0-9.-]：邮箱里出现 '+' 会被 Sub2API 的别名去重逻辑
+    # (stripEmailPlusSuffix) 并成同一个人，两个成员会共用一个远端账号、账单直接算错人头。
+    # 另外 .invalid 那一族是保留后缀，用了会被策略拒且报错里看不出根因，接口层会拦。
+    "sub2api_email_domain": "designkit.local",
+    # 是否长期保管用户在 Sub2API 的密码。**默认 false**。
+    # 取回已经发出去的 Key 只要管理员 Key 就够了，只有「新建 Key」那一次需要密码；
+    # 所以开通成功之后立刻把密码清掉，designkit 长期保管的就只是一堆 Key，
+    # 而不是一堆能登进 Sub2API 的凭据——这套方案最大的安全负担就砍掉了大半。
+    # 代价（界面上必须写出来）：清空之后这一行不能再自动重建 Key，只能手工发。
+    "sub2api_keep_password": False,
+    # 自动开通连续失败几次就转「等管理员手工发 Key」。
+    # 5 次配合 1 分钟 / 5 分钟 / 30 分钟 / 2 小时 / 12 小时的退避阶梯约覆盖 15 小时，
+    # 足够跨过一次夜间维护窗口，又不会无限重试下去刷日志。
+    "sub2api_max_attempts": 5,
+    # 单次请求 Sub2API 的超时（秒）。面板接口都很快，15 秒足够；
+    # 给大了会让后台 worker 卡在一个连不上的地址上，拖慢所有人的开通。
+    "sub2api_timeout": 15,
+    # 是否校验 https 证书。默认开；内网自签证书的实例才需要关，且要管理员自己点。
+    "sub2api_verify_tls": True,
+
+    # 「共享兜底 Key」——自动开通全线崩溃时的救命开关，**默认关**。
+    #
+    # 打开之后，所有还没开通成功的用户临时共用管理员填的那一把全局 Key
+    # （也就是上面的 openai_api_key），用户完全无感、照常生图。
+    # 代价必须原样写在界面开关旁边，不能只写在这里：
+    #   无法按用户分账、额度共用、任何一个人跑量都在消耗同一个余额。
+    # 建议只在故障期临时打开，故障处理完立刻关回去。
+    #
+    # ⚠ 这个开关**目前只是存了个值**：真正让它生效的判断在
+    # services/settings_service.py 的 resolve_for_user（规则 5 那条硬线）里，
+    # 那个文件不属于本次改动范围。接上之前，打开它不会有任何效果。
+    "gateway_shared_fallback": False,
 }
+
+# 需要在设置接口里打码的密钥类设置项——**本次新增的那些**。
+# settings_service.SECRET_KEYS 里已有的 openai_api_key / inspiration_proxy
+# 不重复列在这里，免得两处都写一遍、将来改一处漏一处。
+#
+# 为什么放在 config 而不是直接写进 settings_service：新增一个密钥设置项时，
+# 「加默认值」和「记得打码」这两件事就挨在一起，不会加了字段忘了打码——
+# 忘一次的后果是管理员 Key 明文出现在浏览器的接口响应里。
+# 真正并进 SECRET_KEYS 的动作在 routers/settings_router.py 的模块顶部
+# （config 不能反过来 import settings_service，会绕成环）。
+SECRET_SETTING_KEYS = ("sub2api_admin_key",)

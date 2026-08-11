@@ -110,6 +110,45 @@
   font-weight: 400;
 }
 
+/* 说明区（在 .dk-user-row__main 里，徽标下面、按钮上面）。
+   两种说明（开通中的安心话 / 需要人管的原因）套在同一个容器里纵向排，
+   而不是各自去占 grid-template-areas 的一格——具名区域必须各自连成矩形，
+   往 main 和 actions 中间插一行会把右边的 stats 切成不连续的两块，
+   整张 grid-template-areas 会被浏览器当成无效值丢弃（表现是全挤在左上角）。 */
+.dk-user-row__notes {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-2);
+}
+
+.dk-user-row__notes:empty {
+  display: none;
+}
+
+.dk-user-row__note {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--dk-space-2);
+  border-radius: var(--dk-radius-sm);
+  background: var(--dk-surface-subtle);
+  color: var(--dk-text-secondary);
+  padding: var(--dk-space-2) var(--dk-space-3);
+  font-size: var(--dk-text-xs);
+}
+
+.dk-user-row__note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+/* 开通状态徽标（开通中 / 已开通 / 需要手工处理 / 手工配置 / 已停用）。
+   「开通中」用的是 loader 图标，但**不转**——一行里几个人同时在开通时，
+   几个转圈会把整页搞得像在加载，反而让人以为页面卡住了。 */
+.dk-provision-badge svg {
+  flex: 0 0 auto;
+}
+
 /* 网关开通失败的原因（后端给的中文人话），整行显示，别截断 */
 .dk-user-row__error {
   display: flex;
@@ -121,12 +160,20 @@
   color: var(--dk-danger-strong);
   padding: var(--dk-space-2) var(--dk-space-3);
   font-size: var(--dk-text-xs);
-  grid-area: error;
+  /* 这里以前有一行 grid-area: error——现在它挂在 .dk-user-row__notes 里面了，
+     再写具名区域会让浏览器去建一条根本不存在的隐式网格线，白白多出一行空隙。 */
 }
 
 .dk-user-row__error svg {
   flex: 0 0 auto;
   margin-top: 2px;
+}
+
+/* 「已自动试过 N 次」「约 5 分钟后自动再试一次」这类补充，
+   压暗一档，别和「该做什么」抢注意力 */
+.dk-user-row__error small,
+.dk-user-row__note small {
+  opacity: 0.8;
 }
 
 .dk-user-row > .dk-inline-actions {
@@ -164,6 +211,155 @@
 
 .dk-gateway-status:empty {
   display: none;
+}
+
+/* ── 系统设置页的「网关自动开通」面板 ──────────────────────────────────
+ *
+ * 样式写在这个文件而不是 settings.css，是因为这一批界面（成员账号页的开通状态、
+ * 设置页的自检面板）是同一件事的两个入口，改文案时会一起改，放在一处不容易漏。
+ * app.css 把所有 views/*.css 一次性 @import 进来，所以放哪个文件都是全局生效的。
+ */
+
+.dk-provision-summary:empty,
+.dk-provision-check:empty {
+  display: none;
+}
+
+.dk-provision-summary {
+  display: grid;
+  gap: var(--dk-space-3);
+}
+
+/* 三色灯：绿=能开通，黄=能用但有一处要注意，红=现在开不通，灰=这一项没查 */
+.dk-provision-lamp {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--dk-text-tertiary);
+}
+
+.dk-provision-lamp[data-level="green"] { background: var(--dk-success); }
+.dk-provision-lamp[data-level="yellow"] { background: var(--dk-warning); }
+.dk-provision-lamp[data-level="red"] { background: var(--dk-danger); }
+
+.dk-provision-result {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-3);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle);
+  padding: var(--dk-space-4);
+}
+
+.dk-provision-result[data-level="red"] { border-color: var(--dk-danger); }
+.dk-provision-result[data-level="yellow"] { border-color: var(--dk-warning); }
+.dk-provision-result[data-level="green"] { border-color: var(--dk-success); }
+
+.dk-provision-result__head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--dk-space-2);
+  font-size: var(--dk-text-sm);
+}
+
+.dk-provision-result__time {
+  margin-left: auto;
+  color: var(--dk-text-tertiary);
+  font-size: var(--dk-text-xs);
+}
+
+.dk-provision-result__message {
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm);
+}
+
+.dk-provision-probes {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-2);
+  list-style: none;
+}
+
+.dk-provision-probes li {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--dk-space-2);
+}
+
+.dk-provision-probes li > span.dk-provision-lamp {
+  margin-top: 6px;
+}
+
+.dk-provision-probes strong {
+  font-size: var(--dk-text-sm);
+}
+
+.dk-provision-probes p {
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+}
+
+/* 等级标签（正常 / 注意 / 有问题 / 未验证）。
+   「未验证」故意做成中性灰而不是绿：这一项是「这次没查」，不是「查过了没问题」。 */
+.dk-provision-probes__tag {
+  border-radius: var(--dk-radius-sm);
+  background: var(--dk-surface);
+  color: var(--dk-text-tertiary);
+  margin-left: var(--dk-space-2);
+  padding: 1px 6px;
+  font-size: var(--dk-text-xs);
+}
+
+.dk-provision-probes__tag[data-level="green"] {
+  background: var(--dk-success-soft);
+  color: var(--dk-success);
+}
+
+.dk-provision-probes__tag[data-level="yellow"] {
+  background: var(--dk-warning-soft);
+  color: var(--dk-warning);
+}
+
+.dk-provision-probes__tag[data-level="red"] {
+  background: var(--dk-danger-soft);
+  color: var(--dk-danger);
+}
+
+/* 「实际：…」「应该是：…」——从网关读回来的真值和它该长的样子 */
+.dk-provision-probes__fact {
+  color: var(--dk-text-tertiary);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  font-size: var(--dk-text-xs);
+}
+
+/* 「要你去做的事」：自检里所有红项和黄项的处置建议汇总。
+   排在逐项结论之前，因为管理员真正要的是「我现在该干嘛」，
+   逐项结论是他确认之后才会看的。 */
+.dk-provision-facts {
+  display: grid;
+  min-width: 0;
+  gap: var(--dk-space-2);
+  border-top: 1px solid var(--dk-border);
+  padding-top: var(--dk-space-3);
+}
+
+.dk-provision-facts h3 {
+  font-size: var(--dk-text-sm);
+}
+
+.dk-provision-facts ul {
+  display: grid;
+  gap: 4px;
+  color: var(--dk-text-secondary);
+  padding-left: var(--dk-space-4);
+  font-size: var(--dk-text-xs);
 }
 
 /* ── 我的账户 ─────────────────────────────────────────────────────────── */

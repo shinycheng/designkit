@@ -29,10 +29,19 @@ worker 补投或重跑时也取不到他的网关 Key。而运营真正想要的
 这一条容易被漏掉，因为 API Key 那条路完全不经过登录：token_version 加多少次
 都动不了它，只有把 api_keys.is_active 置 False 才断得掉。漏掉的后果是
 「停用」这个动作只兑现了一半，而界面上是照着「全部失效」写的。
+
+**三、建号接口一步外部请求都不发。**
+建成员时会顺手登记一行「网关账号」（_register_gateway_account），但它只写本地
+数据库，真正去网关那边建号、建 Key 的三次外部请求全部由后台调度器慢慢做
+（services/scheduler.py 的 ProvisioningScheduler）。这条界限是**结构性**的：
+网关关机、升级、换地址、接口全改，表现只能是「所有人照常建号、照常登录、
+照常进工作台，只是生图要等一会儿或者等管理员发一把 Key」，
+绝不能变成「新人一个都建不出来」。
+所以这个文件里任何一处和网关有关的失败都只记日志，不回滚建号、不抛 500。
 """
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -43,7 +52,7 @@ from sqlalchemy.orm import Session
 from ..deps import get_db, require_admin
 from ..models import ApiKey, User, UserGatewayAccount
 from ..security import hash_password
-from ..services import provider, settings_service, user_gateway
+from ..services import provider, provisioning, scheduler, settings_service, user_gateway
 
 logger = logging.getLogger("designkit.users")
 
@@ -104,17 +113,35 @@ def _gateway_to_dict(account: Optional[UserGatewayAccount]) -> Dict[str, Any]:
     configured 判的是 api_key_enc 有没有值，而不是账号行存不存在：
     clear_key 会保留账号行只清掉密文（好让网关那边已经建好的账号不变成孤儿），
     此时行还在、Key 已经没了，只看行存不存在会显示成「已配置」。
+
+    骨架来自 provisioning.account_view()——那是一张**白名单**，
+    只放行 state / attempts / 余额 / 远端用户 id 这几样，
+    api_key_tail、remote_email、remote_password_enc 一个都不在里面
+    （黑名单会在将来给表加列时静默泄露新列，白名单不会）。
+    这里在它之上补三件事：
+    ① last_error 只给人话那半截。库里存的是「分类码|人话」，
+       整串扔给界面会显示成「E_LOGIN_2FA|该用户开了两步验证」，
+       前半截对运营是纯噪声（分类码放在 error_code 里，排错时才看）；
+    ② 时间一律补 "Z" 后缀。库里是不带时区的 UTC，不补的话浏览器会当成本地时间，
+       中国时区直接差 8 小时——「1 分钟前同步的余额」会显示成「8 小时前」；
+    ③ updated_at 保留，前端老代码在用。
     """
     if account is None:
-        return {"configured": False, "state": "", "last_error": "", "updated_at": None}
-    return {
-        "configured": bool(account.api_key_enc),
-        # 取值见 models.GATEWAY_ACCOUNT_STATES。只有 active 才真的能生图
-        "state": account.state or "",
-        # 自动开通失败的原因，已经是中文人话，直接显示给管理员看
-        "last_error": account.last_error or "",
-        "updated_at": _iso(account.updated_at),
-    }
+        # 一行都还没有：可能是自动开通上线之前建的号，也可能是建号那一刻登记失败了。
+        # 后台每分钟一轮会自动给这种人补上（scheduler._backfill_accounts），
+        # 管理员也可以直接手工填一把 Key。
+        return {
+            "configured": False, "state": "", "last_error": "", "error_code": "",
+            "attempts": 0, "auto": False, "retry_due_at": None,
+            "balance_usd": None, "balance_synced_at": None, "updated_at": None,
+        }
+    view = provisioning.account_view(account)
+    view["last_error"] = view.get("error_message") or ""
+    view["balance_synced_at"] = _iso(account.balance_synced_at)
+    due = provisioning.retry_due_at(account)
+    view["retry_due_at"] = _iso(due)
+    view["updated_at"] = _iso(account.updated_at)
+    return view
 
 
 def _user_to_dict(user: User, account: Optional[UserGatewayAccount]) -> Dict[str, Any]:
@@ -211,7 +238,43 @@ def create_user(
         raise HTTPException(status_code=409, detail="用户名「%s」已经有人用了，请换一个" % username)
     db.refresh(user)
     logger.info("管理员 %s 创建了成员账号 %s（角色 %s）", admin.username, user.username, user.role)
-    return _user_to_dict(user, None)
+    return _user_to_dict(user, _register_gateway_account(db, user))
+
+
+def _register_gateway_account(db: Session, user: User) -> Optional[UserGatewayAccount]:
+    """给刚建好的成员登记一行网关账号，**登记完立刻返回，不等开通**。
+
+    ════════════════════════════════════════════════════════════════
+     为什么建号接口一步外部请求都不发
+    ════════════════════════════════════════════════════════════════
+    真正的开通要连打三次 Sub2API（建号 → 代替他登录换令牌 → 建 Key），
+    再加一次冒烟；其中代登录还带全局节流（网关那边 20 次/分钟/IP，我们只敢用
+    一半），最坏情况要等两分钟。要是把这些塞进建号接口里：
+    - 顺利时管理员要盯着转圈好几秒；
+    - 网关关机、升级、换了个地址——建号接口就直接报错，管理员会以为
+      「这个号没建成」，于是换个名字再建一次，一晚上多出五个僵尸账号；
+    - 最糟的是，**网关坏掉等于新人一个都进不来**，而他们本来只是不能生图而已。
+
+    所以这里只写一行本地记录（provisioning.ensure_account 里一行 HTTP 都没有），
+    剩下的交给后台每分钟一轮的调度器慢慢做。开通期间这个人照常登录、照常传图、
+    照常挑模板，工作台顶部会显示「正在为你开通生图额度」。
+
+    登记失败也**绝不回滚建号**：账号已经建好并提交了，这里再抛异常只会让管理员
+    看到 500、以为号没建成。缺的那一行由后台那一轮自动补上
+    （scheduler._users_without_account），补不上还有「手工填 Key」这条路。
+    """
+    try:
+        account = provisioning.ensure_account(db, user.id)
+        db.commit()  # ensure_account 只 flush，提交由调用方负责
+        db.refresh(account)
+        return account
+    except Exception:
+        db.rollback()
+        # 不带用户名以外的任何信息：这一行里唯一可能存在的敏感物是远端登录密码，
+        # 而它从头到尾没出现在异常消息里（secrets_box 立过这条规矩）。
+        logger.exception(
+            "成员 %s 的网关账号行登记失败（账号已建好，后台会自动补登记）", user.username)
+        return None
 
 
 @router.post("/{uid}/toggle")
@@ -452,3 +515,112 @@ def test_gateway(
         return {"ok": True, "message": provider.test_connection(settings) + note}
     except provider.ProviderError as exc:
         return {"ok": False, "message": str(exc) + note}
+
+
+@router.post("/{uid}/gateway/provision")
+def provision_gateway(
+    uid: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)
+):
+    """让系统**重新给这个成员开通一次**生图额度（自动开通失败后的那个「重试」按钮）。
+
+    这个接口只做两件很快的事：把这一行重新排进队（纯本地写库），然后叫醒后台。
+    真正的开通由后台线程去打那三次外部请求，通常一分钟内完成，管理员刷新一下
+    成员列表就能看到结果（state 变成「可用」，或者换了一条新的失败原因）。
+
+    **为什么不当场开通给个结果**：开通里有一步是代替这个成员登录网关，
+    而登录被全局节流（网关那头 20 次/分钟/IP，我们只用一半留余量），
+    排队最坏要等两分钟。同步等的话浏览器早就超时了，管理员会以为「重试失败」，
+    然后反复点——每点一次都在网关那边多排一个队。所以这里只排队，不等结果。
+
+    手工填 Key 那条路（上面的 PUT /gateway）永远保留，也永远比这个快：
+    自动开通只是省掉管理员去网关后台复制粘贴那一步，不是取代它。
+    """
+    user = _get_user_or_404(db, uid)
+    if not user.is_active:
+        # 停用的人不该占网关名额。也免得管理员在这里点半天，
+        # 结果那个人根本登不进来。
+        return {
+            "ok": False,
+            "message": "「%s」当前是停用状态，先点「启用」把账号打开，再来开通生图额度。" % (
+                user.display_name or user.username),
+            "gateway": _gateway_to_dict(user_gateway.get_account(db, user.id)),
+        }
+
+    cfg = provisioning.load_config(db)
+    if not cfg.enabled:
+        return {
+            "ok": False,
+            "message": "「网关自动开通」还没打开。请到「系统设置」页把它打开并填好网关地址、"
+                       "管理员 Key 和目标分组 id；或者直接在这里用「配置生图 Key」手工填一把。",
+            "gateway": _gateway_to_dict(user_gateway.get_account(db, user.id)),
+        }
+    missing = cfg.missing()
+    if missing:
+        # 配置没填齐时排队是没有意义的：后台跑一轮只会记一条同样的失败原因。
+        # 直接把缺什么告诉管理员，比让他去成员列表里看红字快得多。
+        return {
+            "ok": False,
+            "message": "%s。请到「系统设置」页的「网关自动开通」里补齐，再回来点一次。" % missing,
+            "gateway": _gateway_to_dict(user_gateway.get_account(db, user.id)),
+        }
+
+    account = user_gateway.get_account(db, user.id)
+    if account is None:
+        # 自动开通上线之前建的号、或者建号那一刻登记失败了。补一行即可，
+        # ensure_account 会按总开关登记成 pending。
+        account = provisioning.ensure_account(db, user.id, cfg=cfg)
+        db.commit()
+        db.refresh(account)
+
+    ok, message = _requeue_provisioning(db, account, cfg)
+    if ok:
+        halt, _at = provisioning.halt_reason()
+        if halt:
+            # 全局暂停时照样排队（解除之后会自动接着跑），但必须告诉管理员
+            # 现在不会真的跑，否则他会盯着列表等一个永远不来的结果。
+            message += "不过现在自动开通处于暂停状态：%s 处理完并解除暂停后会自动接着开通。" % halt
+        else:
+            scheduler.wake_provisioning()
+        logger.info("管理员 %s 重新触发了成员 %s 的网关开通", admin.username, user.username)
+
+    db.refresh(account)
+    return {"ok": ok, "message": message, "gateway": _gateway_to_dict(account)}
+
+
+def _requeue_provisioning(
+    db: Session, account: UserGatewayAccount, cfg: provisioning.ProvisioningConfig
+) -> Tuple[bool, str]:
+    """按这一行现在的状态决定怎么把它排回队里，返回 (成功与否, 给管理员看的人话)。
+
+    状态的含义见 services/provisioning.py 的文件头。这里的分支不是为了好看——
+    每一条对应的都是一种「管理员点了重试但其实什么都不会发生」的坑，
+    与其让他等一分钟看到没变化，不如当场说清楚。
+    """
+    state = account.state or ""
+    if state == "active":
+        return False, "这个成员的生图额度已经开通好了，不需要重新开通。"
+    if state in ("user_created", "key_issued"):
+        # 已经在半路上了，后台每分钟都会接着推，不用（也不该）重置 attempts。
+        return True, "正在开通中，后台会接着往下做，通常一分钟内完成，稍后刷新这一页看看。"
+    if state in ("failed", "pending"):
+        # reset_attempts=True：管理员点这个按钮，通常意味着他刚去把问题修好了
+        #（改了分组 id、给网关签了合规承诺、把网关重启了）。不清零的话，
+        # 一个已经攒了 4 次失败的人再失败一次就直接被降级成手工模式了。
+        provisioning.request_retry(db, account.user_id, reset_attempts=True)
+        return True, "已重新排队，通常一分钟内完成，稍后刷新这一页看结果。"
+
+    # 剩下 manual / disabled 两种，都要走 resume_auto。它有两种拒绝理由，
+    # 而且两种的下一步动作完全不同，所以在调用之前先自己判一次，好给准话。
+    if account.api_key_enc and not account.remote_email:
+        return False, ("这个成员现在用的是手工填进来的 Key。要改成自动开通，"
+                       "请先点「清除」把这把 Key 删掉，再点一次「重新开通」。")
+    if account.remote_email and not account.remote_password_enc and not account.api_key_enc:
+        # 开通成功后按「不长期保管密码」的设置清掉了密码。这时候既登不进去，
+        # 也**绝不能**重新摇一个密码——远端那个账号会永久失联（网关那边多半
+        # 没有改密接口）。这一行只能手工发 Key，这是设计的一部分，不是 bug。
+        return False, ("系统里已经没有这个成员在网关的登录凭据了（开通成功后会按设置清掉，"
+                       "只留 Key），所以没法再自动开一次。请在网关后台给他建一把 Key，"
+                       "用上面的「配置生图 Key」填进来。")
+    if provisioning.resume_auto(db, account.user_id, cfg=cfg):
+        return True, "已排入自动开通队列，通常一分钟内完成，稍后刷新这一页看结果。"
+    return False, "这个成员不能自动开通，请用「配置生图 Key」手工填一把。"
