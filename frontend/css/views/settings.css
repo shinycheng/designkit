@@ -99,3 +99,27 @@
     padding: var(--dk-space-4);
   }
 }
+
+/* ── 短信服务：「试发一条」那一小块 ─────────────────────────────────
+   这是整个设置页唯一一个**点一下就真的花钱**的按钮，所以警告语要贴着它，
+   而且要比普通说明文字显眼一点（不用红色——它不是错误，是「你确定吗」）。 */
+.dk-sms-test {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dk-space-3);
+  border: 1px solid var(--dk-border-strong);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle);
+  padding: var(--dk-space-4);
+}
+
+.dk-sms-test__warning {
+  color: var(--dk-text);
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.dk-sms-test .dk-field:last-child,
+.dk-sms-test .field:last-child {
+  margin-bottom: 0;
+}

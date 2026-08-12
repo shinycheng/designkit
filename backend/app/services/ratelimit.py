@@ -53,6 +53,7 @@ scope 名字就行，不用改这里一行代码：
 """
 import logging
 import math
+import re
 import threading
 import time
 from datetime import datetime, timedelta
@@ -137,6 +138,34 @@ _ALLOWED = Decision(allowed=True, retry_after=0, attempts=0, message="")
 
 
 # ------------------------------------------------------------------ 配置读取
+
+#: 连续 7 位以上的数字：手机号、身份证号、卡号这类东西的共同形状。
+#: IP 地址被点号断开，每段最多 3 位，所以不会被误伤；用户名里也极少有这么长的纯数字串。
+_LONG_DIGITS = re.compile(r"\d{7,}")
+
+
+def mask_key(key: str) -> str:
+    """打日志之前给 key 脱敏：把长数字串中间糊掉，只留前 3 后 4。
+
+    为什么要有这个函数：这个模块是**通用**限速，调用方传什么当 key 它并不知道。
+    最初只有登录在用，key 是「IP|用户名」，打出来没问题——注释里当时也是这么写的。
+    后来手机号注册接进来，key 直接就是手机号，于是完整号码进了日志。
+    日志是会被打包发给别人排错的，等于把用户手机号发了出去。
+
+    所以这里改成「默认不信任 key 的内容」。IP 和用户名照常可读（排错要用），
+    长数字串一律糊掉。调用方如果传的是已经哈希过的 key（推荐做法，见
+    routers/phone.py），这一层就只是第二道保险。
+    """
+    text = str(key or "")
+
+    def _mask(match):
+        digits = match.group(0)
+        if len(digits) <= 7:
+            return digits[:1] + "*" * (len(digits) - 1)
+        return digits[:3] + "*" * (len(digits) - 7) + digits[-4:]
+
+    return _LONG_DIGITS.sub(_mask, text)
+
 
 def _clamp(value: int, low: int, high: int) -> int:
     return max(low, min(high, value))
@@ -458,10 +487,9 @@ def _maybe_block(
     db.commit()
     if result.rowcount == 1:
         # 记一条日志：管理员来问「我为什么登不上」时，这是唯一的线索。
-        # key 里带着 IP 和用户名，**不含密码**，可以安全地打出来。
         logger.warning(
             "限速触发：scope=%s key=%s 在 %d 秒内失败 %d 次，封锁至 %s",
-            scope, key, policy.window_seconds, row.attempts,
+            scope, mask_key(key), policy.window_seconds, row.attempts,
             blocked_until.isoformat(),
         )
     retry = _seconds_until(blocked_until, now)

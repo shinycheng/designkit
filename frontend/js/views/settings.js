@@ -62,6 +62,7 @@ export function renderSettings(container) {
       // 所以这里要把 null 过滤掉，否则 stack.append 会抛异常、整页设置打不开。
       createProvisioningSection(),
       createSelfRegisterSection(),
+      createSmsSection(),
       createPasswordSection(),
     ].filter(Boolean);
     stack.append(...state.controllers.map((controller) => controller.element));
@@ -745,6 +746,33 @@ export function renderSettings(container) {
     return controller;
   }
 
+  /** 开放注册的三条硬前置条件，按当前草稿算一遍还差哪几条。
+   *
+   * **邀请码注册和手机号注册共用这一份**（后端 _open_register_blockers 也是共用的）。
+   * 文案要和后端那三条一一对应——两边写岔了的表现是「界面显示全绿、保存却被拒」，
+   * 那比不显示还糟：她会以为是系统出了故障，而不是自己还差一步。
+   */
+  function openRegisterBlockers(draft) {
+    const list = [];
+    if (draft.allow_internal_targets) {
+      list.push('「安全与网络」那一节的**允许访问内网图片和回调地址**还开着，请先关掉。'
+        + '开着它，注册进来的陌生人可以让本系统替他去访问你内网里的任意地址——'
+        + '包括生图网关的管理端口，那上面能建号、改余额、读别人的 Key。');
+    }
+    const url = String(draft.public_base_url || '').trim();
+    if (!isHttpUrl(url) || /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/i.test(url)) {
+      list.push('「安全与网络」那一节的**对外访问地址**还不能用。'
+        + '新用户拿到的图片链接和回调地址都按它拼，填成 127.0.0.1 的话别人打不开，'
+        + '而系统这边不会有任何报错。');
+    }
+    if (!draft.files_signed_only) {
+      list.push('「图片访问与多用户」那一节的**图片必须带凭证才能访问**是关的，请打开。'
+        + '关着它，只要知道图片地址就能下载任何人的商品图——'
+        + '内部几个人用还能凑合，谁都能注册之后就等于谁都能进来翻别人的图。');
+    }
+    return list;
+  }
+
   /** 自助注册（邀请码）。
    *
    * 这一节存在的唯一理由，就是给管理员一个「把自助注册打开」的地方。
@@ -765,27 +793,10 @@ export function renderSettings(container) {
 
     const gateRoot = h('div', { class: 'dk-panel-stack', 'aria-live': 'polite' });
 
-    /** 按当前草稿算一遍还差哪几条。文案与后端 _self_register_blockers 一一对应。 */
-    function blockers(draft) {
-      const list = [];
-      if (draft.allow_internal_targets) {
-        list.push('「安全与网络」那一节的**允许访问内网图片和回调地址**还开着，请先关掉。'
-          + '开着它，注册进来的陌生人可以让本系统替他去访问你内网里的任意地址——'
-          + '包括生图网关的管理端口，那上面能建号、改余额、读别人的 Key。');
-      }
-      const url = String(draft.public_base_url || '').trim();
-      if (!isHttpUrl(url) || /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/i.test(url)) {
-        list.push('「安全与网络」那一节的**对外访问地址**还不能用。'
-          + '新用户拿到的图片链接和回调地址都按它拼，填成 127.0.0.1 的话别人打不开，'
-          + '而系统这边不会有任何报错。');
-      }
-      if (!draft.files_signed_only) {
-        list.push('「图片访问与多用户」那一节的**图片必须带凭证才能访问**是关的，请打开。'
-          + '关着它，只要知道图片地址就能下载任何人的商品图——'
-          + '内部几个人用还能凑合，谁都能注册之后就等于谁都能进来翻别人的图。');
-      }
-      return list;
-    }
+    // 三条前提是**两条注册路共用**的，所以清单抽在外面（openRegisterBlockers），
+    // 手机号那一节用的是同一份。两处各抄一份的话，改了一处漏一处，
+    // 表现是同一台机器上两节的清单互相矛盾。
+    const blockers = openRegisterBlockers;
 
     // 「重新检查」按钮不是可有可无的装饰：这三条前提分别住在本页**另外两节**里，
     // 而每一节都是独立保存的（createSettingsController 保存后只同步自己那几个键，
@@ -855,6 +866,346 @@ export function renderSettings(container) {
             field('新建邀请码：默认几天后过期', defaultDays, {
               help: '同上，是建码时的默认值。填 0 表示永不过期（不建议，发出去就收不回来了）。',
             })));
+      },
+    });
+    return controller;
+  }
+
+  /* ── 短信服务（手机号 + 验证码注册）─────────────────────────────────
+   *
+   * 这一节和上面「网关自动开通」是同一个套路：前提条件清单摆在最上面、
+   * 底下一个「试发一条」按钮。原因也一样——这两件事都要连一台外面的服务器，
+   * 而「配置填好了」和「真的能用」是两回事，中间隔着签名审核、模板审核、
+   * 账户余额、系统时钟这几样，光看设置页永远看不出来。
+   *
+   * 这一节独有的两条纪律：
+   *
+   * 一、**调试模式必须显著标出来。** 处在调试模式时，验证码根本不会发到手机上，
+   *    而是直接显示在注册页面上。不标的话，管理员哪天忘了切回阿里云，
+   *    她会一直以为短信发出去了，用户那边永远收不到——双方都查不出问题在哪。
+   *    横幅的文案一律用后端给的（mode_text / notice / warning），不在这里另写。
+   *
+   * 二、**AccessKey 一律由管理员自己填。** 界面上不预填、代码里不写、
+   *    测试数据里也没有。Secret 存进去之后只回一串星号，原样提交表示「没改」。
+   */
+  function createSmsSection() {
+    // 后端还没上这套设置项（老镜像）时整节不出现，理由同上面几节：
+    // 画一个点了必报错的面板，比不画更让人困惑。
+    if (!state.settings || !('sms_provider' in state.settings)) return null;
+
+    const statusRoot = h('div', { class: 'dk-panel-stack', 'aria-live': 'polite' });
+    const gateRoot = h('div', { class: 'dk-panel-stack', 'aria-live': 'polite' });
+    const testRoot = h('div', { class: 'dk-panel-stack', 'aria-live': 'polite' });
+    const testPhone = h('input', {
+      class: 'input',
+      type: 'tel',
+      inputmode: 'numeric',
+      autocomplete: 'off',
+      maxlength: '13',
+      placeholder: '你自己的手机号',
+    });
+    let testButton;
+    // 这一次打开设置页之后有没有真的点过「试发一条」。
+    // 有的话，下面 renderStatus 就**不许**再拿服务端那份 last_test 覆盖结果区——
+    // 覆盖的表现是：刚点完试发，结果后面立刻多出一句「（上一次试发的结果）」，
+    // 管理员会以为自己这一次根本没发出去，于是又点一次（真实模式下就是又一条短信的钱）。
+    let hasFreshTest = false;
+
+    /** 上半张脸：现在是什么模式、有没有严重问题、还缺哪几项配置。
+     * 全部照抄后端 sms_status 里的句子——它比前端更清楚「填了没有、解不解得开」。 */
+    function renderStatus(status) {
+      if (state.stopped) return;
+      const data = status || {};
+      const nodes = [];
+      if (data.warning) {
+        // warning 比 notice 严重（「注册开着却还停在调试模式」这种），
+        // 用红条，别让它混在普通说明里被划过去。
+        nodes.push(inlineAlert(data.warning, 'error', { title: '这个组合有问题，请先处理' }));
+      }
+      if (data.mode_text) {
+        nodes.push(inlineAlert(data.mode_text, data.debug ? 'warning' : 'info',
+          { title: data.debug ? '当前：调试模式（不发短信、不花钱）' : '当前：真实模式（阿里云）' }));
+      }
+      if (data.debug && data.notice) {
+        // 这句话和注册页上显示给用户的那句是**同一份原文**，
+        // 管理员在这里看到的和用户看到的完全一致，出问题时好对账。
+        nodes.push(h('p', { class: 'dk-section-meta' }, `注册页上会显示这句话：${data.notice}`));
+      }
+      const problems = Array.isArray(data.problems) ? data.problems : [];
+      if (problems.length) {
+        // 调试模式下这几项本来就用不上，所以话要说成「切过去之前要填」，
+        // 而不是「你少填了东西」——后者会让管理员以为现在就有故障，
+        // 于是跑去填一份她这个阶段根本不需要的阿里云配置。
+        nodes.push(inlineAlert(
+          (data.debug
+            ? '现在是调试模式，用不到这些。等你要真的发短信、把上面的通道切到阿里云时，'
+              + '下面这几项必须先填齐（没填齐也切不过去）：\n\n'
+            : '还差下面这几项，补齐之前一条短信也发不出去：\n\n')
+          + problems.map((x, i) => `${i + 1}. ${x}`).join('\n'),
+          'warning', { title: data.debug ? '要真的发短信的话，还差这几项' : '阿里云的配置没填齐' }));
+      }
+      const limits = data.limits || {};
+      if (limits.resend_cooldown_seconds) {
+        // 显示的是**实际生效值**（后端已经夹过范围），不是设置表里的原始值：
+        // 两者不一致时（老库遗留、有人直接改了数据库），显示原始值会让管理员
+        // 按一个根本没生效的数字去排查。
+        nodes.push(h('p', { class: 'dk-section-meta' },
+          `现在实际生效的限制：同一个号 ${limits.resend_cooldown_seconds} 秒才能再发一条、`
+          + `每天最多 ${limits.phone_daily_limit} 条；同一个来源每小时最多 ${limits.ip_hourly_limit} 条；`
+          + `全站每天最多 ${limits.global_daily_limit} 条。验证码 ${limits.code_ttl_seconds} 秒内有效，`
+          + `最多能填错 ${limits.code_max_attempts} 次。`));
+      }
+      if (data.last_test && !hasFreshTest) renderTestResult(data.last_test, true);
+      statusRoot.replaceChildren(...nodes);
+    }
+
+    /** 打开手机号注册之前要满足的前提。和「自助注册（邀请码）」那一节共用前三条，
+     * 手机号这条路自己多一条：短信通道得是能用的。 */
+    function renderGate() {
+      const draft = state.settings || {};
+      const list = openRegisterBlockers(draft);
+      const smsStatus = draft.sms_status || {};
+      if (!smsStatus.debug && !smsStatus.ready) {
+        list.push('短信通道选的是阿里云，但**配置没填齐**（缺哪几项见上面那一条）。'
+          + '这样打开手机号注册，每个人点「获取验证码」都会失败，'
+          + '而他自己完全看不出是我们这边没配好。');
+      }
+      const recheck = button('重新检查', {
+        variant: 'ghost', iconName: 'refresh-cw', onclick: renderGate,
+      });
+      if (!list.length) {
+        gateRoot.replaceChildren(inlineAlert(
+          '前提都满足了，可以打开手机号注册。'
+          + '打开之前请再确认一次下面那四个限速数字——每一条验证码短信都是真花钱的。',
+          'success', { title: '前提条件已满足' }), recheck);
+        return;
+      }
+      gateRoot.replaceChildren(inlineAlert(
+        '还差下面 ' + list.length + ' 条，不满足的话开关保存不了：\n\n'
+        + list.map((x, i) => (i + 1) + '. ' + x.replace(/\*\*/g, '')).join('\n\n')
+        + '\n\n和「自助注册（邀请码）」共用的那几条在本页上面几节里，'
+        + '各自「保存此区域」之后回来点一下「重新检查」。',
+        'warning', { title: '打开之前要先满足这几个前提' }), recheck);
+    }
+
+    /** 一次试发的结论。字段全部来自后端（见 settings_router 的 test_sms 文档）。 */
+    function renderTestResult(result, cached) {
+      const level = String(result.level || '');
+      const nodes = [inlineAlert(
+        `${result.message || ''}${cached ? '（上一次试发的结果）' : ''}`,
+        level === 'green' ? 'success' : 'error',
+        { title: result.ok ? '已经交给阿里云发送' : '这次没发出去' })];
+      if (result.next_step) nodes.push(h('p', { class: 'dk-section-meta' }, `下一步：${result.next_step}`));
+      if (result.note) nodes.push(h('p', { class: 'dk-section-meta' }, result.note));
+      // 错误码 / RequestId / 回执号是管理员找阿里云客服时必须提供的东西，
+      // 一定要显示出来，而且要能选中复制（普通文本即可）。
+      const facts = [
+        result.phone ? `发往：${result.phone}` : '',
+        result.error_code ? `错误码：${result.error_code}` : '',
+        result.request_id ? `RequestId：${result.request_id}` : '',
+        result.provider_msg_id ? `回执号：${result.provider_msg_id}` : '',
+        result.at ? `时间：${fmtServerTime(result.at)}` : '',
+      ].filter(Boolean);
+      if (facts.length) nodes.push(h('p', { class: 'dk-section-meta' }, facts.join(' · ')));
+      testRoot.replaceChildren(...nodes);
+    }
+
+    const controller = createSettingsController({
+      id: 'sms-settings',
+      title: '短信服务（手机号注册）',
+      description: '让新人用手机号 + 短信验证码自己注册。默认是「调试模式」——不发真短信、不花钱，'
+        + '验证码直接显示在注册页上，用来先把整条流程走通。要真的发短信，才需要填下面的阿里云配置。',
+      keys: ['sms_provider', 'sms_aliyun_access_key_id', 'sms_aliyun_access_key_secret',
+        'sms_aliyun_sign_name', 'sms_aliyun_template_code', 'sms_aliyun_endpoint',
+        'phone_register_enabled', 'phone_register_require_invite',
+        'sms_code_ttl_seconds', 'sms_code_max_attempts',
+        'sms_code_resend_cooldown_seconds', 'sms_code_phone_daily_limit',
+        'sms_code_ip_hourly_limit', 'sms_code_global_daily_limit'],
+      renderFields: (form) => {
+        const provider = h('select', { class: 'dk-control input' },
+          h('option', { value: 'debug' }, '调试模式（不发短信、不花钱）'),
+          h('option', { value: 'aliyun' }, '阿里云短信（真的发、真的花钱）'));
+        const accessKeyId = h('input', { class: 'input', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'LTAI 开头的那一串' });
+        // Secret 沿用项目里已有的打码约定：后端回吐的是一串星号，原样提交
+        // 后端会认出这是占位符、判定为「没改」，不会覆盖原值。
+        const accessKeySecret = h('input', { class: 'input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: '粘贴阿里云的 AccessKey Secret' });
+        const signName = h('input', { class: 'input', type: 'text', autocomplete: 'off', placeholder: '例如 某某电商' });
+        const templateCode = h('input', { class: 'input', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: '例如 SMS_123456789' });
+        const endpoint = h('input', { class: 'input', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: 'dysmsapi.aliyuncs.com' });
+        const registerEnabled = h('input', { type: 'checkbox' });
+        const requireInvite = h('input', { type: 'checkbox' });
+        const ttl = h('input', { class: 'input', type: 'number', min: 60, max: 1800, inputmode: 'numeric' });
+        const maxAttempts = h('input', { class: 'input', type: 'number', min: 1, max: 10, inputmode: 'numeric' });
+        const cooldown = h('input', { class: 'input', type: 'number', min: 60, max: 600, inputmode: 'numeric' });
+        const phoneDaily = h('input', { class: 'input', type: 'number', min: 1, max: 20, inputmode: 'numeric' });
+        const ipHourly = h('input', { class: 'input', type: 'number', min: 1, max: 200, inputmode: 'numeric' });
+        const globalDaily = h('input', { class: 'input', type: 'number', min: 1, max: 2000, inputmode: 'numeric' });
+
+        form.register('sms_provider', provider);
+        form.register('sms_aliyun_access_key_id', accessKeyId);
+        form.register('sms_aliyun_access_key_secret', accessKeySecret);
+        form.register('sms_aliyun_sign_name', signName);
+        form.register('sms_aliyun_template_code', templateCode);
+        form.register('sms_aliyun_endpoint', endpoint);
+        form.register('phone_register_enabled', registerEnabled, checkboxBinding(false));
+        form.register('phone_register_require_invite', requireInvite, checkboxBinding(true));
+        form.register('sms_code_ttl_seconds', ttl, numberBinding());
+        form.register('sms_code_max_attempts', maxAttempts, numberBinding());
+        form.register('sms_code_resend_cooldown_seconds', cooldown, numberBinding());
+        form.register('sms_code_phone_daily_limit', phoneDaily, numberBinding());
+        form.register('sms_code_ip_hourly_limit', ipHourly, numberBinding());
+        form.register('sms_code_global_daily_limit', globalDaily, numberBinding());
+
+        renderStatus(state.settings.sms_status);
+        renderGate();
+
+        return h('div', { class: 'dk-panel-stack' },
+          statusRoot,
+          field('短信通道', provider, {
+            help: '默认「调试模式」：不连任何外部服务，验证码直接显示在注册页上，'
+              + '适合先在内网把流程走一遍。切到阿里云之前，下面四项必须填齐，否则存不进去。',
+          }),
+          h('div', { class: 'dk-field-grid' },
+            field('AccessKey Id', accessKeyId, {
+              help: '在阿里云控制台建一个 RAM 用户、只给它发短信的权限，然后把这一对贴过来。'
+                + '这一项相当于用户名，所以不打码——你要能看出自己填的是哪一把。',
+            }),
+            field('AccessKey Secret', accessKeySecret, {
+              help: '这一项是密码，存进去之后只显示星号。不改它就不会被覆盖。'
+                + '⚠ 它是阿里云账号级别的凭据，只有你自己该知道，别贴到聊天里。',
+            }),
+            field('短信签名', signName, {
+              help: '阿里云控制台里审核通过的那个签名，必须一字不差（比如「某某电商」）。'
+                + '差一个字就是发送失败，而失败原因是一串英文错误码。',
+            }),
+            field('模板 CODE', templateCode, {
+              help: '形如 SMS_123456789。模板正文里必须带 ${code} 这个变量，'
+                + '否则发出去的是一条没有验证码的短信。',
+            })),
+          field('短信接口域名', endpoint, {
+            help: '正常情况下不要改，留空会自动用 dysmsapi.aliyuncs.com。',
+          }),
+          gateRoot,
+          field('开放手机号注册',
+            h('label', { class: 'dk-checkbox-row' }, registerEnabled,
+              h('span', { class: 'dk-checkbox-row__copy' }, '打开（打开前先看上面那份清单）',
+                h('small', { class: 'dk-checkbox-row__description' },
+                  '打开之后，登录页和注册页会多出「用手机号注册」这条路。'
+                  + '它和「自助注册（邀请码）」是并列的两条路，互不影响，可以只开一条。'))),
+            { help: '关掉之后入口立刻消失，已经注册进来的人不受影响，照样能用手机号登录。' }),
+          field('注册时还要填邀请码',
+            h('label', { class: 'dk-checkbox-row' }, requireInvite,
+              h('span', { class: 'dk-checkbox-row__copy' }, '要求填（默认，也更稳）',
+                // 界面不渲染 Markdown，所以强调一律用【】，别写星号——
+                // 写了会原样显示成星号（这一条在后端 test_send_warning 那里也写着）。
+                h('small', { class: 'dk-checkbox-row__description' },
+                  '⚠ 关掉之后，【任何人只要有一个能收短信的手机号就能注册进来】，没有任何名单限制。'
+                  + '真要对外开放时才关，关之前先把下面四个限速数字和「自助注册」那一节的'
+                  + '「全站每天最多注册几人」都调到你能承受的量——每个新账号都要去网关开通、都要花钱。'))),
+            { help: '开着的时候，手机号只负责证明「这个号是你的」，能不能进来仍然由邀请码说了算。' }),
+          h('div', { class: 'dk-field-grid' },
+            field('验证码几秒内有效', ttl, {
+              help: '范围 60–1800。默认 300 秒（5 分钟）：短信到达一般十几秒，5 分钟够一个人切回来填；'
+                + '再长就是给「慢慢猜 6 位数」留时间。',
+            }),
+            field('一条码最多填错几次', maxAttempts, {
+              help: '范围 1–10。默认 5 次：真人填错一两次很常见，但放得越宽，猜码越划算。',
+            })),
+          h('div', { class: 'dk-field-grid' },
+            field('同一个号隔多少秒才能再发', cooldown, {
+              help: '范围 60–600。默认 60 秒。注册页上的「重新获取」倒计时就是按它走的。'
+                + '阿里云自己也限「同一个号 1 分钟 1 条」，填得比 60 小没有意义。',
+            }),
+            field('同一个号一天最多几条', phoneDaily, {
+              help: '范围 1–20。默认 10 条。它挡的是「拿一个号当靶子反复发」——'
+                + '机主一投诉，阿里云会直接封掉你的签名，那比多花几毛钱严重得多。',
+            }),
+            field('同一个来源每小时最多几条', ipHourly, {
+              help: '范围 1–200。默认 20 条，留了「同一间办公室多人共用一个出口」的余地。',
+            }),
+            field('全站每天最多几条', globalDaily, {
+              help: '范围 1–2000。默认 200 条，这是最后一道保险丝：万一前两道被绕过、'
+                + '或者哪个数字填错了，一天的损失也就止于这个数（国内短信约 4 分钱一条），'
+                + '第二天零点自动恢复。',
+            })),
+          // ⚠ 这句话必须紧挨着试发按钮：它是本页唯一一个**点一下就真的花钱**的
+          // 按钮，而且**调试模式下也照发不误**——试发的意义就是验证阿里云那条
+          // 链路通不通，而管理员需要它的时候，多半正是「还没切过去」的时候。
+          h('div', { class: 'dk-sms-test' },
+            h('p', { class: 'dk-section-meta dk-sms-test__warning' },
+              state.settings?.sms_status?.test_send_warning
+              || '点一下会真的发出一条短信并产生费用（约 4 分钱）。'),
+            field('试发到这个手机号', testPhone, {
+              help: '填你自己手上这台手机，发完看它有没有真的收到。'
+                + '「阿里云受理了」不等于「手机收到了」——中间还隔着运营商。',
+            })),
+          testRoot);
+      },
+      validate: (draft) => {
+        if (!integerBetween(draft.sms_code_ttl_seconds, 60, 1800)) return '「验证码几秒内有效」要填 60 到 1800 之间的整数。';
+        if (!integerBetween(draft.sms_code_max_attempts, 1, 10)) return '「一条码最多填错几次」要填 1 到 10 之间的整数。';
+        if (!integerBetween(draft.sms_code_resend_cooldown_seconds, 60, 600)) return '「同一个号隔多少秒才能再发」要填 60 到 600 之间的整数。';
+        if (!integerBetween(draft.sms_code_phone_daily_limit, 1, 20)) return '「同一个号一天最多几条」要填 1 到 20 之间的整数。';
+        if (!integerBetween(draft.sms_code_ip_hourly_limit, 1, 200)) return '「同一个来源每小时最多几条」要填 1 到 200 之间的整数。';
+        if (!integerBetween(draft.sms_code_global_daily_limit, 1, 2000)) return '「全站每天最多几条」要填 1 到 2000 之间的整数。';
+        // 切到阿里云要先填齐四项。后端也拦这一条，前端先说一遍是为了当场给出
+        // 中文提示，而不是让她点了保存再被退回来。
+        if (String(draft.sms_provider || '') === 'aliyun') {
+          const missing = [
+            String(draft.sms_aliyun_access_key_id || '').trim() ? '' : 'AccessKey Id',
+            String(draft.sms_aliyun_access_key_secret || '').trim() ? '' : 'AccessKey Secret',
+            String(draft.sms_aliyun_sign_name || '').trim() ? '' : '短信签名',
+            String(draft.sms_aliyun_template_code || '').trim() ? '' : '模板 CODE',
+          ].filter(Boolean);
+          if (missing.length) return `要切到阿里云，先把这几项填好：${missing.join('、')}。`;
+        }
+        return '';
+      },
+      onSaved: (response) => {
+        renderStatus(response.sms_status);
+        renderGate();
+      },
+      extraActions: (form) => {
+        testButton = button('试发一条', {
+          variant: 'secondary',
+          // 图标名必须在 vendor/lucide/icons.js 的子集里有，否则静默变成问号圆圈。
+          iconName: 'upload',
+          onclick: async () => {
+            if (form.dirty) {
+              form.setStatus('请先保存当前更改，试发只会使用已经保存的配置。', 'warning');
+              return;
+            }
+            const phone = testPhone.value.trim();
+            if (!phone) {
+              form.setStatus('请先在按钮左边填一个你自己的手机号，短信会真的发到那台手机上。', 'warning');
+              testPhone.focus();
+              return;
+            }
+            testButton.disabled = true;
+            testButton.setAttribute('aria-busy', 'true');
+            testRoot.replaceChildren(inlineAlert('正在发送…', 'info'));
+            try {
+              // 这条接口和「测试连接」一样：发送成败一律 HTTP 200，看响应体判断。
+              // 走到 catch 说明是号码填错（422）或被限速挡下（429），
+              // 那时**一条短信都没发出去**，两种情况的说法完全不同。
+              const result = await api.post('/api/web/settings/test_sms', { phone });
+              if (state.stopped) return;
+              hasFreshTest = true;
+              renderTestResult(result, false);
+              if (result.status) renderStatus(result.status);
+            } catch (error) {
+              if (state.stopped) return;
+              testRoot.replaceChildren(inlineAlert(error.message, 'error', { title: '这一条没发出去' }));
+            } finally {
+              testButton.disabled = false;
+              testButton.removeAttribute('aria-busy');
+            }
+          },
+        });
+        // 只把按钮交给 createSettingsController：它会在保存期间把这些控件
+        // 一起禁用掉（存到一半又点试发是没有意义的）。手机号那一栏和警告语
+        // 画在表单里，紧挨着结果区。
+        return [testButton];
       },
     });
     return controller;
@@ -937,7 +1288,14 @@ export function renderSettings(container) {
     return { element: section };
   }
 
-  function createSettingsController({ id, title, description, keys, renderFields, validate, extraActions }) {
+  /** onSaved：保存成功之后拿服务端的完整响应再做一次自己的事。
+   *
+   * 「短信服务」那一节需要它：那一节顶上的状态面板（现在是不是调试模式、
+   * 还缺哪几项配置、限速的实际生效值）来自响应里的 sms_status，而那是**后端算的**，
+   * 不是表单里的值。不重画的话，管理员刚把通道切到阿里云、保存成功，
+   * 顶上那条横幅还写着「现在是调试模式」——她会以为没存进去，于是再存一遍。
+   */
+  function createSettingsController({ id, title, description, keys, renderFields, validate, extraActions, onSaved }) {
     const baseline = {};
     const draft = {};
     const bindings = new Map();
@@ -1020,6 +1378,7 @@ export function renderSettings(container) {
         dirty = false;
         formApi.setStatus('已保存', 'success');
         toast(`${title}已保存`, 'success');
+        onSaved?.(response);
       } catch (error) {
         formApi.setStatus(error.message, 'error');
       } finally {

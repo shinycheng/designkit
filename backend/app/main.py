@@ -60,8 +60,8 @@ from .config import FRONTEND_DIR, RUNTIME_DEFAULTS
 from .database import SessionLocal, engine
 from .migrations import run_schema_upgrade
 from .routers import (
-    account, apikeys, auth, files, generations, inspiration, invites, register,
-    settings_router, templates, uploads, users, v1,
+    account, apikeys, auth, files, generations, inspiration, invites, phone,
+    register, settings_router, templates, uploads, users, v1,
 )
 from .seed import seed
 from .services import inspiration as inspiration_service
@@ -195,6 +195,19 @@ app.include_router(auth.router)
 # routers/settings_router.py 的 _apply_self_register_updates 里，两处是一套闸门的两半：
 # 设置层负责「物理上打不开」，注册层负责「万一被绕过也开不了门」。
 app.include_router(register.router)
+# 手机号 + 短信验证码注册（免登录），与上面邀请码那条路**并列**：
+# 两条路共用同一套「开放注册的硬前置闸门」，各自有各自的总开关，
+# 关掉其中一条不影响另一条。
+#
+# 这里一共开出四条不需要登录的路由（GET /api/web/phone/status、
+# POST /api/web/phone/code、/register、/login）。加上上面的 register，
+# 它们是**全系统仅有的几条免登录写接口**——反向代理 / WAF 那一层的限速规则
+# 必须把 /api/web/phone/* 一起覆盖进去，别只写了 /api/web/register。
+#
+# ⚠ POST /api/web/phone/code **每调用一次就可能花掉一条短信的钱**。
+# 应用层已经做了三层限速（同号冷却与日限、同 IP 每小时、全站每日总量，
+# 全部落库、多进程安全，见 routers/phone.py），但那是最后一道，不是唯一一道。
+app.include_router(phone.router)
 app.include_router(invites.router)
 app.include_router(account.router)
 app.include_router(users.router)

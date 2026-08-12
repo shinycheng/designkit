@@ -2,7 +2,7 @@
 import { api, clearSession, getSessionEpoch, getToken, getUser, setSession } from './api.js';
 import { renderAppShell } from './core/app-shell.js';
 import { navigate, resolveRoute } from './core/router.js';
-import { button, closeOverlays, field, h, icon, iconButton, inlineAlert, modal, toast } from './ui.js';
+import { button, closeOverlays, field, h, icon, iconButton, inlineAlert, modal, segmentedControl, toast } from './ui.js';
 import { clearGenerateSessions, renderGenerate } from './views/generate.js';
 import { renderHistory } from './views/history.js';
 import { renderTemplates } from './views/templates.js';
@@ -79,6 +79,26 @@ let loginPreset = null;
 async function fetchRegisterStatus() {
   try {
     const status = await api.get('/api/web/register');
+    return status && typeof status === 'object' ? status : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 问一下后端：手机号这条路开不开、要不要邀请码、现在是不是调试模式。
+ *
+ * 和上面那个一样每次都重新问、查不到一律当「没开放」。老版本后端没有这条接口
+ * （404），走的也是这条退路——于是页面上不会出现任何手机号入口，
+ * 而不是给一个点了必然失败的按钮。
+ *
+ * 返回值里最要紧的两项是 debug_mode / debug_notice：处在调试模式时，
+ * **发码按钮旁边必须把 debug_notice 原样显著显示出来**（本期硬要求）。
+ * 不标的话，管理员哪天忘了把通道切回阿里云，她会一直以为短信发出去了，
+ * 而用户那边永远收不到——双方都查不出问题出在哪。
+ */
+async function fetchPhoneStatus() {
+  try {
+    const status = await api.get('/api/web/phone/status');
     return status && typeof status === 'object' ? status : null;
   } catch {
     return null;
@@ -182,6 +202,166 @@ function passwordControl({ id, autocomplete, placeholder = '' }) {
     },
   });
   return { input, wrap: h('div', { class: 'dk-password-control' }, input, toggle) };
+}
+
+/** 「手机号 + 验证码」这一组控件。**登录页和注册页共用这一份**。
+ *
+ * 共用不是为了少写代码，是为了让这三件事在两个页面上永远一致：
+ *   ① 调试模式的横幅（后端 debug_notice 的原文，一个字都不改写）；
+ *   ② 重发倒计时的秒数（来自后端，不在前端写死 60）；
+ *   ③ 报错的显示方式（后端那几句已经是中文人话，原样显示，不再包一层「操作失败」）。
+ *
+ * scope 决定这条码是「注册用」还是「登录用」——后端两者是分开校验的，
+ * 传错的话表现是「码明明是刚收到的，却一直说不对」。
+ *
+ * ⚠ 前端**只检查「填没填」，不检查格式**。手机号后端会自己归一化（空格、
+ * 横线、+86 前缀都认），在这里多加一道 11 位纯数字的正则，只会把本来能过的
+ * 输入挡在门外，而用户完全看不出自己哪里写错了。
+ */
+function phoneCodeGroup({ scope, status }) {
+  const debugMode = Boolean(status?.debug_mode);
+  const debugNotice = String(status?.debug_notice || '');
+  // 后端给的重发冷却（秒）。它由管理员在设置页改，所以**不能在前端写死**：
+  // 写死的代价是页面上显示 60 秒、后端实际要求 120 秒，用户等到倒计时结束
+  // 一点又被拒，而两边说的话对不上。
+  const defaultCooldown = Number(status?.resend_after_seconds) || 60;
+
+  const phoneInput = h('input', {
+    class: 'dk-control input',
+    type: 'tel',
+    inputmode: 'numeric',
+    autocomplete: 'tel',
+    maxlength: '13',
+    placeholder: '11 位手机号',
+  });
+  const codeInput = h('input', {
+    class: 'dk-control input dk-phone-code-input',
+    type: 'text',
+    inputmode: 'numeric',
+    // one-time-code 让 iOS / Android 能把短信里的验证码直接提示在键盘上方，
+    // 省掉「切出去看短信、记住六位数、切回来打」这三步。
+    autocomplete: 'one-time-code',
+    maxlength: '6',
+    placeholder: '短信里的 6 位数字',
+  });
+  const noticeRoot = h('div', { class: 'dk-phone-notice', 'aria-live': 'polite' });
+  const sendButton = button('获取验证码', {
+    variant: 'secondary',
+    // ⚠ 图标名必须在 frontend/vendor/lucide/icons.js 那份子集里有：
+    // 没有的名字会**静默回退成一个问号圆圈**，不报错，只是看起来像坏了。
+    iconName: 'monitor-smartphone',
+    className: 'dk-phone-send',
+  });
+  let timer = 0;
+
+  /** 调试模式的横幅。**页面一打开就显示，不等用户点发送。**
+   *
+   * 等点了才显示是不够的：管理员来验收时多半只是看一眼这一页，
+   * 而「这套系统现在根本不会真的发短信」是她必须一眼就知道的事。
+   */
+  function baseNotice() {
+    if (!debugMode || !debugNotice) return [];
+    return [inlineAlert(debugNotice, 'warning', { title: '调试模式：短信没有真的发出去' })];
+  }
+
+  function resetNotice() {
+    noticeRoot.replaceChildren(...baseNotice());
+  }
+
+  function stopCountdown() {
+    if (timer) window.clearInterval(timer);
+    timer = 0;
+  }
+
+  /** 重发倒计时。防连点，也让用户知道自己在等什么。
+   *
+   * 每一次「获取验证码」在真实模式下都是一笔真金白银的支出，所以按钮必须锁住；
+   * 但光锁住不告诉他还要等多久，他会以为按钮坏了，转而去刷新页面重来一遍
+   * （刷新之后按钮是亮的，于是又点一次，钱又出去一笔——而后端会用同一份冷却
+   * 把他挡回来，他只会更困惑）。
+   *
+   * 计时器靠 isConnected 自己收尾：页面一被换掉（登录成功、切到别的注册方式），
+   * 这个节点就不在文档里了，下一秒 tick 时自行清理，不用外面记得来关。
+   */
+  function startCountdown(seconds) {
+    stopCountdown();
+    let left = Math.max(1, Math.round(Number(seconds) || defaultCooldown));
+    const paint = () => {
+      sendButton.replaceChildren(h('span', { class: 'dk-button-label' }, `重新获取（${left} 秒）`));
+    };
+    sendButton.disabled = true;
+    paint();
+    timer = window.setInterval(() => {
+      if (!sendButton.isConnected) { stopCountdown(); return; }
+      left -= 1;
+      if (left > 0) { paint(); return; }
+      stopCountdown();
+      sendButton.disabled = false;
+      sendButton.replaceChildren(icon('monitor-smartphone'), h('span', { class: 'dk-button-label' }, '重新获取'));
+    }, 1000);
+  }
+
+  async function send() {
+    const value = phoneInput.value.trim();
+    if (!value) {
+      noticeRoot.replaceChildren(...baseNotice(), inlineAlert('请先填手机号，再获取验证码。', 'error'));
+      phoneInput.focus();
+      return;
+    }
+    stopCountdown();
+    sendButton.disabled = true;
+    sendButton.replaceChildren(icon('loader-circle', { className: 'dk-spin' }),
+      h('span', { class: 'dk-button-label' }, '正在发送…'));
+    let data = null;
+    try {
+      data = await api.post('/api/web/phone/code', { phone: value, scope });
+    } catch (error) {
+      // 后端的报错已经是能直接显示的中文，连「还要等几分钟」都写在正文里了
+      // （限速那几条），所以原样显示，不要再包一层「操作失败」。
+      noticeRoot.replaceChildren(...baseNotice(), inlineAlert(error.message, 'error'));
+      // 失败**不进冷却**：没发出去的那几种情况（号码格式不对、注册没开放、
+      // 阿里云配置没填齐）后端压根没扣配额，让他改完立刻能再点。
+      // 真被限速那一次，后端已经在正文里写清了要等多久。
+      sendButton.disabled = false;
+      sendButton.replaceChildren(icon('monitor-smartphone'), h('span', { class: 'dk-button-label' }, '获取验证码'));
+      return;
+    }
+    if (!sendButton.isConnected) return;
+
+    if (data.debug) {
+      // 调试模式：把验证码直接摆出来，并把后端那句 debug_notice **原样**显示。
+      // 不自己另写一句，是因为两处话不一样的时候，管理员会以为是两回事。
+      codeInput.value = String(data.code || '');
+      noticeRoot.replaceChildren(inlineAlert(
+        h('div', { class: 'dk-phone-debug' },
+          h('p', { class: 'dk-phone-debug__code' },
+            '验证码：', h('strong', {}, String(data.code || '')), '（已经帮你填到下面了）'),
+          h('p', {}, String(data.debug_notice || debugNotice || ''))),
+        'warning', { title: '调试模式：短信没有真的发出去' }));
+    } else {
+      noticeRoot.replaceChildren(...baseNotice(), inlineAlert(
+        `${data.message || '验证码已经发出去了。'}（发往 ${data.phone || '你填的号码'}）`, 'success'));
+    }
+    startCountdown(data.resend_after_seconds);
+    if (codeInput.isConnected && !codeInput.value) codeInput.focus();
+  }
+
+  sendButton.addEventListener('click', send);
+  resetNotice();
+
+  return {
+    phoneInput,
+    codeInput,
+    noticeRoot,
+    sendButton,
+    // 手机号那一栏和「获取验证码」按钮并排放：分两行的话，按钮会离输入框很远，
+    // 用户填完号码找不到下一步该点哪里。
+    phoneRow: h('div', { class: 'dk-phone-row' }, phoneInput, sendButton),
+    showError(message) {
+      noticeRoot.replaceChildren(...baseNotice(), inlineAlert(message, 'error'));
+    },
+    reset: resetNotice,
+  };
 }
 
 function mountLoginStage(page) {
@@ -419,6 +599,21 @@ function renderAuth() {
   else renderLogin();
 }
 
+/** 登录页。现在有两种登录方式：用户名 + 密码，和手机号。
+ *
+ * 三条规矩：
+ *
+ * 一、**用户名密码那张卡片不等任何网络请求就画出来**。它是所有人（包括管理员、
+ *    包括后端还没上手机号功能的老版本）都用得上的那一条路，为了一个「要不要
+ *    显示手机号登录」的查询把它拖住，等于让每个人每次登录都多等一个来回。
+ *
+ * 二、**全站一个手机号身份都没有时，不显示「手机号登录」**（后端 login_enabled
+ *    就是这个意思）。显示了的话，点进去填完只会得到一句「现在还不能用手机号登录」，
+ *    而他会以为是自己填错了。
+ *
+ * 三、两张卡片各建一次就**缓存起来**：来回切的时候，已经打了一半的手机号
+ *    和密码不该被清掉。
+ */
 function renderLogin() {
   cleanupView();
   passwordGateActive = false;
@@ -429,110 +624,303 @@ function renderLogin() {
   clearGenerateSessions();
   document.title = '登录 · DesignKit';
   setThemeColor('#f3f5f7');
-  // 从注册页退回来时带的东西（预填用户名 + 一条提示），读完就清掉：
+  // 从注册页退回来时带的东西（预填用户名/手机号 + 一条提示），读完就清掉：
   // 留着的话，下一次正常打开登录页会莫名其妙又显示一遍上次那条提示。
   const preset = loginPreset;
   loginPreset = null;
-  // 不预填用户名：多人使用之后，这里预填 admin 会让每个成员都要先把它删掉再打自己的名字。
-  // 例外是刚注册完那一次——那时预填的是他自己刚起的名字，省一次输入。
-  const username = h('input', {
-    class: 'dk-control input',
-    autocomplete: 'username',
-    value: preset?.username || '',
-  });
-  const password = passwordControl({ autocomplete: 'current-password' });
-  const errorRegion = h('div', { id: 'dk-login-error', class: 'dk-form-message', tabindex: '-1', 'aria-live': 'assertive' });
-  const submit = button('登录', { size: 'lg', type: 'submit', className: 'dk-auth-submit' });
-
-  function setFieldError(input, invalid) {
-    const references = new Set((input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
-    if (invalid) {
-      references.add(errorRegion.id);
-      input.setAttribute('aria-invalid', 'true');
-    } else {
-      references.delete(errorRegion.id);
-      input.removeAttribute('aria-invalid');
-    }
-    if (references.size) input.setAttribute('aria-describedby', [...references].join(' '));
-    else input.removeAttribute('aria-describedby');
-  }
-
-  username.addEventListener('input', () => setFieldError(username, false));
-  password.input.addEventListener('input', () => setFieldError(password.input, false));
-
-  async function login(event) {
-    event?.preventDefault();
-    errorRegion.replaceChildren();
-    setFieldError(username, false);
-    setFieldError(password.input, false);
-    const name = username.value.trim();
-    if (!name || !password.input.value) {
-      errorRegion.append(inlineAlert('请输入用户名和密码。', 'error'));
-      if (!name) setFieldError(username, true);
-      if (!password.input.value) setFieldError(password.input, true);
-      (!name ? username : password.input).focus();
-      return;
-    }
-    submit.disabled = true;
-    submit.dataset.loading = 'true';
-    submit.replaceChildren(icon('loader-circle', { className: 'dk-spin' }), h('span', { class: 'dk-button-label' }, '正在登录…'));
-    try {
-      const data = await api.post('/api/web/auth/login', { username: name, password: password.input.value });
-      setSession(data.token, data.user);
-      navigate('#/generate', { replace: true });
-      renderApp();
-    } catch (error) {
-      errorRegion.append(inlineAlert(error.message, 'error'));
-      errorRegion.focus();
-      submit.disabled = false;
-      submit.dataset.loading = 'false';
-      submit.replaceChildren(h('span', { class: 'dk-button-label' }, '登录'));
-    }
-  }
-
-  // 「我有邀请码，去注册」这个入口先留一个空位，等后端回话再决定填不填。
-  // **注册没开放时绝不能显示它**：点进去必然被拒，而被拒的那句话按设计
-  // 又不解释原因（对公网不该解释），用户只会以为系统坏了。
-  const registerEntry = h('div', { class: 'dk-auth-alt' });
-
-  const form = h('form', { class: 'dk-auth-card', novalidate: true, onsubmit: login },
-    h('div', { class: 'dk-auth-heading' },
-      h('h1', { class: 'dk-auth-title' }, '欢迎回来'),
-      h('p', { class: 'dk-auth-subtitle' }, '登录后管理商品素材、生成任务与渠道模板。')),
-    errorRegion,
-    field('用户名', username, { required: true }),
-    field('密码', password.wrap, { required: true }),
-    submit,
-    registerEntry,
-    // 这句话是给「刚把系统装起来、还不知道怎么进去」的人看的。
-    // 完全删掉会让首次部署的人找不到入口；但把默认口令印在登录页上，
-    // 多人使用之后就不合适了——所以只说管理员那一个账号，成员一律由管理员建号。
-    h('p', { class: 'dk-auth-note' },
-      icon('shield-check', { size: 15 }),
-      h('span', {}, '首次部署：管理员账号 admin / 初始密码 admin123456，登录后立即修改；'
-        + '成员账号请由管理员在「成员账号」页创建。')));
-
-  // 刚注册完退回来的那条提示（后端那句「请用刚才设置的用户名和密码登录」）
-  if (preset?.message) errorRegion.append(inlineAlert(preset.message, preset.tone || 'success'));
 
   const { formBody } = authScaffold();
-  formBody.append(form);
-  // 注册入口的显示与否要等一个网络请求。等回来时页面可能已经被换掉了
-  //（用户手快点了别的、或者令牌恢复直接进了工作台），所以先看还在不在 DOM 上。
-  fetchRegisterStatus().then((status) => {
-    if (!registerEntry.isConnected || !status?.enabled) return;
-    registerEntry.append(
+  const switchRoot = h('div', { class: 'dk-auth-switch' });
+  const slot = h('div', { class: 'dk-auth-slot' });
+  formBody.append(switchRoot, slot);
+
+  const cards = {};
+  // 「去注册」的入口在两张卡片里各有一个，但它显示什么要等后端回话，
+  // 所以先记下来，等状态到了统一填。
+  const entryBoxes = [];
+  let registerStatus = null;
+  let phoneStatus = null;
+  let statusReady = false;
+  let presetShown = false;
+  let mode = preset?.mode === 'phone' ? 'phone' : 'password';
+
+  /** 「还没有账号？去注册」。**两条注册路都关着的时候绝不显示它**：
+   * 点进去必然被拒，而被拒的那句话按设计又不解释原因（对公网不该解释），
+   * 用户只会以为系统坏了。 */
+  function fillRegisterEntry(box) {
+    box.replaceChildren();
+    const phoneOpen = Boolean(phoneStatus?.enabled);
+    const inviteOpen = Boolean(registerStatus?.enabled);
+    if (!phoneOpen && !inviteOpen) return;
+    // 入口上的字要说清「进去之后要准备什么」：只开了邀请码那条路时，
+    // 没有码的人根本不用点进去。
+    const label = phoneOpen && inviteOpen ? '去注册一个账号'
+      : (phoneOpen ? '用手机号注册' : '我有邀请码，去注册');
+    box.append(
       h('span', { class: 'dk-auth-alt__text' }, '还没有账号？'),
       h('a', { class: 'dk-auth-alt__link', href: REGISTER_HASH },
-        icon('key-round', { size: 15 }),
-        h('span', {}, '我有邀请码，去注册')),
+        icon(phoneOpen ? 'monitor-smartphone' : 'key-round', { size: 15 }),
+        h('span', {}, label)),
     );
-  });
-  queueMicrotask(() => {
-    if (!username.isConnected) return;
-    // 预填了用户名（刚注册完）就直接把光标放到密码框，少一次点击
-    if (preset?.username) password.input.focus();
-    else username.focus();
+  }
+
+  function newEntryBox() {
+    const box = h('div', { class: 'dk-auth-alt' });
+    entryBoxes.push(box);
+    if (statusReady) fillRegisterEntry(box);
+    return box;
+  }
+
+  /** 刚从注册页退回来的那条提示，只显示一次（在当时那张可见的卡片里）。 */
+  function presetAlert() {
+    if (presetShown || !preset?.message) return null;
+    presetShown = true;
+    return inlineAlert(preset.message, preset.tone || 'success');
+  }
+
+  function submitButton(label) {
+    return button(label, { size: 'lg', type: 'submit', className: 'dk-auth-submit' });
+  }
+
+  function setLoading(submit, loading, label) {
+    submit.disabled = loading;
+    submit.dataset.loading = loading ? 'true' : 'false';
+    // filter(Boolean) 不能省：replaceChildren 会把 null 按 DOM 规范转成字符串
+    // 「null」显示在按钮上（h() 会过滤 null，replaceChildren 不会）。
+    submit.replaceChildren(...[
+      loading ? icon('loader-circle', { className: 'dk-spin' }) : null,
+      h('span', { class: 'dk-button-label' }, label),
+    ].filter(Boolean));
+  }
+
+  /** 登录成功之后统一走这一步。 */
+  function enter(data) {
+    setSession(data.token, data.user);
+    navigate('#/generate', { replace: true });
+    renderApp();
+  }
+
+  // ── 卡片一：用户名 + 密码 ──────────────────────────────────────────
+  function buildPasswordCard() {
+    // 不预填用户名：多人使用之后，这里预填 admin 会让每个成员都要先把它删掉
+    // 再打自己的名字。例外是刚注册完那一次——那时预填的是他自己的名字。
+    const username = h('input', {
+      class: 'dk-control input',
+      autocomplete: 'username',
+      value: preset?.username || '',
+    });
+    const password = passwordControl({ autocomplete: 'current-password' });
+    const errorRegion = h('div', { id: 'dk-login-error', class: 'dk-form-message', tabindex: '-1', 'aria-live': 'assertive' });
+    const submit = submitButton('登录');
+
+    function setFieldError(input, invalid) {
+      const references = new Set((input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+      if (invalid) {
+        references.add(errorRegion.id);
+        input.setAttribute('aria-invalid', 'true');
+      } else {
+        references.delete(errorRegion.id);
+        input.removeAttribute('aria-invalid');
+      }
+      if (references.size) input.setAttribute('aria-describedby', [...references].join(' '));
+      else input.removeAttribute('aria-describedby');
+    }
+
+    username.addEventListener('input', () => setFieldError(username, false));
+    password.input.addEventListener('input', () => setFieldError(password.input, false));
+
+    async function login(event) {
+      event?.preventDefault();
+      errorRegion.replaceChildren();
+      setFieldError(username, false);
+      setFieldError(password.input, false);
+      const name = username.value.trim();
+      if (!name || !password.input.value) {
+        errorRegion.append(inlineAlert('请输入用户名和密码。', 'error'));
+        if (!name) setFieldError(username, true);
+        if (!password.input.value) setFieldError(password.input, true);
+        (!name ? username : password.input).focus();
+        return;
+      }
+      setLoading(submit, true, '正在登录…');
+      try {
+        const data = await api.post('/api/web/auth/login', { username: name, password: password.input.value });
+        enter(data);
+      } catch (error) {
+        errorRegion.append(inlineAlert(error.message, 'error'));
+        errorRegion.focus();
+        setLoading(submit, false, '登录');
+      }
+    }
+
+    const form = h('form', { class: 'dk-auth-card', novalidate: true, onsubmit: login },
+      h('div', { class: 'dk-auth-heading' },
+        h('h1', { class: 'dk-auth-title' }, '欢迎回来'),
+        h('p', { class: 'dk-auth-subtitle' }, '登录后管理商品素材、生成任务与渠道模板。')),
+      errorRegion,
+      field('用户名', username, { required: true }),
+      field('密码', password.wrap, { required: true }),
+      submit,
+      newEntryBox(),
+      // 这句话是给「刚把系统装起来、还不知道怎么进去」的人看的。
+      // 完全删掉会让首次部署的人找不到入口；但把默认口令印在登录页上，
+      // 多人使用之后就不合适了——所以只说管理员那一个账号，成员一律由管理员建号。
+      h('p', { class: 'dk-auth-note' },
+        icon('shield-check', { size: 15 }),
+        h('span', {}, '首次部署：管理员账号 admin / 初始密码 admin123456，登录后立即修改；'
+          + '成员账号请由管理员在「成员账号」页创建。')));
+
+    const alert = presetAlert();
+    if (alert) errorRegion.append(alert);
+    return { node: form, focus: () => (preset?.username ? password.input : username).focus() };
+  }
+
+  // ── 卡片二：手机号（验证码 / 密码两种）────────────────────────────
+  function buildPhoneCard() {
+    const group = phoneCodeGroup({ scope: 'login', status: phoneStatus });
+    if (preset?.phone) group.phoneInput.value = preset.phone;
+    const password = passwordControl({ autocomplete: 'current-password' });
+    const errorRegion = h('div', { class: 'dk-form-message', tabindex: '-1', 'aria-live': 'assertive' });
+    const submit = submitButton('登录');
+    let way = 'code';
+
+    // ⚠ 两种方式用 hidden 切换，**不是拆下来再装回去**：拆下来的话
+    // group.sendButton 会离开文档，重发倒计时靠 isConnected 自我了断的机制
+    // 就把计时停了；切回来按钮又是亮的，用户一点就是又一条短信的钱。
+    const codeBlock = h('div', { class: 'dk-panel-stack' },
+      group.noticeRoot,
+      field('验证码', group.codeInput, {
+        required: true,
+        help: '收到短信后把里面的 6 位数字填进来。没收到的话等一会儿，再点上面的「重新获取」。',
+      }));
+    const passwordBlock = field('密码', password.wrap, {
+      required: true,
+      help: '只有注册时设过密码的账号能这样登录。没设过就用上面的验证码登录，一样能进。',
+    });
+
+    const wayRoot = h('div', {});
+    function paintWay() {
+      wayRoot.replaceChildren(segmentedControl([
+        // 这两项**故意不配图标**：图标子集里没有贴切的，硬凑一个反而误导。
+        { value: 'code', label: '收验证码' },
+        { value: 'password', label: '用密码' },
+      ], way, (next) => {
+        if (next === way) return;
+        way = next;
+        paintWay();
+        (way === 'code' ? group.codeInput : password.input).focus();
+      }, { label: '选择手机号的登录方式', className: 'dk-auth-segmented' }));
+      codeBlock.hidden = way !== 'code';
+      passwordBlock.hidden = way !== 'password';
+      group.sendButton.hidden = way !== 'code';
+    }
+
+    async function login(event) {
+      event?.preventDefault();
+      errorRegion.replaceChildren();
+      const phone = group.phoneInput.value.trim();
+      const code = group.codeInput.value.trim();
+      const secret = password.input.value;
+      if (!phone) {
+        errorRegion.append(inlineAlert('请先填手机号。', 'error'));
+        group.phoneInput.focus();
+        return;
+      }
+      if (way === 'code' && !code) {
+        errorRegion.append(inlineAlert('请填收到的验证码；还没收到的话，先点「获取验证码」。', 'error'));
+        group.codeInput.focus();
+        return;
+      }
+      if (way === 'password' && !secret) {
+        errorRegion.append(inlineAlert('请填密码；没设过密码的话，改用验证码登录。', 'error'));
+        password.input.focus();
+        return;
+      }
+      setLoading(submit, true, '正在登录…');
+      try {
+        // 只传这一次真正要用的那一项：两项都传的话后端会优先按验证码判，
+        // 而用户以为自己用的是密码，失败时提示对不上他做的事。
+        const data = await api.post('/api/web/phone/login',
+          way === 'code' ? { phone, code } : { phone, password: secret });
+        enter(data);
+      } catch (error) {
+        errorRegion.append(inlineAlert(error.message, 'error'));
+        errorRegion.focus();
+        setLoading(submit, false, '登录');
+      }
+    }
+
+    const form = h('form', { class: 'dk-auth-card', novalidate: true, onsubmit: login },
+      h('div', { class: 'dk-auth-heading' },
+        h('h1', { class: 'dk-auth-title' }, '手机号登录'),
+        h('p', { class: 'dk-auth-subtitle' }, '用注册时的手机号进来。收一条验证码就行，不用记密码。')),
+      errorRegion,
+      field('手机号', group.phoneRow, { required: true }),
+      wayRoot,
+      codeBlock,
+      passwordBlock,
+      submit,
+      newEntryBox());
+
+    paintWay();
+    const alert = presetAlert();
+    if (alert) errorRegion.append(alert);
+    return { node: form, focus: () => (group.phoneInput.value ? group.codeInput : group.phoneInput).focus() };
+  }
+
+  function cardFor(name) {
+    if (!cards[name]) cards[name] = name === 'phone' ? buildPhoneCard() : buildPasswordCard();
+    return cards[name];
+  }
+
+  function renderSwitch() {
+    // 只有一种登录方式时不显示选择器——多一次无谓的选择就是多一个卡点。
+    if (!phoneStatus?.login_enabled) { switchRoot.replaceChildren(); return; }
+    switchRoot.replaceChildren(segmentedControl([
+      { value: 'password', label: '用户名登录', iconName: 'user-round' },
+      { value: 'phone', label: '手机号登录', iconName: 'monitor-smartphone' },
+    ], mode, (next) => {
+      if (next === mode) return;
+      mode = next;
+      paint();
+    }, { label: '选择登录方式', className: 'dk-auth-segmented' }));
+  }
+
+  function paint() {
+    const card = cardFor(mode);
+    renderSwitch();
+    // 已经在场就到此为止。**不能无脑 replaceChildren**：它会把这张卡片整个
+    // 摘下来再装回去，而摘下来的那一瞬间，正在输入的那一栏会失去焦点——
+    // 用户打了一半的字还在，但光标没了。状态查询回来时会再调一次这个函数，
+    // 那时他多半正打着用户名，光标被抢走完全莫名其妙。
+    if (slot.firstChild === card.node && slot.childElementCount === 1) return;
+    slot.replaceChildren(card.node);
+    queueMicrotask(() => { if (card.node.isConnected) card.focus(); });
+  }
+
+  // 从「这个号已经注册过了」跳过来的那一次，要等状态回来才能画手机号卡片
+  //（它需要后端给的调试模式提示和重发秒数），先摆一句话免得页面空着。
+  if (mode === 'phone') {
+    slot.replaceChildren(h('div', { class: 'dk-auth-card' },
+      h('div', { class: 'dk-auth-heading' },
+        h('h1', { class: 'dk-auth-title' }, '手机号登录'),
+        h('p', { class: 'dk-auth-subtitle' }, '正在打开…'))));
+  } else {
+    paint();
+  }
+
+  // 两个状态一起问。等回来时页面可能已经被换掉了（用户手快点了别的、
+  // 或者令牌恢复直接进了工作台），所以先看卡槽还在不在文档里。
+  Promise.all([fetchRegisterStatus(), fetchPhoneStatus()]).then(([invite, phone]) => {
+    if (!slot.isConnected) return;
+    registerStatus = invite;
+    phoneStatus = phone;
+    statusReady = true;
+    // 后端说现在不能用手机号登录（全站一个手机号身份都没有）时退回用户名那张卡，
+    // 否则用户会对着一个填完必被拒的表单。
+    if (mode === 'phone' && !phoneStatus?.login_enabled) mode = 'password';
+    paint();
+    entryBoxes.forEach(fillRegisterEntry);
   });
 }
 
@@ -564,22 +952,27 @@ async function renderRegister() {
   const { page, formBody } = authScaffold();
   formBody.append(h('div', { class: 'dk-auth-card' },
     h('div', { class: 'dk-auth-heading' },
-      h('h1', { class: 'dk-auth-title' }, '用邀请码注册'),
+      h('h1', { class: 'dk-auth-title' }, '注册一个账号'),
       h('p', { class: 'dk-auth-subtitle' }, '正在确认是否开放注册…'))));
 
-  // 规则文案要等这个请求，所以先画个「正在确认」，再把真表单换上去。
+  // 规则文案要等这两个请求，所以先画个「正在确认」，再把真表单换上去。
   // 直接敲地址进来（比如别人把注册页链接发给他）时，这一步就是必须的。
-  const status = await fetchRegisterStatus();
+  // 两条注册路是**并列**的，各有各的总开关，所以要各问各的。
+  const [status, phoneStatus] = await Promise.all([fetchRegisterStatus(), fetchPhoneStatus()]);
   if (!page.isConnected) return;
 
-  if (!status?.enabled) {
+  const inviteOpen = Boolean(status?.enabled);
+  const phoneOpen = Boolean(phoneStatus?.enabled);
+
+  if (!inviteOpen && !phoneOpen) {
     // 关着的时候只说「没开放」，不解释为什么——理由见 backend/routers/register.py。
     // 但要给一条明确的出路：回登录页，以及去找谁。
     formBody.replaceChildren(h('div', { class: 'dk-auth-card' },
       h('div', { class: 'dk-auth-heading' },
         h('h1', { class: 'dk-auth-title' }, '暂时不能自助注册'),
         h('p', { class: 'dk-auth-subtitle' },
-          status?.message || '现在没有开放自助注册，请联系管理员帮你开通账号。')),
+          status?.message || phoneStatus?.message
+          || '现在没有开放自助注册，请联系管理员帮你开通账号。')),
       button('返回登录', {
         size: 'lg',
         className: 'dk-auth-submit',
@@ -588,127 +981,303 @@ async function renderRegister() {
     return;
   }
 
-  const invite = h('input', {
-    class: 'dk-control input',
-    autocomplete: 'off',
-    autocapitalize: 'characters',
-    spellcheck: 'false',
-    placeholder: '例如 ABCD-EFGH-JKMN',
-  });
-  const username = h('input', { class: 'dk-control input', autocomplete: 'username' });
-  const displayName = h('input', { class: 'dk-control input', autocomplete: 'name', placeholder: '例如：张三（不填就用用户名）' });
-  const password = passwordControl({ autocomplete: 'new-password' });
-  const errorRegion = h('div', { class: 'dk-form-message', tabindex: '-1', 'aria-live': 'assertive' });
-  const submit = button('注册并进入', { size: 'lg', type: 'submit', className: 'dk-auth-submit' });
+  // ── 两种注册方式：手机号 / 邀请码 ─────────────────────────────────
+  //
+  // **只开了一种时不显示选择器，直接进那一种。** 多一次无谓的选择就是多一个
+  // 卡点：一个只拿到邀请码的人，看到「请选择注册方式」的第一反应是
+  // 「我该选哪个？选错了会怎样？」，而这里根本没有第二个选项可选。
+  const methods = [];
+  if (phoneOpen) methods.push({ value: 'phone', label: '手机号注册', iconName: 'monitor-smartphone' });
+  if (inviteOpen) methods.push({ value: 'invite', label: '邀请码注册', iconName: 'key-round' });
+  let method = methods[0].value;
 
-  function setSubmitState(loading, label) {
-    submit.disabled = loading;
-    submit.dataset.loading = loading ? 'true' : 'false';
-    // filter(Boolean) 不能省：replaceChildren 会把 null 按 DOM 规范转成字符串，
-    // 按钮上会多出一个「null」（h() 会过滤 null，replaceChildren 不会）。
-    submit.replaceChildren(...[
-      loading ? icon('loader-circle', { className: 'dk-spin' }) : null,
-      h('span', { class: 'dk-button-label' }, label),
-    ].filter(Boolean));
+  const switchRoot = h('div', { class: 'dk-auth-switch' });
+  const slot = h('div', { class: 'dk-auth-slot' });
+  const cards = {};
+  formBody.replaceChildren(switchRoot, slot);
+
+  function paintMethod() {
+    if (methods.length > 1) {
+      switchRoot.replaceChildren(segmentedControl(methods, method, (next) => {
+        if (next === method) return;
+        method = next;
+        paintMethod();
+      }, { label: '选择注册方式', className: 'dk-auth-segmented' }));
+    }
+    if (!cards[method]) {
+      cards[method] = method === 'phone' ? buildPhoneRegisterCard() : buildInviteRegisterCard();
+    }
+    const card = cards[method];
+    if (slot.firstChild === card.node && slot.childElementCount === 1) return;
+    slot.replaceChildren(card.node);
+    queueMicrotask(() => { if (card.node.isConnected) card.focus(); });
   }
 
-  async function submitRegister(event) {
-    event?.preventDefault();
-    errorRegion.replaceChildren();
-    const code = invite.value.trim();
-    const name = username.value.trim();
-    const secret = password.input.value;
-    // 只拦「没填」。格式一律交给后端判断（见函数头第二条）。
-    if (!code || !name || !secret) {
-      errorRegion.append(inlineAlert('邀请码、用户名和密码都要填。', 'error'));
-      (!code ? invite : (!name ? username : password.input)).focus();
-      return;
-    }
-    setSubmitState(true, '正在注册…');
-    let created = null;
-    try {
-      created = await api.post('/api/web/register', {
-        invite_code: code,
-        username: name,
-        password: secret,
-        display_name: displayName.value.trim(),
-      });
-    } catch (error) {
-      if (!page.isConnected) return;
-      // 后端的报错已经是能直接显示的中文，包括限速那条（正文里带了「请 X 分钟后再试」）。
-      errorRegion.append(inlineAlert(error.message, 'error'));
-      // 403 = 注册在他填表的这几分钟里被管理员关掉了。留在这一页反复点没有意义，
-      // 给一个回登录页的按钮。
-      if (error.status === 403) {
-        errorRegion.append(button('返回登录', { variant: 'secondary', onclick: () => backToLogin() }));
-      }
-      errorRegion.focus();
-      setSubmitState(false, '注册并进入');
-      return;
+  /** 手机号 + 短信验证码注册。
+   *
+   * 和邀请码那条路有三处**有意为之**的不同，改的时候别顺手抹平：
+   *   ① 用户名不让填、也不显示输入框——系统随机生成一个（后端返回里带着它）。
+   *      少一栏就少一道劝退，而这条路的卖点正是「填个手机号就能进来」。
+   *   ② 密码是**选填**的。手机号本身就能登录（收验证码），逼他现场想一个密码
+   *      只会让一半人卡在这里。
+   *   ③ 注册接口**直接回登录令牌**，不用像邀请码那条路那样再登一次——
+   *      他刚刚已经用验证码证明过自己了，再收一条短信纯属多花钱多一道坎。
+   */
+  function buildPhoneRegisterCard() {
+    const group = phoneCodeGroup({ scope: 'register', status: phoneStatus });
+    const password = passwordControl({ autocomplete: 'new-password' });
+    const inviteInput = h('input', {
+      class: 'dk-control input',
+      autocomplete: 'off',
+      autocapitalize: 'characters',
+      spellcheck: 'false',
+      placeholder: '例如 ABCD-EFGH-JKMN',
+    });
+    const errorRegion = h('div', { class: 'dk-form-message', tabindex: '-1', 'aria-live': 'assertive' });
+    const submit = button('注册并进入', { size: 'lg', type: 'submit', className: 'dk-auth-submit' });
+    // 要不要邀请码由**后端**说了算（管理员在设置页那个开关）。前端自己猜的话，
+    // 会出现「页面上没有这一栏，提交却被要求填邀请码」这种没法自救的死局。
+    const requireInvite = Boolean(phoneStatus?.require_invite);
+
+    function setSubmitState(loading, label) {
+      submit.disabled = loading;
+      submit.dataset.loading = loading ? 'true' : 'false';
+      submit.replaceChildren(...[
+        loading ? icon('loader-circle', { className: 'dk-spin' }) : null,
+        h('span', { class: 'dk-button-label' }, label),
+      ].filter(Boolean));
     }
 
-    if (!page.isConnected) return;
-    // 注册接口**故意不发登录令牌**（理由见 backend/app/routers/register.py）。
-    // 但对一个刚填完四个字段的人来说，再把他推回登录页重打一遍用户名密码
-    // 是白白多出来的一道坎，所以这里拿他刚填的密码替他登一次。
-    // 密码只活在这个函数的局部变量里，不写 localStorage、不进 URL。
-    setSubmitState(true, '正在进入…');
-    try {
-      const data = await api.post('/api/web/auth/login', {
-        username: created.username,
-        password: secret,
-      });
+    async function submitPhone(event) {
+      event?.preventDefault();
+      errorRegion.replaceChildren();
+      const phone = group.phoneInput.value.trim();
+      const code = group.codeInput.value.trim();
+      const secret = password.input.value;
+      const inviteCode = inviteInput.value.trim();
+      // 只拦「没填」，格式一律交给后端判断（理由见本函数上面那一页的第二条）。
+      if (!phone || !code || (requireInvite && !inviteCode)) {
+        errorRegion.append(inlineAlert(
+          requireInvite ? '手机号、验证码和邀请码都要填。' : '手机号和验证码都要填。', 'error'));
+        (!phone ? group.phoneInput : (!code ? group.codeInput : inviteInput)).focus();
+        return;
+      }
+      setSubmitState(true, '正在注册…');
+      let created = null;
+      try {
+        created = await api.post('/api/web/phone/register', {
+          phone,
+          code,
+          password: secret,
+          invite_code: inviteCode,
+        });
+      } catch (error) {
+        if (!page.isConnected) return;
+        errorRegion.append(inlineAlert(error.message, 'error'));
+        if (error.status === 409) {
+          // 「这个号已经注册过了」。直接给一条出路：带着号码去手机号登录页，
+          // 不然他会留在这一页反复重发验证码——每一条都是真金白银。
+          errorRegion.append(button('用这个手机号登录', {
+            variant: 'secondary',
+            iconName: 'arrow-right',
+            onclick: () => {
+              loginPreset = { mode: 'phone', phone, tone: 'info', message: error.message };
+              backToLogin();
+            },
+          }));
+        } else if (error.status === 403) {
+          // 403 = 注册在他填表的这几分钟里被管理员关掉了。留在这一页反复点没有意义。
+          errorRegion.append(button('返回登录', { variant: 'secondary', onclick: () => backToLogin() }));
+        }
+        errorRegion.focus();
+        setSubmitState(false, '注册并进入');
+        return;
+      }
+
       if (!page.isConnected) return;
-      setSession(data.token, data.user);
-      // 「生图额度还在开通中」这句话必须让他看见，所以不用 toast（几秒就没了），
-      // 而是进工作台之后弹一屏，由 paintApp 在画完页面之后打开。
+      // 这条接口**直接给了登录令牌**，拿到就已经是登录状态，不要再跳登录页。
+      setSession(created.token, created.user);
       pendingWelcome = {
-        name: created.display_name || created.username,
+        name: created.user?.display_name || created.username,
         username: created.username,
+        via: 'phone',
+        hasPassword: Boolean(created.has_password),
       };
       navigate('#/generate', { replace: true });
       renderApp();
-    } catch (error) {
-      if (!page.isConnected) return;
-      // 自动登录失败（登录接口正好被限速、网络断了……）**不代表注册失败**——
-      // 账号是真的建好了。这里必须说清楚，否则他会以为要重来一遍，
-      // 于是换个名字再注册一次，白白多废一张邀请码。
-      loginPreset = {
-        username: created.username,
-        tone: 'success',
-        message: `${created.message || '注册成功。'}（这次没能自动帮你登录：${error.message}）`,
-      };
-      backToLogin();
     }
+
+    const form = h('form', { class: 'dk-auth-card', novalidate: true, onsubmit: submitPhone },
+      h('div', { class: 'dk-auth-heading' },
+        h('h1', { class: 'dk-auth-title' }, '用手机号注册'),
+        h('p', { class: 'dk-auth-subtitle' },
+          requireInvite
+            ? '填手机号、收一条验证码，再加上管理员给你的邀请码就能开账号。'
+            : '填手机号、收一条验证码就能开一个自己的账号，生成记录和商品图各归各的。')),
+      errorRegion,
+      field('手机号', group.phoneRow, {
+        required: true,
+        help: '中国大陆手机号，11 位数字。它以后就是你的登录名。',
+      }),
+      // 调试模式的横幅和「验证码是多少」都在这个区域里，紧挨着验证码那一栏。
+      group.noticeRoot,
+      field('验证码', group.codeInput, {
+        required: true,
+        help: '收到短信后把里面的 6 位数字填进来。',
+      }),
+      requireInvite
+        ? field('邀请码', inviteInput, {
+          required: true,
+          help: '管理员发给你的那一串字母数字。带不带连字符、大写小写都行，粘贴过来就可以。',
+        })
+        : null,
+      field('密码（选填）', password.wrap, {
+        // 规则那句用后端返回的原文（不在前端另抄一份，抄了迟早对不上）。
+        // 它结尾没有标点，所以这里补一个句号再接自己的话——不补的话，
+        // 两句会黏成「…或包含用户名不填也行」，读起来像一句病句。
+        help: (phoneStatus?.password_rule ? `${phoneStatus.password_rule}。` : '')
+          + '不填也行：以后每次用手机号收一条验证码就能登录。设了密码就多一种登录方式。',
+      }),
+      submit,
+      h('div', { class: 'dk-auth-alt' },
+        h('span', { class: 'dk-auth-alt__text' }, '已经有账号了？'),
+        h('a', {
+          class: 'dk-auth-alt__link',
+          href: '#',
+          onclick: (event) => { event.preventDefault(); backToLogin(); },
+        }, icon('arrow-left', { size: 15 }), h('span', {}, '返回登录'))),
+      h('p', { class: 'dk-auth-note' },
+        icon('shield-check', { size: 15 }),
+        h('span', {}, '注册成功后会直接进入工作台，不用再登录一次。生图额度由系统在后台'
+          + '自动开通，通常一两分钟，期间其他功能都能正常用。')));
+
+    return { node: form, focus: () => group.phoneInput.focus() };
   }
 
-  const form = h('form', { class: 'dk-auth-card', novalidate: true, onsubmit: submitRegister },
-    h('div', { class: 'dk-auth-heading' },
-      h('h1', { class: 'dk-auth-title' }, '用邀请码注册'),
-      h('p', { class: 'dk-auth-subtitle' }, '填好下面四项就能开一个自己的账号，生成记录和商品图各归各的。')),
-    errorRegion,
-    field('邀请码', invite, {
-      required: true,
-      help: '管理员发给你的那一串字母数字。带不带连字符、大写小写都行，粘贴过来就可以。',
-    }),
-    field('用户名', username, { required: true, help: status.username_rule || '' }),
-    field('显示名（选填）', displayName, { help: '同事在系统里看到的名字，不填就显示用户名。' }),
-    field('密码', password.wrap, { required: true, help: status.password_rule || '' }),
-    submit,
-    h('div', { class: 'dk-auth-alt' },
-      h('span', { class: 'dk-auth-alt__text' }, '已经有账号了？'),
-      h('a', {
-        class: 'dk-auth-alt__link',
-        href: '#',
-        onclick: (event) => { event.preventDefault(); backToLogin(); },
-      }, icon('arrow-left', { size: 15 }), h('span', {}, '返回登录'))),
-    h('p', { class: 'dk-auth-note' },
-      icon('shield-check', { size: 15 }),
-      h('span', {}, '注册成功后会直接进入工作台。生图额度由系统在后台自动开通，'
-        + '通常一两分钟，期间其他功能都能正常用。')));
+  function buildInviteRegisterCard() {
+    const invite = h('input', {
+      class: 'dk-control input',
+      autocomplete: 'off',
+      autocapitalize: 'characters',
+      spellcheck: 'false',
+      placeholder: '例如 ABCD-EFGH-JKMN',
+    });
+    const username = h('input', { class: 'dk-control input', autocomplete: 'username' });
+    const displayName = h('input', { class: 'dk-control input', autocomplete: 'name', placeholder: '例如：张三（不填就用用户名）' });
+    const password = passwordControl({ autocomplete: 'new-password' });
+    const errorRegion = h('div', { class: 'dk-form-message', tabindex: '-1', 'aria-live': 'assertive' });
+    const submit = button('注册并进入', { size: 'lg', type: 'submit', className: 'dk-auth-submit' });
 
-  formBody.replaceChildren(form);
-  queueMicrotask(() => { if (invite.isConnected) invite.focus(); });
+    function setSubmitState(loading, label) {
+      submit.disabled = loading;
+      submit.dataset.loading = loading ? 'true' : 'false';
+      // filter(Boolean) 不能省：replaceChildren 会把 null 按 DOM 规范转成字符串，
+      // 按钮上会多出一个「null」（h() 会过滤 null，replaceChildren 不会）。
+      submit.replaceChildren(...[
+        loading ? icon('loader-circle', { className: 'dk-spin' }) : null,
+        h('span', { class: 'dk-button-label' }, label),
+      ].filter(Boolean));
+    }
+
+    async function submitRegister(event) {
+      event?.preventDefault();
+      errorRegion.replaceChildren();
+      const code = invite.value.trim();
+      const name = username.value.trim();
+      const secret = password.input.value;
+      // 只拦「没填」。格式一律交给后端判断（见函数头第二条）。
+      if (!code || !name || !secret) {
+        errorRegion.append(inlineAlert('邀请码、用户名和密码都要填。', 'error'));
+        (!code ? invite : (!name ? username : password.input)).focus();
+        return;
+      }
+      setSubmitState(true, '正在注册…');
+      let created = null;
+      try {
+        created = await api.post('/api/web/register', {
+          invite_code: code,
+          username: name,
+          password: secret,
+          display_name: displayName.value.trim(),
+        });
+      } catch (error) {
+        if (!page.isConnected) return;
+        // 后端的报错已经是能直接显示的中文，包括限速那条（正文里带了「请 X 分钟后再试」）。
+        errorRegion.append(inlineAlert(error.message, 'error'));
+        // 403 = 注册在他填表的这几分钟里被管理员关掉了。留在这一页反复点没有意义，
+        // 给一个回登录页的按钮。
+        if (error.status === 403) {
+          errorRegion.append(button('返回登录', { variant: 'secondary', onclick: () => backToLogin() }));
+        }
+        errorRegion.focus();
+        setSubmitState(false, '注册并进入');
+        return;
+      }
+
+      if (!page.isConnected) return;
+      // 注册接口**故意不发登录令牌**（理由见 backend/app/routers/register.py）。
+      // 但对一个刚填完四个字段的人来说，再把他推回登录页重打一遍用户名密码
+      // 是白白多出来的一道坎，所以这里拿他刚填的密码替他登一次。
+      // 密码只活在这个函数的局部变量里，不写 localStorage、不进 URL。
+      setSubmitState(true, '正在进入…');
+      try {
+        const data = await api.post('/api/web/auth/login', {
+          username: created.username,
+          password: secret,
+        });
+        if (!page.isConnected) return;
+        setSession(data.token, data.user);
+        // 「生图额度还在开通中」这句话必须让他看见，所以不用 toast（几秒就没了），
+        // 而是进工作台之后弹一屏，由 paintApp 在画完页面之后打开。
+        pendingWelcome = {
+          name: created.display_name || created.username,
+          username: created.username,
+        };
+        navigate('#/generate', { replace: true });
+        renderApp();
+      } catch (error) {
+        if (!page.isConnected) return;
+        // 自动登录失败（登录接口正好被限速、网络断了……）**不代表注册失败**——
+        // 账号是真的建好了。这里必须说清楚，否则他会以为要重来一遍，
+        // 于是换个名字再注册一次，白白多废一张邀请码。
+        loginPreset = {
+          username: created.username,
+          tone: 'success',
+          message: `${created.message || '注册成功。'}（这次没能自动帮你登录：${error.message}）`,
+        };
+        backToLogin();
+      }
+    }
+
+    const form = h('form', { class: 'dk-auth-card', novalidate: true, onsubmit: submitRegister },
+      h('div', { class: 'dk-auth-heading' },
+        h('h1', { class: 'dk-auth-title' }, '用邀请码注册'),
+        h('p', { class: 'dk-auth-subtitle' }, '填好下面四项就能开一个自己的账号，生成记录和商品图各归各的。')),
+      errorRegion,
+      field('邀请码', invite, {
+        required: true,
+        help: '管理员发给你的那一串字母数字。带不带连字符、大写小写都行，粘贴过来就可以。',
+      }),
+      field('用户名', username, { required: true, help: status.username_rule || '' }),
+      field('显示名（选填）', displayName, { help: '同事在系统里看到的名字，不填就显示用户名。' }),
+      field('密码', password.wrap, { required: true, help: status.password_rule || '' }),
+      submit,
+      h('div', { class: 'dk-auth-alt' },
+        h('span', { class: 'dk-auth-alt__text' }, '已经有账号了？'),
+        h('a', {
+          class: 'dk-auth-alt__link',
+          href: '#',
+          onclick: (event) => { event.preventDefault(); backToLogin(); },
+        }, icon('arrow-left', { size: 15 }), h('span', {}, '返回登录'))),
+      h('p', { class: 'dk-auth-note' },
+        icon('shield-check', { size: 15 }),
+        h('span', {}, '注册成功后会直接进入工作台。生图额度由系统在后台自动开通，'
+          + '通常一两分钟，期间其他功能都能正常用。')));
+
+    return { node: form, focus: () => invite.focus() };
+  }
+
+  paintMethod();
 }
 
 /** 从注册页回到登录页。
@@ -739,7 +1308,17 @@ function showWelcomeAfterRegister(info) {
         ' 这段时间里模板、灵感库、历史记录都能正常用；'
         + '如果点「生成」时提示还不能生图，等一两分钟刷新一下页面再试就行。'),
       h('p', {}, '要是过了十分钟还是不行，找管理员看一眼即可——你这边不需要做任何事。'),
-      h('p', {}, '你的用户名是 ', h('code', {}, info.username), '，下次登录用它和刚才设置的密码。')),
+      // 手机号那条路的用户名是**系统随机生成**的，他自己没起过、也没见过。
+      // 一定要在这里让他看一眼：以后想用「用户名 + 密码」登录时要填它，
+      // 而那时再想找就只能去问管理员了。
+      info.via === 'phone'
+        ? h('p', {},
+          '你的用户名是 ', h('code', {}, info.username), '（系统随机生成的）。'
+          + '平时用手机号登录就行；'
+          + (info.hasPassword
+            ? '想用「用户名 + 密码」登录时才需要填它。'
+            : '你这次没有设密码，以后每次登录收一条验证码即可。'))
+        : h('p', {}, '你的用户名是 ', h('code', {}, info.username), '，下次登录用它和刚才设置的密码。')),
     footer: [button('开始使用', { onclick: () => dialog.close('ok') })],
   });
 }

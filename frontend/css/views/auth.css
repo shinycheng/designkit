@@ -919,3 +919,88 @@
     transition: none !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   手机号注册 / 登录
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 「用户名登录 / 手机号登录」「手机号注册 / 邀请码注册」这个切换条。
+   **只开了一种方式时 JS 压根不往里填东西**，所以这里要 :empty 隐藏——
+   不隐藏的话，卡片上方会凭空多出一段空白，看着像是有什么没加载出来。 */
+.dk-auth-switch:empty {
+  display: none;
+}
+
+.dk-auth-switch:not(:empty) {
+  margin-bottom: var(--dk-space-6);
+}
+
+/* 登录卡片只有 352px 宽，两个选项各占一半才不会挤成一小坨躲在左边。 */
+.dk-auth-segmented {
+  width: 100%;
+}
+
+.dk-auth-segmented .dk-segmented-item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 手机号输入框和「获取验证码」按钮并排。
+   分两行的话按钮会离输入框很远，用户填完号码找不到下一步该点哪里。 */
+.dk-phone-row {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: var(--dk-space-2);
+}
+
+.dk-phone-row .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dk-phone-send {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* 倒计时里按钮上的字会变长（「重新获取（59 秒）」），
+   固定一个最小宽度，免得输入框跟着一抖一抖。 */
+.dk-phone-send,
+.dk-phone-send[data-loading="true"] {
+  min-width: 124px;
+  justify-content: center;
+}
+
+/* 调试模式横幅 + 发送结果。空着的时候不占位。 */
+.dk-phone-notice:empty {
+  display: none;
+}
+
+.dk-phone-notice:not(:empty) {
+  margin-bottom: var(--dk-space-5);
+}
+
+/* 调试模式下直接显示出来的那个验证码。**必须一眼就能看见**：
+   它旁边那句「短信没有真的发出去」是这一屏最重要的信息。 */
+.dk-phone-debug {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dk-space-2);
+}
+
+.dk-phone-debug__code strong {
+  display: inline-block;
+  color: var(--dk-text);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 六位数字：字距拉开一点，抄写和核对都不容易看串行。 */
+.dk-phone-code-input {
+  font-size: 18px;
+  letter-spacing: 0.28em;
+  font-variant-numeric: tabular-nums;
+}
