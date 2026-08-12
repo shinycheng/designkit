@@ -7,6 +7,11 @@
 账号一共有**三种**开法（管理员逐个建 / 邀请码自助注册 / 手机号短信验证码自助注册），
 下面这张表先分清楚，再去看对应的章节。
 
+> 🚀 **想直接把它装到一台公网服务器上（域名 + HTTPS + 让别人自己注册）**：
+> 看 [docs/deploy-server.md](docs/deploy-server.md)，从买机器到上线前检查清单一共 9 步，
+> 命令都能直接复制粘贴。先在局域网/群晖上试用则看
+> [docs/deploy-synology.md](docs/deploy-synology.md)。两者的分工见[第五章](#五部署到服务器)。
+
 ---
 
 ## 先分清三种「开号」方式（很容易混）
@@ -267,8 +272,38 @@ refined gold trim, TIARALEEN REPRONIZER 107D Plus branding"*，出图的金色�
 > 下面「公网服务器上必须做的四件事」那一节里的每一条，在群晖内网里都可以不做，
 > 在公网上少做一条就是一个洞。
 >
-> - 局域网/群晖测试环境：[docs/deploy-synology.md](docs/deploy-synology.md)（照着做就行的分步指南，含权限、备份、排错）
-> - 公网正式环境：本章（尤其是下面「公网服务器上必须做的四件事」）
+> | 你要做的事 | 看哪一份 |
+> |---|---|
+> | 先在局域网里把功能跑顺、把备份练熟 | [docs/deploy-synology.md](docs/deploy-synology.md)（群晖 NAS 分步指南，含权限、备份、排错） |
+> | **正式上线：买机器、配域名、上 HTTPS、开放注册** | 📗 **[docs/deploy-server.md](docs/deploy-server.md)（从零到上线的完整 9 步，命令可直接复制粘贴）** |
+> | 只想快速知道「公网上必须改哪几项」 | 本章下面的「公网服务器上必须做的四件事」 |
+>
+> 本章是**速查版**：把公网上非改不可的几项集中列出来，方便老手对照。
+> 第一次装、或者要照着一步步做，请直接看 [docs/deploy-server.md](docs/deploy-server.md)——
+> 那份里有买什么机器、域名怎么解析、Caddy / Nginx 的完整配置、防火墙、
+> 每天自动备份、半年一次的恢复演练、升级回滚和上线前的检查清单。
+
+### 什么时候该从群晖搬到公网服务器
+
+只要下面**任意一条**成立，群晖那套就不够用了，该搬：
+
+| 出现了这种需求 | 为什么群晖那套不行 |
+|---|---|
+| **要让别人自己注册**（发邀请码，或者用手机号收验证码） | 开放注册有一条硬前提是「对外访问地址必须是别人真打得开的地址，公网域名还必须是 https」，群晖内网地址过不了这道闸门（详见 [8.1](#81-打开之前必须满足的三条硬前提)） |
+| **要 HTTPS**（同事在外面用、手机上用、密码不能明文传） | 群晖那套是 HTTP 明文，只在「能连进这个局域网」本身就是一道门的前提下才安全 |
+| **同事在公司外面也要用**（在家、出差、手机 4G） | 内网地址在外面打不开；把 NAS 端口转发到公网是**最危险的做法**，等于把明文登录页挂到互联网上 |
+| **人变多了，好几个人同时出图** | 服务器上可以开多进程（`DESIGNKIT_WORKERS`）、按需加 CPU；NAS 通常是省电型 CPU，也不方便扩 |
+| **ERP 在别的机房，要调对外接口** | 同上，内网地址够不着 |
+
+反过来，**只有你和办公室里的几个人用、也不打算开放注册**的话，
+群晖那套完全够用，不用折腾——它每年还能省一台服务器的钱。
+
+> ⚠️ **搬之前要先想清楚一件事：生图网关在哪。**
+> 你的自建 Sub2API 网关是局域网地址 `192.168.31.235:8090`，公网服务器**连不到它**。
+> 所以搬上公网时，要么让那台服务器也能连进这个内网（VPN / 内网穿透），
+> 要么把网关换成一个公网可达的地址。这件事不解决，搬过去之后是「登录一切正常、
+> 一点生成就报连不上网关」，而且报错里看不出根因。
+> 搬数据的步骤见本章后面的「把本机数据搬到服务器」。
 
 在装有 Docker 的机器上建一个空文件夹，下载两个文件：
 
@@ -288,7 +323,13 @@ sudo docker compose up -d
 | 环境 | 必改 |
 |---|---|
 | 任何环境（4 处） | `POSTGRES_PASSWORD`、`DESIGNKIT_DATA_LOCATION`、`PUID`/`PGID`、`DESIGNKIT_PUBLIC_BASE_URL` |
-| 公网服务器再加 2 处 | `DESIGNKIT_BIND_HOST=127.0.0.1`（只让反代进得来）、`DESIGNKIT_TRUSTED_PROXY_HOPS`（反代有几层就填几） |
+| 公网服务器再加 3 处 | `DESIGNKIT_BIND_HOST=127.0.0.1`（只让反代进得来）、`DESIGNKIT_TRUSTED_PROXY_HOPS`（反代有几层就填几）、`DESIGNKIT_FORWARDED_ALLOW_IPS`（反代自己的地址，默认 `127.0.0.1`） |
+
+还有一项按需要改：`DESIGNKIT_WORKERS`（开几个工作进程，默认 `1`，见下面
+「开多个工作进程」那一节）。
+
+> 后两项（`DESIGNKIT_FORWARDED_ALLOW_IPS`、`DESIGNKIT_WORKERS`）都有默认值，
+> 不填就是「和以前完全一样」，所以升级镜像不会改变任何现有部署的行为。
 
 > **本章和第六章的命令，前面的 `sudo` 都不能省。** 你 SSH 上服务器（或群晖）用的是
 > 自己的普通账号，而 Docker 只让 root 使唤，不加 `sudo` 会得到一句英文的
@@ -318,13 +359,21 @@ sudo docker compose up -d
 ### 公网服务器上必须做的四件事
 
 这四件事在局域网里可以不做，在公网上少做一条就是一个洞。
+（中间那条 ③点五「开多个工作进程」是**可选**的性能项，不做也没有安全问题，
+但顺手写在这里，因为它和「同时生成几张图」这件事纠缠在一起，很容易踩坑。）
 
 它们和「开放自助注册」（邀请码、手机号**两条路都算**）的关系：
 **第 ① 条和第 ④ 条是系统强制的硬前提**
 （没做就打不开注册，见第八章 8.1；另一条硬前提「图片链接需要凭证」默认就是开的）。
 **第 ② 条系统不强制，但不配对的话注册限速形同虚设**——那是一个不会报错、
 只会在被刷的时候才发现的坑，**开了手机号注册的话它还直接关系到短信账单**
-（见 [9.6](#96-短信是花钱的三层限速)）。第 ③ 条与注册无关，但公网上都该做。
+（见 [9.6](#96-短信是花钱的三层限速)）。
+**第 ③ 条在开放注册之后会由系统自动兜底**（`*` 会被自动收窄，见那一条），
+但自动兜底只是保底，最好还是自己填清楚。
+
+> 📗 这一节是速查清单。要一步步照着做（含 Caddy / Nginx 的完整配置、
+> 防火墙、每日备份、恢复演练、上线前的完整核对表），请看
+> [docs/deploy-server.md](docs/deploy-server.md)。
 
 > 🔴 **如果你打算开手机号注册，公网上线前还要多确认一件事：
 > 「短信通道」必须已经切到阿里云，不能停在默认的「调试模式」。**
@@ -337,9 +386,160 @@ sudo docker compose up -d
 `127.0.0.1`，让 8787 只监听本机，外面只能通过反代进来。
 不做的后果不是「不太安全」，是**所有人的登录密码在传输途中是明文的**。
 
-**② 告诉系统前面有几层代理**（`DESIGNKIT_TRUSTED_PROXY_HOPS`）。
-套了反代之后，后端直接看到的来源地址是**反代自己**，全站所有人在限速那里
-共用一个桶——一个人被限速，全公司都登不上。填法：
+> 🔐 **HSTS（`Strict-Transport-Security`）请在 Nginx / Caddy 上配，DesignKit
+> 自己故意不发这个头。** 它是对**整个域名**的长期承诺：一旦发出去，浏览器在
+> `max-age` 到期之前会拒绝用 http 打开这个域名——包括同域名下别的服务。
+> 配错了应用这边救不了（只能等它过期），所以这种「一发出去就收不回」的决定
+> 应该由配域名的那一层来做，而不是由一个跑在容器里的应用替你做主。
+> Caddy 默认就带 HSTS，不用管；Nginx 要自己加一行，见
+> [docs/deploy-server.md 第 3 步](docs/deploy-server.md#第-3-步https--反向代理重点)，
+> 那里有两套可以整段复制的完整配置。
+
+<details>
+<summary><b>反代配置速查（点开看可直接复制的 Caddy / Nginx 片段）</b></summary>
+
+**完整版、带装机步骤和证书申请流程的在
+[docs/deploy-server.md 第 3 步](docs/deploy-server.md#第-3-步https--反向代理重点)**，
+这里只放最关键的几行，方便已经会配反代的人对照。
+
+**Caddy**（`/etc/caddy/Caddyfile`，只改第一行的域名）：
+
+```caddyfile
+designkit.example.com {
+	# Caddy 会自动带上 X-Forwarded-For（真实 IP 追加在最右边）和
+	# X-Forwarded-Proto: https，不需要手工写 header 配置。
+	reverse_proxy 127.0.0.1:8787
+	encode zstd gzip
+	# 单次请求体上限。DesignKit 自己限单张 20MB，但一次可以传好几张。
+	request_body {
+		max_size 64MB
+	}
+}
+```
+
+改完 `sudo caddy validate --config /etc/caddy/Caddyfile`
+（打印 `Valid configuration` 才算过）再 `sudo systemctl reload caddy`。
+
+**Nginx**（`location /` 里这四行是关键，少一行就会出问题）：
+
+```nginx
+client_max_body_size 64m;          # 默认只有 1MB，不改的话传商品图会 413
+
+location / {
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    # ↓ 限速能不能正常工作全靠这一行：它把访客真实 IP 追加到最右边，
+    #   DesignKit 就是从右边数第 1 段取真实 IP（对应 TRUSTED_PROXY_HOPS=1）
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    # ↓ 决定取图 Cookie 带不带 Secure 标记。少了它凭证可能跟着明文请求出去
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
+```
+
+HTTPS 用 `sudo certbot --nginx -d 你的域名 --redirect` 自动申请并改写配置，
+改完 `sudo nginx -t && sudo systemctl reload nginx`，
+并且**一定要跑一次** `sudo certbot renew --dry-run` 确认续期是通的。
+
+Nginx 上加 HSTS（Caddy 不用加）：在 443 那个 `server` 块里加一行
+
+```nginx
+add_header Strict-Transport-Security "max-age=31536000" always;
+```
+
+⚠️ 加之前先确认 https 已经稳定跑了几天。这一行发出去之后，浏览器在一年内会拒绝用
+http 打开这个域名，**包括这个域名下别的服务**，反悔只能等它过期。
+
+---
+
+**可选：在反代上再给免登录的几条接口加一道限速。**
+DesignKit 自己已经有限速（落库、多进程安全），下面这段是**额外**的一层，
+好处是把明显的批量请求挡在应用外面、连数据库都不用碰。
+下面这三条是**不需要登录就能调用**的写接口，其中发短信那条每调一次花一笔钱：
+
+| 路径 | 干什么 |
+|---|---|
+| `/api/web/register` | 邀请码自助注册 |
+| `/api/web/phone/code` | **发一条短信验证码（花钱）** |
+| `/api/web/phone/register`、`/api/web/phone/login` | 手机号注册 / 登录 |
+
+Nginx 写法（`limit_req_zone` 放在 `http` 块里，`limit_req` 放在 `server` 块里）：
+
+```nginx
+# 放在 /etc/nginx/nginx.conf 的 http { } 里
+limit_req_zone $binary_remote_addr zone=dk_open:10m rate=20r/m;
+
+# 放在你的 server { } 里（和 location / 并列）
+location ~ ^/api/web/(register|phone/) {
+    limit_req zone=dk_open burst=10 nodelay;
+    proxy_pass http://127.0.0.1:8787;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+`rate=20r/m` = 同一个 IP 每分钟 20 次，`burst=10` 允许短时间内多攒 10 次
+（一个真人填注册表会连着发几个请求，给太紧会误伤）。超了 Nginx 直接回 503。
+
+Caddy 写法（放进上面那个域名块里）：
+
+```caddyfile
+	rate_limit {
+		zone dk_open {
+			match {
+				path /api/web/register* /api/web/phone/*
+			}
+			key    {remote_host}
+			events 20
+			window 1m
+		}
+	}
+```
+
+> ⚠️ Caddy 的 `rate_limit` **不在官方标准版里**，要用
+> `xcaddy build --with github.com/mholt/caddy-ratelimit` 自己编一个带这个插件的
+> Caddy 才有。嫌麻烦就跳过这一段——DesignKit 自己那层限速已经是完整的，
+> 反代这层只是锦上添花。
+>
+> ⚠️ **上面这两段限速配置我没有在真机上验证过**（写文档的机器上没装 Nginx 和 Caddy）。
+> 加之前请先 `sudo nginx -t` / `sudo caddy validate` 过一遍，
+> 加完自己在浏览器里把注册流程走一遍确认没被误伤。
+
+</details>
+
+**② 配两项代理相关的设置**（`DESIGNKIT_FORWARDED_ALLOW_IPS` + `DESIGNKIT_TRUSTED_PROXY_HOPS`）。
+
+套了反代之后，DesignKit 看到的「请求从哪儿来」全变了。这两项**分工不同、
+两个都要填**，只填一项各会漏掉一半：
+
+| 配什么 | 回答的问题 | 管的是谁 | 只配它会漏掉什么 |
+|---|---|---|---|
+| `DESIGNKIT_FORWARDED_ALLOW_IPS`<br>（**地址**：谁可以自称反向代理） | 「**信不信**代理头」 | 管 uvicorn。信了它才会把本次请求的协议改成 https、把连接对端改写成真实访客 IP | 不填的后果：代理头被整个忽略，下面那项填得再对也没用 |
+| `DESIGNKIT_TRUSTED_PROXY_HOPS`<br>（**层数**：前面有几层反代） | 「信到**第几段**」 | 管应用自己的限速：从 `X-Forwarded-For` **从右往左**数第几段才是真实访客 | 不填的后果：协议还是 http，登录/取图 Cookie 的 `Secure` 标记判断是错的 |
+
+**地址（`DESIGNKIT_FORWARDED_ALLOW_IPS`）怎么填**——填的是**反代自己的地址**，
+不是访客的地址。默认 `127.0.0.1`（= 只信本机，谁都冒充不了）：
+
+| 你的架构 | 填什么 |
+|---|---|
+| 反代和 DesignKit 在同一台机器上跑 Docker（最常见） | `172.16.0.0/12`（Docker 网桥网段） |
+| 反代在另一台机器上 | 那台机器的内网 IP，例如 `10.0.0.5` |
+| 没有反代（浏览器直连 8787） | 不用改，保持默认 `127.0.0.1` |
+
+多个地址用英文逗号隔开，也支持网段写法。
+
+> 🚨 **永远不要填 `*`。** 填了之后 uvicorn 会无条件相信 `X-Forwarded-For`，
+> 并且取**最左边**那一段——而最左边那一段正是客户端自己随手写进请求里的，谁都能伪造。
+> 后果：登录限速、注册限速、短信限速**全部当场作废**（攻击者每次请求换一个假 IP），
+> 而且日志里记的来源 IP 也全是假的，事后连是谁干的都查不出来。
+
+**层数（`DESIGNKIT_TRUSTED_PROXY_HOPS`）怎么填**——数一数请求真正经过几层：
 
 | 你的架构 | 填几 |
 |---|---|
@@ -348,12 +548,65 @@ sudo docker compose up -d
 | Cloudflare 等 CDN + 一层反代 | `2` |
 
 ⚠️ **宁可填小，不要填大**。填小了大家挤在一个桶里（严一点，但没有安全问题）；
-填大了系统会去信客户端自己写的那一段地址，而那段是**攻击者随便填的**，
-登录限速和注册限速当场作废。数一数请求真正经过几层，就填几。
+填大了系统会去信客户端自己写的那一段地址，登录限速和注册限速当场作废。
+
+> 这两项都在 `.env` 里改（**网页设置页里没有这两项**），改完必须
+> `sudo docker compose up -d` 重新创建容器才生效——`restart` 不会重新读 `.env`。
+> 怎么确认真的配对了（两条自查命令：Cookie 有没有带 `Secure`、限速看到的是不是真实 IP），
+> 见 [docs/deploy-server.md 3.4 节](docs/deploy-server.md#34-怎么确认反代真的配对了)。
 
 **③ 缩小「允许跨站调用的地址」**（系统设置 → 图片访问与多用户 → 允许跨站调用的地址）。
 默认 `*` 表示不限制。公网上改成你自己的域名（例如 `https://designkit.example.com`），
-别人的网页就没法拿着你同事的登录状态偷偷读数据。**改完必须重启服务才生效。**
+别人的网页就没法在访客的浏览器里替他调本系统的接口。**改完必须重启服务才生效。**
+
+> ⚠️ **一旦你打开了任何一条自助注册（邀请码 或 手机号），`*` 就不再被接受了。**
+> 这时系统会在**启动时自动**把它收窄成「只允许『对外访问地址』那一个域名」，
+> 并在日志里打一条 WARNING 说明这件事（搜「自助注册是开着的」就能找到）。
+> 默认值本身没有改，改的只是「开放注册之后怎么处理 `*`」。
+>
+> 为什么开放注册之后 `*` 就不能忍：本系统**不允许别的网站带着登录状态**来调接口，
+> 所以要登录的接口一直是安全的。真正的问题在**免登录的那几条**上——
+> 尤其是「获取短信验证码」，**每调一次就是一条短信的钱**。`*` 意味着任何一个网站
+> 都能在它自己的页面里调这几条接口、并读到返回内容：攻击者把一段脚本放进一个有流量
+> 的页面，每个访客的浏览器就会替他打一次我们的发码接口，用的还是**访客自己的 IP**，
+> 于是「同一 IP 每小时 20 条」那一层等于不存在。而你在服务器日志里看到的，
+> 是一大批来自不同真实 IP 的正常请求，完全看不出是被人当枪使了。
+>
+> **收窄不会打断任何人**：网页界面和接口本来就是同一个地址（同源），同源请求根本不走
+> 这条规则。只有「另一个域名上的网页要调本系统接口」这种情况才受影响——真有这个需求，
+> 就到设置页把那个域名显式填进去（填了就照填的来，系统不再插手），改完重启生效。
+
+**③点五 开多个工作进程**（`DESIGNKIT_WORKERS`，可选）。
+默认 `1`。人多了、网页转圈明显变慢时可以调到 `2`~`4`（一般不超过 CPU 核数）。
+
+- ⚠️ **只能配 PostgreSQL 用**（用 `docker compose` 部署本来就是 PG，默认满足）。
+  不带数据库单独跑镜像时后端是 SQLite，那时调大它，首次启动会有几个进程
+  以「表已存在」崩掉再被拉起，日志里先糊一屏英文报错。
+- ✅ **开几个进程都不会改变「同时生成几张图」**。生成任务由**拿到「派发权」的
+  那一个进程**统一派发，全局上限就是设置页「运行参数 → 并发生成数」里填的那个数。
+  （2026-08-12 之前不是这样：那时每个进程各建一个线程池，开 4 个进程等于把
+  界面上填的数字乘以 4，钱也跟着乘以 4，而界面上显示的还是原来那个数。已修好。）
+- 🔍 **想确认是哪个进程在派发**，看日志里搜「取得生成派发权」：
+
+  ```bash
+  cd /opt/designkit    # 群晖上是 /volume1/docker/designkit
+  sudo docker compose logs designkit | grep 取得生成派发权
+  ```
+
+  会打印出是哪个进程号拿到了派发权、全局上限是几张。其余进程会各打一条
+  「转入待命」然后就不再刷屏了。
+- 🔍 **回答「为什么图出得慢」**：有活干的时候，领导者进程每分钟会打一条
+
+  ```
+  生成派发中（进程 8）：正在生成 2/2 张，队列里还有 5 个任务等着
+  ```
+
+  「2/2」说明并发已经跑满、慢是因为在排队（要么加大并发生成数，要么就是网关本身慢）；
+  「0/2 队列里还有 5 个」则说明卡在别的地方（多半是网关连不上）。闲着的时候这行不打。
+- ⏱️ **重启之后多久恢复出图**：正常重启（`docker compose up -d` / `restart`）**立刻**恢复——
+  旧进程退出时会主动把派发权交还回去。只有进程被**强杀**（`kill -9`、机器断电、
+  内存被系统回收）时，才要等**最多 35 秒**才有另一个进程接手，这期间不出新图是正常的，
+  **不用再重启第二次**（重启反而会重新开始等）。
 
 **④ 关掉「允许对外接口访问内网地址」**（系统设置 → 安全与网络）。
 默认是**开着**的，因为内部部署时 ERP 常常在内网、要让系统去内网取图。
@@ -386,14 +639,26 @@ sudo docker compose up -d
 | 图片链接需要凭证才能打开 | **开启** | 关掉之后任何人知道地址就能打开平台上任何一张图。只用于临时兼容对接方手里的老链接 |
 | 网页取图凭证有效期 | 7 天 | 范围 7–30 天。到期重新登录一次即可，一般察觉不到 |
 | 对接方图片链接有效期 | 168 小时（7 天） | 范围 1–8760 小时 |
-| 允许跨站调用的地址 | `*`（不限制） | **改完必须重启服务才生效**（`sudo docker compose up -d`）。页面提示保存成功也不会立刻起作用，这是正常的，不要反复保存 |
+| 允许跨站调用的地址 | `*`（不限制） | **改完必须重启服务才生效**（`sudo docker compose up -d`）。页面提示保存成功也不会立刻起作用，这是正常的，不要反复保存。**一旦打开了任何一条自助注册，`*` 就不再生效**——系统启动时会自动把它收窄成「对外访问地址」那一个域名，并在日志里打一条 WARNING（搜「自助注册是开着的」）。要跨域就把域名显式填进去，填了就照填的来 |
 
 同一节里还有一个「无凭证访问统计」，显示本次启动以来有多少次没带凭证的取图请求。
 它是判断「敢不敢临时关掉图片凭证限制」的唯一客观依据（服务重启后归零）。
 
+**「系统设置 → 运行参数」里有一项也和部署相关**：
+
+| 设置项 | 默认 | 说明 |
+|---|---|---|
+| 并发生成数 | 2（范围 1–8） | 全系统**同时**执行几个生成任务。**改完必须重启服务才生效**（页面上那条蓝色提示就是说这个）。这个数是**全局**的：哪怕你把 `DESIGNKIT_WORKERS` 开成 4 个进程，同时在跑的也还是这个数，不会被乘以 4 |
+
+> 调大它意味着单位时间里花更多的钱，也更容易撞上生图网关那边的并发上限
+> （撞上的表现是「今天怎么老是生成失败」，从界面上看不出是被限流了）。
+> 改之前先确认你的网关允许几路并发。
+
 ### 把本机数据搬到服务器（可选，想保留本机的提示词库和记录时才做）
 
-**顺序很重要**，请照这个来：
+**顺序很重要**，请照这个来。（下面第 3 步的路径 `/volume1/docker/designkit`
+是群晖的写法，公网服务器上按 [docs/deploy-server.md](docs/deploy-server.md)
+的约定是 `/opt/designkit`，装在哪就写哪。）
 
 ```bash
 # 1) 在本机看看会搬多少（不写入任何东西，也不需要连上服务器）
@@ -479,8 +744,19 @@ ls -a ~/designkit-backup-$(date +%Y%m%d) | grep -E '^\.(secret|enc)_key$'
 
 ### 服务器（PostgreSQL）
 
-> 下面这些命令都在群晖上用 SSH 执行，**前面的 `sudo` 不能省**（Docker 只让 root
+> 下面这些命令都用 SSH 执行，**前面的 `sudo` 不能省**（Docker 只让 root
 > 使唤）。提示输密码时，输你自己的登录密码。
+>
+> **路径按群晖写的**（`/volume1/docker/designkit`）。公网服务器上装在哪就换成哪，
+> [docs/deploy-server.md](docs/deploy-server.md) 全篇用的是 `/opt/designkit`，
+> 那就把下面命令里的 `/volume1/docker/designkit` 全部换成 `/opt/designkit`。
+>
+> 📗 **别长期手工备份。** 备份这件事只有变成「每天自动跑、而且跑失败你会知道」才有意义。
+> - 公网服务器：[docs/deploy-server.md 第 5 步](docs/deploy-server.md#第-5-步每天自动备份)
+>   （现成的备份脚本 + systemd 定时器 + 三条自检 + 保留 14 天 + 异地拷贝），
+>   以及[第 6 步的半年一次恢复演练](docs/deploy-server.md#第-6-步恢复演练每半年一次)——
+>   **没演练过的备份不算备份**。
+> - 群晖：[docs/deploy-synology.md 第 6 步](docs/deploy-synology.md)（用 DSM 的任务计划）
 
 ```bash
 cd /volume1/docker/designkit
@@ -930,6 +1206,12 @@ sudo docker inspect --format '{{index .Config.Labels "org.opencontainers.image.r
 清单变绿之后，把「**开放自助注册**」勾上，点这一节的「**保存此区域**」。
 同一节里还能顺手改两个防刷阈值和邀请码的两个默认值（见 8.7、8.3）。
 
+> 📌 **打开注册还会连带改一件你没点过的事：跨站调用白名单。**
+> 「允许跨站调用的地址」如果还是默认的 `*`，那么**下次重启服务时**它会被自动收窄成
+> 「对外访问地址」那一个域名，日志里有一条 WARNING 说明。
+> 原因是免登录的注册和发短信接口不能对全互联网的网页开着（详见[第五章第 ③ 条](#公网服务器上必须做的四件事)）。
+> 网页界面和接口同源，不受影响；真要让别的域名跨域调用，就把那个域名显式填进去。
+
 打开之后，到登录页刷新一下，主按钮下面会多出一行
 **「还没有账号？我有邀请码，去注册」**（如果手机号注册也开着，这行字会变成
 「去注册一个账号」，点进去再选用哪种方式）。
@@ -1088,9 +1370,10 @@ unset DK_PASS DK_TOKEN
 > 要让某个人今天就进来，正确做法是到「成员账号」页**直接给他建号**——
 > 那是针对具体某个人的决定，比把全站的闸门开大安全得多。
 >
-> ⚠️ 套了反向代理却没配对 `DESIGNKIT_TRUSTED_PROXY_HOPS`（见第五章第 ② 条）时，
+> ⚠️ 套了反向代理却没配对 `DESIGNKIT_FORWARDED_ALLOW_IPS` 和
+> `DESIGNKIT_TRUSTED_PROXY_HOPS` 这**两项**（见[第五章第 ② 条](#公网服务器上必须做的四件事)）时，
 > 上面这个「同一个 IP」会退化成「全站所有人共用一个桶」——正常人会互相挤。
-> **公网部署前务必把那一项配对。**
+> **公网部署前务必把那两项都配对。**
 
 ### 8.8 注册页上的规则，别在别处再抄一遍
 
@@ -1323,9 +1606,12 @@ unset DK_PASS DK_TOKEN
 | 验证码几秒内有效 | 300 秒（5 分钟） | 60–1800 | 短信到达一般十几秒，5 分钟够一个人切回来填；再长就是给「慢慢猜 6 位数」留时间 |
 | 一条码最多填错几次 | 5 次 | 1–10 | 真人填错一两次很常见，但放得越宽，猜码越划算。超了这条码作废，要重新获取 |
 
-> ⚠️ **套了反向代理却没配对 `DESIGNKIT_TRUSTED_PROXY_HOPS`**（见[第五章第 ② 条](#公网服务器上必须做的四件事)）时，
+> ⚠️ **套了反向代理却没配对 `DESIGNKIT_FORWARDED_ALLOW_IPS` 和
+> `DESIGNKIT_TRUSTED_PROXY_HOPS` 这两项**（见[第五章第 ② 条](#公网服务器上必须做的四件事)）时，
 > 「同一个来源 IP 每小时」会退化成「全站所有人共用一个桶」——三层里的一层当场作废。
-> **公网部署前务必把那一项配对。**
+> **公网部署前务必把那两项都配对。**
+> 这一条对短信尤其要紧：它是三层里唯一挡得住「换手机号轮着刷」的那一层，
+> 而每一条短信都是真金白银。
 
 > ⚠️ 阿里云自己也有一套限制（同一签名 + 同一手机号默认 1 条/分钟、5 条/小时、
 > 10 条/天），比我们这边还严的时候，用户看到的是「这个手机号收验证码太频繁了」。
@@ -1457,9 +1743,23 @@ unset DK_PASS DK_TOKEN
   `icontains`（在 PostgreSQL 上编译成 ILIKE，在 SQLite 上编译成大小写不敏感的 LIKE），
   保证两边行为一致
 - 生成任务：数据库任务队列 + 线程池 worker，失败自动重试。
-  服务重启时会把上次中断的任务捞回队列，但只捞已经开始超过 75 分钟的——
+  服务重启时会把上次中断的任务捞回队列，但只捞已经开始超过 75 分钟的
+  （`worker.STUCK_RESET_SECONDS = 4500`）——
   如果恰好在某个任务刚开始时重启，它会卡在「生成中」，既不能重试也删不掉，
   要等一个多小时后再重启一次服务才会被自动恢复
+- **生成派发权（多 worker 下并发不被乘以进程数）**：uvicorn 每个 worker 是独立进程，
+  各自跑一遍 lifespan，因此各自建一个 `ThreadPoolExecutor(并发生成数)`——
+  开 4 个进程就是「界面上填 2、实际同时跑 8」，钱也乘以 4，而界面上看不出来。
+  修法是给派发循环加一把**数据库租约**（复用 `services/scheduler.py` 那套
+  「带条件 UPDATE + owner 令牌 + 过期续租」，`sync_state` 表新增任务名 `generation`，
+  **不改表结构、不加依赖**，SQLite / PostgreSQL 都适用）：只有拿到租约的进程跑派发循环，
+  其余进程安静待命、每 5 秒试一次接管。租约 30 秒、每 10 秒续一次，
+  所以领导者被 `kill -9` 之后**最坏 35 秒**有人接手；`stop()` 会主动交还租约，
+  正常重启立刻恢复。续租刻意写在派发循环里而不是另起线程——循环卡死时租约也就续不上，
+  别人会顶上，而不是「租约还在续、活却没人干」。
+  任务领取那段（status 条件写在 `WHERE` + 判 `rowcount == 1`）一个字没动，本来就是原子的。
+  启动时的「重置中断任务」和「补投未送达回调」也一并挪到拿到派发权之后做：
+  以前每个进程都做一遍，4 个进程就把同一条回调发 4 次给对接方的 ERP
 - 生图：OpenAI 兼容 Images API（`/v1/images/edits` 图生图、`/v1/images/generations` 文生图），
   base_url / key / model 均可配置；中转网关拒绝单请求多图时，会自动拆分为
   多次单图请求并聚合结果；另有 mock 模式
@@ -1541,6 +1841,37 @@ unset DK_PASS DK_TOKEN
   三个设置项控制，改完立即生效、不用重启（这三项目前没有界面入口）。
   客户端 IP 由 `deps.client_ip` 按 `trusted_proxy_hops` 从 `X-Forwarded-For`
   **右侧**往回数——不能取最左边那一段，那是客户端可以随便伪造的
+- **反代 / 多进程的启动参数**（`Dockerfile` 的 `CMD` 与 `start.sh`）：
+  `--proxy-headers` 其实是 uvicorn 的默认值，显式写出来只是防上游哪天翻默认；
+  真正卡住的是 `--forwarded-allow-ips`，它默认只有 `127.0.0.1`，而 Docker 里反代的
+  对端地址不是 `127.0.0.1`，所以代理头会被**整个忽略**，现象和「没带 --proxy-headers」
+  完全一样。因此新增 `DESIGNKIT_FORWARDED_ALLOW_IPS`（默认 `127.0.0.1`，
+  与改造前行为一字不差）和 `DESIGNKIT_WORKERS`（默认 `1`；查过 uvicorn 源码是
+  `elif config.workers > 1`，所以 `--workers 1` 与不传完全等价，可以无条件拼上）。
+  Dockerfile 的 `CMD` 因此从 JSON 数组形式改成 `sh -c`（数组形式不做变量展开），
+  末尾保留 `exec` 让 uvicorn 仍是容器主进程——否则 `docker stop` 的 SIGTERM
+  停在 shell 上，容器要硬等到超时才被杀，正在出的图会丢
+- **CORS 白名单在开放注册后自动收窄**（`main._load_allowed_origins`）：默认值仍是 `*`
+  （一个字没改，改默认会静默打断现有部署）；但只要 `self_register_enabled` 或
+  `phone_register_enabled` 有一条是开的，`*` 就会在启动时被收窄成
+  `public_base_url` 那一个 origin，并打一条说清怎么改的 WARNING；
+  取不出可用域名时退成「一个都不允许」。管理员自己填了白名单就照填的来。
+  风险不在登录接口（`allow_credentials=False`，别人的网页拿不到登录状态），
+  而在三条**免登录写接口**上——`POST /api/web/phone/code` 每调一次花一条短信的钱，
+  `*` 意味着任何网站都能在**访客自己的浏览器、用访客自己的 IP** 替攻击者打这几条接口
+  并读到返回，`sms_code_ip_hourly_limit` 那一层等于不存在。
+  收窄不会打断任何人：网页前端和接口同源，同源根本不走 CORS
+- **安全响应头**（`main.SecurityHeadersMiddleware`，裸 ASGI 中间件，
+  不用 `BaseHTTPMiddleware` 以免接管 StaticFiles 的 Range / 304 响应体）：
+  所有响应统一 `setdefault` 三条——`Referrer-Policy: no-referrer`（图片地址里带任务号，
+  不能跟着外链进别人的访问日志）、`X-Content-Type-Options: nosniff`
+  （挡「上传一个既像图片又像 HTML 的文件、被浏览器当网页渲染」，
+  开放注册之后上传的人就是陌生人）、`X-Frame-Options: SAMEORIGIN`（点击劫持）。
+  原先只有 `Referrer-Policy`，而 nosniff 只在 `routers/files.py` / `routers/v1.py`
+  各写了一遍，网页本体和 `/api/web/*` 的 JSON 一条都没有。
+  **故意没加 CSP**（前端是无构建原生 JS，内联脚本、`blob:` 预览要一条条放行，
+  单独一期）；**也没加 HSTS**（那是对整个域名的长期承诺，配错了应用救不了，
+  属于反代那一层的事，见第五章）
 - 开放注册的硬前置闸门在 `routers/settings_router.py` 的 `_apply_open_register_updates`：
   合并 current + updates 之后判断，**双向**（开注册时不许内网为 true，
   注册开着时不许把内网改回 true），422 的 `detail` 是可直接显示的多行中文。
@@ -1556,7 +1887,9 @@ unset DK_PASS DK_TOKEN
   `docs/`（文档），`data/`（运行数据，勿提交）
 - 文档索引：
   - [docs/PLAN.md](docs/PLAN.md) — 项目计划与路线图
-  - [docs/deploy-synology.md](docs/deploy-synology.md) — 群晖 NAS 部署分步指南
+  - [docs/deploy-server.md](docs/deploy-server.md) — **公网服务器部署（正式环境）**：
+    机器/域名/Docker、HTTPS 反代、防火墙、每日备份、恢复演练、升级回滚、上线前清单
+  - [docs/deploy-synology.md](docs/deploy-synology.md) — 群晖 NAS 部署分步指南（**局域网测试环境**）
   - [docs/erp-api.md](docs/erp-api.md) — ERP 对接接口文档
   - [docs/auto-provision.md](docs/auto-provision.md) — 自动开通生图额度（配置、自检、失败处理、升级复核）
   - [docs/UI_REFACTOR_SPEC.md](docs/UI_REFACTOR_SPEC.md) — 界面设计规范

@@ -21,6 +21,30 @@ services:
       DESIGNKIT_DB_NAME: ${POSTGRES_DB:-designkit}
       DESIGNKIT_DB_USER: ${POSTGRES_USER:-designkit}
       DESIGNKIT_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # ── 反向代理与进程数（不填就用这里的默认值，和以前的行为完全一样）──
+      #
+      # 谁可以自称反向代理。只有 TCP 连接的对端在这份名单里时，程序才会相信请求里的
+      # X-Forwarded-For / X-Forwarded-Proto 两个头。默认 127.0.0.1 = 谁都冒充不了。
+      #
+      # 前面套了 Nginx / Caddy / 群晖反向代理时**必须**改成反代自己的地址，否则：
+      #   ① 后端看到的来源 IP 全是反代自己 → 限速全站共用一个桶，
+      #      一个人试错把所有人一起锁在门外；
+      #   ② 后端以为整站跑在 http 上 → 明明是 https，发出去的 Cookie 却可能不带 Secure。
+      # 填什么：反代也在这台机器上跑 Docker → 172.16.0.0/12（Docker 网桥网段）；
+      #         反代在另一台机器 → 那台机器的内网 IP。多个用英文逗号隔开。
+      #
+      # ⚠ 永远不要填 `*`。那会让程序无条件相信这个头、并且取最左边那一段，
+      #   而最左边那一段是客户端自己随手写的，等于把限速直接关掉、日志里的 IP 也全是假的。
+      #
+      # 它和 .env 里的 DESIGNKIT_TRUSTED_PROXY_HOPS 分工不同、两个都要配：
+      #   这一项（地址）回答「信不信代理头」，HOPS（层数）回答「信到第几段」。
+      #   详细说明见 Dockerfile 里的长注释和 README 第五章。
+      DESIGNKIT_FORWARDED_ALLOW_IPS: ${DESIGNKIT_FORWARDED_ALLOW_IPS:-127.0.0.1}
+      # 开几个工作进程。默认 1 = 和以前一模一样。人多了可以调到 2~4（别超过 CPU 核数）。
+      # ⚠ 调大之前一定要先看设置页「同时生成几张图」那一项：生成用的线程池是
+      #   **每个进程各建一个**的，开 4 个进程 = 界面上填的数字 × 4 张同时在跑，
+      #   而界面上显示的还是原来那个数。这是直接花钱的事，也可能把生图网关打爆。
+      DESIGNKIT_WORKERS: ${DESIGNKIT_WORKERS:-1}
     volumes:
       # 商品原图与生成图存这里。冒号左边是 NAS 上的路径，右边不要改。
       # 用绑定目录（不是 docker 卷）是为了让你能在 File Station 里直接看到图。
@@ -36,8 +60,11 @@ services:
       #
       # 公网部署的正确做法：在 .env 里设 DESIGNKIT_BIND_HOST=127.0.0.1
       #（让 8787 只监听本机），前面用 Nginx / Caddy 配好 HTTPS 再转发进来；
-      # 同时把 .env 里的 DESIGNKIT_TRUSTED_PROXY_HOPS 按反代层数填上（一层填 1），
-      # 否则限速看到的是反代自己的地址，全站所有人共用一个桶。
+      # 同时把下面这**两项**都按实际情况填上，缺一不可：
+      #   DESIGNKIT_FORWARDED_ALLOW_IPS —— 反代自己的地址（信不信代理头），
+      #                                    见上面 environment 里的说明；
+      #   DESIGNKIT_TRUSTED_PROXY_HOPS  —— 反代有几层（信到第几段），一层填 1。
+      # 两项都不填的后果是一样的：限速看到的是反代自己的地址，全站共用一个桶。
       # 完整清单见 README 第五章「公网服务器上必须做的四件事」。
       - "${DESIGNKIT_BIND_HOST:-0.0.0.0}:${DESIGNKIT_HOST_PORT:-8787}:8787"
     depends_on:

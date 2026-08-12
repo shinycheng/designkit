@@ -3,9 +3,49 @@
 - 网页/对外 API 创建任务后立刻返回（异步），worker 轮询领取并执行；
 - 任务状态落库，程序重启不丢任务；启动时把中断的 processing 任务重置回 pending；
 - 失败自动重试（次数可配），最终失败会记录可读的错误原因并触发回调。
+
+════════════════════════════════════════════════════════════════
+ 为什么要有「派发权」这么一层：多开 worker 会把并发数悄悄乘几倍
+════════════════════════════════════════════════════════════════
+公网部署要开多个 uvicorn worker（`--workers 4`），而 uvicorn 的每个 worker
+是一个**独立进程**，各自完整跑一遍 main.py 的 lifespan——也就是各自
+`worker.start()` 一次，各自建一个 `ThreadPoolExecutor(max_workers=并发数)`。
+
+后果：管理员在设置页填「同时生成 2 张」，开 4 个进程实际是 **8 张同时在跑**，
+而界面上显示的还是 2。这不是性能问题，是**费用和稳定性**问题：
+每一张图都是真金白银，网关（Sub2API）那边还可能有并发上限，一超就整批报错，
+运营同学看到的却只是「今天怎么老是生成失败」，完全无从查起。
+
+修法：**只有一个进程真正跑派发循环**，其余进程安静待命。
+选谁靠数据库里的一把租约锁（`sync_state` 表，任务名 `generation`），
+直接复用 scheduler.py 里那套「带条件 UPDATE + owner 令牌 + 过期续租」——
+不新增表、不新增依赖，SQLite 和 PostgreSQL 都适用。
+
+三条设计取舍写在这里，改的时候请一并考虑：
+
+1. **租约要短（30 秒）并且持续续租（10 秒一次）**。
+   领导者进程被 kill -9 之后，租约最多 30 秒过期，待命进程 5 秒一轮去接管，
+   所以最坏 35 秒就恢复出图。租约设成几分钟当然更省数据库写入，但表现会是
+   「重启后好几分钟不出图」，而运营完全不知道自己在等什么，只会以为坏了。
+
+2. **续租写在派发循环里，而不是另起一个续租线程**（这点和 scheduler.py 不同）。
+   scheduler 那两路是「一跑好几分钟的长任务」，必须有独立线程替它续租；
+   这里的循环每秒转一圈、每步都是很快的数据库操作，把续租放在同一个循环里
+   反而更安全：万一派发循环卡死了，它同时也就续不上租，另一个进程会顶上，
+   而不是「租约还在续、活却没人干」。
+
+3. 交接的瞬间，旧领导者手里已经在跑的图会继续跑完（半路掐断等于白花钱），
+   所以极端情况下短时间内可能超出并发上限一点点。这与「进程崩溃」是同一类
+   情况，无法也不必消除；正常运行期间上限是严格的。
+
+启动时的两件善后（重置中断任务、补投未送达回调）也一并挪到拿到派发权之后做：
+以前每个进程都做一遍，4 个进程就把同一个回调发 4 次给对接方的 ERP。
 """
 import logging
+import os
 import threading
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -16,11 +56,28 @@ from ..database import SessionLocal
 from ..models import ApiKey, GeneratedImage, GenerationJob
 from ..serializers import job_to_dict
 from . import inspiration, prompt_studio, provider, settings_service, storage, webhook
+from . import scheduler as scheduler_locks
 
 logger = logging.getLogger("designkit.worker")
 
 POLL_INTERVAL = 1.0
 RETRY_BACKOFF_SECONDS = 5
+
+# ── 派发权租约的参数 ────────────────────────────────────────────────
+# 任务名。sync_state 的主键就是任务名，加一个名字就多一把互不干扰的锁，
+# 不需要改表结构（灵感库用 inspiration、自动开通用 provisioning）。
+LEASE_TASK = "generation"
+# 租约有效期。领导者进程被杀之后，别人最多等这么久就能接手。
+LEASE_TTL = timedelta(seconds=30)
+# 续租间隔，必须**明显小于** TTL：留出至少两次重试的余量，
+# 免得数据库偶尔卡一下（备份、检查点）就把派发权抖没了。
+LEASE_RENEW_SECONDS = 10
+# 待命进程多久尝试接管一次。5 秒 + 30 秒 TTL = 最坏 35 秒恢复出图。
+STANDBY_RETRY_SECONDS = 5
+# 领导者多久报一次「现在跑着几张、队里还剩几个」。
+# 这行日志是将来排查「为什么图出得慢」的唯一线索，所以宁可多打一点；
+# 但只在真的有活干的时候打，空闲时一行都不打，免得日志被刷满。
+HEARTBEAT_SECONDS = 60
 # 启动时重置卡住任务的年龄阈值：超过它仍是 processing 才认定为「上次中断」。
 # 要大于生图的最坏合法耗时（降级逐张时预算为 request_timeout(≤900) × n(≤4) = 3600 秒），
 # 否则多进程部署下会把还在正常执行的任务误判为中断、重新入队重复计费。
@@ -63,10 +120,147 @@ class GenerationWorker:
         self._lock = threading.Lock()
         self._inflight = 0
         self._concurrency = 2
+        # ── 派发权 ──
+        # 令牌带上进程号，只是为了让日志和数据库里的 lock_owner 能一眼对上
+        # 「现在是哪个进程在派发」；随机后缀防止进程号被系统复用后认错人。
+        self._owner = "pid%d-%s" % (os.getpid(), uuid.uuid4().hex[:8])
+        self._is_leader = False
+        self._renew_at = 0.0        # 单调时钟：到点就续租（不受系统改时间影响）
+        self._heartbeat_at = 0.0
+        self._standby_logged = False  # 待命日志只打第一次，之后闭嘴
 
     # ------------------------------------------------------------ lifecycle
 
     def start(self) -> None:
+        db = SessionLocal()
+        try:
+            self._concurrency = max(1, min(8, int(settings_service.get(db, "worker_concurrency") or 2)))
+        finally:
+            db.close()
+
+        # 线程池在每个进程里都建，但**只有拿到派发权的那个进程会往里丢任务**，
+        # 所以待命进程的线程池是空的（ThreadPoolExecutor 的线程是提交时才创建的，
+        # 空池不占资源）。这样万一本进程后来接管了派发权，可以立刻开工。
+        self._executor = ThreadPoolExecutor(
+            max_workers=self._concurrency, thread_name_prefix="genworker"
+        )
+        self._dispatcher = threading.Thread(
+            target=self._dispatch_loop, daemon=True, name="generation-dispatch")
+        self._dispatcher.start()
+        logger.info(
+            "生成 worker 已启动（进程 %d，令牌 %s）：正在竞争派发权；"
+            "拿到派发权的那个进程会把全局同时生成数控制在 %d 张",
+            os.getpid(), self._owner, self._concurrency,
+        )
+
+    def stop(self) -> None:
+        self._stop.set()
+        # 主动交还派发权：不还的话，重启后新进程要干等租约过期（最多 30 秒）
+        # 才敢开工，表现就是「重启完半分钟不出图」。还了就是立刻接上。
+        if self._is_leader:
+            self._is_leader = False
+            self._release_lease()
+        if self._executor is not None:
+            # 取消尚未开始的排队任务；已在执行的生图任务让它自然跑完（下次启动会补投回调）
+            try:
+                self._executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:  # 老版本 Python 无 cancel_futures 参数
+                self._executor.shutdown(wait=False)
+
+    # ------------------------------------------------------------ 派发权
+
+    def _ensure_leadership(self) -> bool:
+        """返回「本进程现在能不能派发任务」。顺带完成续租 / 尝试接管。
+
+        数据库出错时**不改变**当前身份，只让异常往上抛给循环里的兜底：
+        领导者不该因为一次数据库抖动就放弃派发权（那会让出图停顿一整个 TTL），
+        真丢了派发权的判据只有一个——续租的 UPDATE 明确影响了 0 行，
+        也就是这把锁已经被别人拿走了。
+        """
+        # 正在停机就不要再去抢了：stop() 刚把租约交还出去，这里再抢回来的话，
+        # 进程一退，这把锁会一直挂到过期，接班的进程白等 30 秒。
+        if self._stop.is_set():
+            return False
+        now = time.monotonic()
+
+        if self._is_leader:
+            if now < self._renew_at:
+                return True
+            db = SessionLocal()
+            try:
+                renewed = scheduler_locks._renew(
+                    db, self._owner, name=LEASE_TASK, ttl=LEASE_TTL)
+            finally:
+                db.close()
+            if renewed:
+                self._renew_at = time.monotonic() + LEASE_RENEW_SECONDS
+                return True
+            # 续租失败 = 本进程曾经卡住超过 30 秒，租约过期被别人接管了。
+            # 立刻停止领取新任务，手里在跑的让它跑完（掐断等于白花钱）。
+            with self._lock:
+                inflight = self._inflight
+            self._is_leader = False
+            self._standby_logged = False
+            logger.warning(
+                "本进程（%d）失去了生成派发权（续租时发现锁已易主），停止领取新任务转入待命；"
+                "手上还在生成的 %d 张会跑完", os.getpid(), inflight,
+            )
+            return False
+
+        # 待命中：试着接管。抢不到说明别的进程好好活着，什么也不用做。
+        db = SessionLocal()
+        try:
+            acquired = scheduler_locks._acquire(
+                db, self._owner, name=LEASE_TASK, ttl=LEASE_TTL)
+        finally:
+            db.close()
+        if not acquired:
+            if not self._standby_logged:
+                logger.info(
+                    "生成派发权在别的进程手里，本进程（%d）转入待命：每 %d 秒尝试接管一次，"
+                    "领导者进程一旦退出最多 %d 秒后由别人接手（本条日志不再重复打印）",
+                    os.getpid(), STANDBY_RETRY_SECONDS, int(LEASE_TTL.total_seconds()),
+                )
+                self._standby_logged = True
+            return False
+
+        self._is_leader = True
+        self._standby_logged = False
+        self._renew_at = time.monotonic() + LEASE_RENEW_SECONDS
+        self._heartbeat_at = 0.0
+        logger.info(
+            "本进程（%d，令牌 %s）取得生成派发权：全局同时生成上限 %d 张；"
+            "租约 %d 秒、每 %d 秒续租一次",
+            os.getpid(), self._owner, self._concurrency,
+            int(LEASE_TTL.total_seconds()), LEASE_RENEW_SECONDS,
+        )
+        self._on_became_leader()
+        return True
+
+    def _release_lease(self) -> None:
+        """交还派发权。校验 owner，绝不会清掉别人的锁（复用 scheduler 的释放逻辑）。"""
+        db = SessionLocal()
+        try:
+            scheduler_locks._release(
+                db, self._owner, True, "派发进程正常退出，已交还派发权", name=LEASE_TASK)
+        except Exception:
+            # 交还失败无所谓：租约 30 秒后自然过期，别人照样接得上
+            logger.warning("交还生成派发权时出错（不影响：租约到期后会自动释放）", exc_info=True)
+        finally:
+            db.close()
+
+    def _on_became_leader(self) -> None:
+        """拿到派发权之后的善后。只有领导者做，所以多进程部署下只做一遍。
+
+        失败不能让派发循环退出——善后没做成顶多是几个旧任务晚点恢复，
+        而循环死了就是**从此不再出图**，两者严重程度差着数量级。
+        """
+        try:
+            self._recover_interrupted()
+        except Exception:
+            logger.exception("恢复中断任务/补投回调失败（不影响新任务的生成）")
+
+    def _recover_interrupted(self) -> None:
         db = SessionLocal()
         try:
             # 上次异常退出时卡在 processing 的任务，重置回队列。
@@ -87,7 +281,10 @@ class GenerationWorker:
                 db.commit()
                 logger.info("恢复了 %d 个中断的任务", len(stuck))
 
-            # 已完结但回调未送达/中断的任务，启动时补投一次
+            # 已完结但回调未送达/中断的任务，补投一次。
+            # 这段必须只有领导者做：以前每个进程启动时都做一遍，开 4 个 worker
+            # 就是同一条回调发 4 次给对接方的 ERP（筛选条件里含 "sending"，
+            # 别的进程刚置上的 "sending" 挡不住后面的进程）。
             pending_hooks = (
                 db.query(GenerationJob)
                 .filter(GenerationJob.status.in_(("succeeded", "failed")))
@@ -100,43 +297,61 @@ class GenerationWorker:
                 self._fire_webhook(db, job, settings)
             if pending_hooks:
                 logger.info("补投了 %d 个未完成的回调", len(pending_hooks))
-
-            self._concurrency = max(1, min(8, int(settings_service.get(db, "worker_concurrency") or 2)))
         finally:
             db.close()
 
-        self._executor = ThreadPoolExecutor(
-            max_workers=self._concurrency, thread_name_prefix="genworker"
-        )
-        self._dispatcher = threading.Thread(target=self._dispatch_loop, daemon=True)
-        self._dispatcher.start()
-        logger.info("生成 worker 已启动，并发数 %d", self._concurrency)
+    def _heartbeat(self) -> None:
+        """定期把「谁在派发、跑着几张、还剩几个」写进日志。
 
-    def stop(self) -> None:
-        self._stop.set()
-        if self._executor is not None:
-            # 取消尚未开始的排队任务；已在执行的生图任务让它自然跑完（下次启动会补投回调）
-            try:
-                self._executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:  # 老版本 Python 无 cancel_futures 参数
-                self._executor.shutdown(wait=False)
+        运营唯一能描述的现象是「图出得好慢」，而慢有三种完全不同的原因：
+        队列积压、并发被调小了、或者派发权跑到了另一个进程上。
+        这一行日志同时回答这三个问题，没有它只能靠猜。
+        """
+        now = time.monotonic()
+        if now < self._heartbeat_at:
+            return
+        self._heartbeat_at = now + HEARTBEAT_SECONDS
+        with self._lock:
+            inflight = self._inflight
+        db = SessionLocal()
+        try:
+            pending = (
+                db.query(GenerationJob)
+                .filter(GenerationJob.status == "pending")
+                .count()
+            )
+        finally:
+            db.close()
+        if inflight or pending:  # 闲着的时候一个字都不打
+            logger.info(
+                "生成派发中（进程 %d）：正在生成 %d/%d 张，队列里还有 %d 个任务等着",
+                os.getpid(), inflight, self._concurrency, pending,
+            )
 
     # ------------------------------------------------------------ dispatch
 
     def _dispatch_loop(self) -> None:
-        while not self._stop.wait(POLL_INTERVAL):
+        while not self._stop.is_set():
+            interval = POLL_INTERVAL
             try:
-                with self._lock:
-                    free_slots = self._concurrency - self._inflight
-                if free_slots <= 0:
-                    continue
-                job_ids = self._claim_jobs(free_slots)
-                for job_id in job_ids:
+                if not self._ensure_leadership():
+                    # 待命：慢一点转，只为了定期看看领导者还在不在
+                    interval = STANDBY_RETRY_SECONDS
+                else:
+                    self._heartbeat()
                     with self._lock:
-                        self._inflight += 1
-                    self._executor.submit(self._run_job, job_id)
+                        free_slots = self._concurrency - self._inflight
+                    if free_slots > 0:
+                        for job_id in self._claim_jobs(free_slots):
+                            with self._lock:
+                                self._inflight += 1
+                            self._executor.submit(self._run_job, job_id)
             except Exception:
+                # 出错时把节奏放慢：数据库重启/磁盘满的时候，每秒一条异常栈
+                # 乘以 4 个进程，几分钟就能把日志刷到没法看，反而盖住真正的原因。
+                interval = STANDBY_RETRY_SECONDS
                 logger.exception("任务分发循环出现异常（继续运行）")
+            self._stop.wait(interval)
 
     def _claim_jobs(self, limit: int) -> List[str]:
         db = SessionLocal()

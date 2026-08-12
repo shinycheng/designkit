@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 from typing import List
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,20 +25,58 @@ class RevalidateStaticFiles(StaticFiles):
 
 
 class SecurityHeadersMiddleware:
-    """给所有响应补一条 Referrer-Policy: no-referrer。
+    """给**所有**响应补三条基础安全响应头。
 
-    图片地址里带着任务号（outputs/年月/<任务号>/0.png），页面地址里也可能带业务参数。
-    浏览器默认会把「来源页地址」跟着外链一起发给第三方站点——只要页面上有一个指向
-    外部的链接或图片，任务号就跟着进了别人家的访问日志。这正是当初「知道地址就能
-    下图」那条链路的传播途径之一，所以整站关掉。
+    「所有」是重点：以前只有 routers/files.py 和 routers/v1.py 这两处自己写了
+    nosniff，也就是说只有取图和对外 API 带着它，而网页本体（HTML / JS）和
+    /api/web/* 的 JSON 一条都没有。放在这里之后，静态文件、接口、404、
+    重定向——凡是从这个进程出去的响应，一律都有。
+
+    三条各自管什么：
+
+    ① Referrer-Policy: no-referrer
+       图片地址里带着任务号（outputs/年月/<任务号>/0.png），页面地址里也可能带
+       业务参数。浏览器默认会把「来源页地址」跟着外链一起发给第三方站点——只要
+       页面上有一个指向外部的链接或图片，任务号就跟着进了别人家的访问日志。
+       这正是当初「知道地址就能下图」那条链路的传播途径之一，所以整站关掉。
+
+    ② X-Content-Type-Options: nosniff
+       禁止浏览器「猜」响应的类型。用户上传的是商品图，但上传的人可以精心构造
+       一个既像图片、又像 HTML 的文件；没有这个头时，某些浏览器会按猜出来的
+       HTML 去渲染它，于是别人上传的文件就变成了跑在**我们域名下**的网页，
+       能读同域的 Cookie、能替用户点接口。上公网、谁都能注册之后，
+       「上传的人」就是陌生人，这条从「理论风险」变成「等着被用」。
+
+    ③ X-Frame-Options: SAMEORIGIN
+       不许别人的网页把本系统套进 iframe 里。不加的话，攻击者可以做一个页面，
+       把我们的设置页透明地叠在他的「点击领奖」按钮下面，用户以为在点他的按钮，
+       实际点的是我们页面上的删除 / 保存（点击劫持）。
+       用 SAMEORIGIN 不用 DENY：本系统自己将来要嵌自己（预览窗之类）时不会被卡住，
+       而挡第三方的效果是一样的。
+       注：更现代的写法是 CSP 的 frame-ancestors，但 CSP 要整体规划一遍
+       （前端是无构建原生 JS，内联脚本、blob: 图片预览都要一条条放行），
+       那是单独一期的事，这里先把不会误伤的这条上了。
+
+    **故意没有加的：Content-Security-Policy 和 Strict-Transport-Security。**
+    前者见上一段。后者（HSTS）属于反向代理那一层的事：它是对整个域名的长期承诺，
+    一旦发出去，浏览器在 max-age 内会拒绝用 http 打开这个域名，配错了要等它过期，
+    应用这边根本救不了。配 https 的时候在 Nginx / Caddy 上加，README 里写。
 
     写成裸 ASGI 中间件而不是 @app.middleware("http")：后者用的是 BaseHTTPMiddleware，
     它会把响应体整个接管一遍，对 StaticFiles 的 Range / 304 这类响应是额外风险，
-    而我们只想改一个响应头。这里只包一层 send，字节流原样穿过。
+    而我们只想改几个响应头。这里只包一层 send，字节流原样穿过。
 
-    用 setdefault 不用直接赋值：routers/files.py 已经自己设过这个头，
+    一律用 setdefault 不用直接赋值：routers/files.py 已经自己设过其中两个头，
     路由层写的更具体，不该被中间件覆盖掉。
     """
+
+    # 头名一律小写：ASGI 规范里响应头名是小写字节串，MutableHeaders 也按小写比对，
+    # 写成 X-Frame-Options 会导致 setdefault 认不出「已经有了」而重复添加。
+    _DEFAULTS = (
+        ("referrer-policy", "no-referrer"),
+        ("x-content-type-options", "nosniff"),
+        ("x-frame-options", "SAMEORIGIN"),
+    )
 
     def __init__(self, app):
         self.app = app
@@ -49,7 +88,9 @@ class SecurityHeadersMiddleware:
 
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
-                MutableHeaders(scope=message).setdefault("referrer-policy", "no-referrer")
+                headers = MutableHeaders(scope=message)
+                for name, value in self._DEFAULTS:
+                    headers.setdefault(name, value)
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
@@ -131,6 +172,35 @@ app = FastAPI(
 )
 
 
+def _origin_of(url: str) -> str:
+    """把「对外访问地址」削成一个 CORS 用的 origin（协议 + 域名 + 端口，不带路径）。
+
+    浏览器发过来的 Origin 头就长这样，白名单里的写法必须逐字对得上，
+    多一个末尾斜杠或多一段路径都会匹配不上（而且**不会报错**，只是悄悄不放行）。
+    认不出来就返回空串，由调用方决定怎么办。
+    """
+    parsed = urlparse((url or "").strip())
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return ""
+    host = parsed.hostname
+    # 裸 IPv6 地址在 URL 和 Origin 头里都是带方括号的（http://[::1]:8787），
+    # 而 .hostname 会把方括号剥掉。不补回去的话拼出来的白名单项永远匹配不上，
+    # 而且不会有任何报错。
+    if ":" in host:
+        host = "[%s]" % host
+    origin = "%s://%s" % (parsed.scheme, host)
+    # 端口只在非默认端口时才出现在 Origin 头里（https://a.com:443 的 Origin 是
+    # https://a.com）。跟着浏览器的写法来，否则白名单永远匹配不上。
+    default_port = 443 if parsed.scheme == "https" else 80
+    try:
+        port = parsed.port
+    except ValueError:      # 端口那一段不是数字，整个地址就是坏的
+        return ""
+    if port and port != default_port:
+        origin += ":%d" % port
+    return origin
+
+
 def _load_allowed_origins() -> List[str]:
     """启动时读一次「允许哪些网站的网页调用本系统接口」（CORS 白名单）。
 
@@ -150,14 +220,58 @@ def _load_allowed_origins() -> List[str]:
 
     值的写法：`*` 表示不限制（默认，与改造前行为一致）；
     多个域名用英文逗号隔开，例如 `https://a.example.com,https://b.example.com`。
+
+    ══════════════════════════════════════════════════════════════════
+     ⚠ 开着自助注册时，`*` **不再被接受**（本次新增的闸门）
+    ══════════════════════════════════════════════════════════════════
+    默认值仍然是 `*`，一个字没改——改默认会静默打断现有部署，那是这个项目
+    反复强调过的红线。变的是**开放注册之后**的处理：这时 `*` 会被自动收窄成
+    「只允许对外访问地址（public_base_url）那一个域名」，并在日志里大声说明。
+
+    为什么开放注册之后 `*` 就不能忍了。allow_credentials 是 False，所以别人的
+    网页拿不到用户的登录状态，读不了任何要登录的接口——这条今天成立，明天也成立。
+    真正的问题在**免登录的那几条写接口**上：
+
+        POST /api/web/phone/code    发一条短信 = 花一笔钱
+        POST /api/web/phone/register
+        POST /api/web/register
+
+    `*` 意味着**任何一个网站**都可以在它自己的页面里对这几条接口发请求、并且
+    读得到返回内容。攻击者只要把一段脚本放进一个有流量的页面，每个访客的浏览器
+    都会替他打一次我们的发码接口——用的是**访客自己的 IP**，于是
+    sms_code_ip_hourly_limit（同 IP 每小时 20 条）那一层等于不存在，
+    只剩「全站每天 200 条」那一道兜着。而这件事发生的时候，服务端日志里看到的是
+    一大批来自不同真实 IP 的正常请求，完全看不出是被人当枪使了。
+    读得到返回内容这一点同样要紧：脚本能看见「这个手机号是不是已经注册过」
+    这类回答，那就成了一个免费的手机号撞库接口。
+
+    收窄成 public_base_url 那一个域名是安全的，不会打断任何人：网页前端和接口
+    本来就是**同源**的（都由这个进程提供），同源请求根本不走 CORS；
+    而开放注册的硬前置闸门（routers/settings_router.py 的
+    _open_register_blockers）已经强制 public_base_url 必须填成别人真能打开的
+    公网 https 地址，所以这里取到的一定是个像样的值。
+    万一还是取不出来（老库、被人直接改过数据库），就退成「一个都不允许」——
+    宁可让某个第三方页面的跨域调用失败（会在浏览器控制台报得清清楚楚），
+    也不能让上面那扇门开着。
+
+    真有跨域需求（比如另一个域名的运营后台要调这里的接口）：到设置页把
+    allowed_origins 填成那个域名，填了就照填的来，这里不会再插手。
     """
     raw = str(RUNTIME_DEFAULTS.get("allowed_origins") or "*")
+    open_register = False
+    public_base_url = ""
     db = None
     try:
         db = SessionLocal()
         stored = settings_service.get(db, "allowed_origins")
         if stored is not None:
             raw = str(stored)
+        # 两条注册路只要有**任意一条**开着就算「对陌生人开放」，
+        # 口径与 settings_router 那道硬前置闸门完全一致（只管一条等于没管）。
+        open_register = bool(settings_service.get(db, "self_register_enabled")) or bool(
+            settings_service.get(db, "phone_register_enabled")
+        )
+        public_base_url = str(settings_service.get(db, "public_base_url") or "")
     except Exception:  # noqa: BLE001 —— 表还没建 / 数据库还没起来，都算正常
         logger.info("启动时读不到 allowed_origins 设置（数据库尚未就绪），本次用默认值")
     finally:
@@ -166,9 +280,31 @@ def _load_allowed_origins() -> List[str]:
     items = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
     # 只要里面有一个 *，就等于没限制；空着（管理员把这一项清空了）同样按不限制处理，
     # 否则会变成「所有跨域调用全被挡掉」这种没人料到的副作用。
-    if not items or "*" in items:
+    if items and "*" not in items:
+        logger.info("CORS 白名单：%s", "、".join(items))
+        return items
+    if not open_register:
         return ["*"]
-    return items
+    fallback = _origin_of(public_base_url)
+    if fallback:
+        logger.warning(
+            "自助注册是开着的，所以「允许哪些网站调用本系统接口」不能是 * "
+            "（那等于任何网站都能在访客浏览器里替他调我们的注册和发短信接口，"
+            "还读得到返回内容）。本次已自动收窄为只允许 %s（取自「对外访问地址」）。"
+            "网页界面本身是同源的，不受影响。若确实要让别的域名跨域调用，"
+            "请到「系统设置 → 允许哪些网站调用」里把那个域名填上，改完重启服务生效。",
+            fallback,
+        )
+        return [fallback]
+    logger.warning(
+        "自助注册是开着的，但「对外访问地址」取不出一个能用的域名（现在是 %r），"
+        "无法据此收窄跨域白名单，本次按「不允许任何跨域调用」处理。"
+        "网页界面是同源的、照常可用；请到「系统设置」里把「对外访问地址」填成"
+        "别人在浏览器里访问本系统时用的那个完整地址（例如 https://designkit.example.com），"
+        "改完重启服务。",
+        public_base_url,
+    )
+    return []
 
 
 ALLOWED_ORIGINS = _load_allowed_origins()
