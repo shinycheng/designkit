@@ -770,6 +770,7 @@ CI（`.github/workflows/backend-ci.yml`）在**每次 push**（任意分支）�
 | **运营自建提示词** | 表备好了（`source`/`owner_user_id` + 部分索引），`prompt_repo` 三个方法都在，service 和路由没做 | 运营手打的提示词用完即弃 |
 | **推荐结果缓存** | 没有 | 重复点「重新推荐」每次真花 $0.09~$0.34 |
 | **仪表盘是隐藏菜单的后门** | 「渠道状态」已隐藏，但 `/dashboard` 的「快捷操作」四个按钮直通 `/keys`、`/usage`、`/batch-image`、`/redeem`——全是决策 10 要藏的 | 菜单藏了、按钮还在。**monica 还没决定要不要一起藏** |
+| **版本更新检查仍指向上游** | 后端 `github_release_service.go` 轮询的是上游 Sub2API 的 releases；脱离上游后「有新版本」提示恒为误导，管理员照着升级会把系统换成上游镜像。前端徽章的仓库常量已改指本仓库（命令变 404，无害化），后端轮询未关 | 管理员界面可能长期显示可升级；关掉轮询是后续活 |
 | `keep_transparency` | 是公开接口字段，收下、透传、出图时被忽略（`designkit_jobs` 没这一列，worker 用全局配置且恒为 false） | ERP 传 true 拿到合成白底，接口不报错 |
 
 ### 结构缺口

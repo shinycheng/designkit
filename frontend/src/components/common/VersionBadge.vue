@@ -651,7 +651,10 @@ import {
 import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
 
-const GITHUB_REPO = 'Wei-Shaw/sub2api'
+// 2026-08-15 GitHub 独立化：改指本仓库。本仓库没有 v* tag 和 install.sh，
+// 生成的回滚命令会 404 而不是拉到上游脚本——比生成「有效但会把系统
+// 换成上游版本」的命令安全。版本检查整个机制的去留见 CLAUDE.md 第七节。
+const GITHUB_REPO = 'shinycheng/designkit'
 // Docker Hub image published by CI (tags carry no "v" prefix, e.g. weishaw/sub2api:0.1.146)
 const DOCKER_IMAGE = 'weishaw/sub2api'
 
