@@ -1,0 +1,555 @@
+/**
+ * designkit UI strings (English).
+ *
+ * Every key lives under the top-level `designkit` namespace (CLAUDE.md decision 2)
+ * so it can never collide with, or be silently overwritten by, upstream strings.
+ * Chinese is the primary language; English only has to be complete, not polished.
+ *
+ * Keep every key in sync with `zh/designkit.ts` — a missing key renders as the raw
+ * key path on screen.
+ *
+ * Voice (2026-08-15, matches the zh rewrite): product copy, not assistant chat.
+ * One short sentence; a second one only for "what to do". No reassurance filler.
+ * All amounts are US dollars (decision 18). No currency conversion anywhere.
+ */
+export default {
+  designkit: {
+    brand: 'Product Images',
+
+    nav: {
+      workbench: 'Workbench',
+      inspiration: 'Prompt Library',
+      gallery: 'My Images',
+      settings: 'Image Settings',
+    },
+
+    common: {
+      confirm: 'Confirm',
+      cancel: 'Cancel',
+      close: 'Close',
+      back: 'Back',
+      save: 'Save',
+      delete: 'Delete',
+      remove: 'Remove',
+      clear: 'Clear',
+      selectAll: 'Select all',
+      deselectAll: 'Deselect all',
+      refresh: 'Refresh',
+      reload: 'Reload',
+      retry: 'Try again',
+      loading: 'Loading…',
+      loadMore: 'Load more',
+      noMore: 'No more items',
+      empty: 'Nothing here yet',
+      copy: 'Copy',
+      copied: 'Copied',
+      download: 'Download',
+      downloadAll: 'Download all',
+      search: 'Search',
+      selectedCount: '{count} selected',
+      pieces: '{count} images',
+      of: '{total} in total',
+      unknown: 'Unknown',
+      yes: 'Yes',
+      no: 'No',
+    },
+
+    money: {
+      priceUnconfirmed: 'Price not confirmed',
+      priceUnconfirmedHint: 'Unit price for this ratio is not measured yet. Start small, or ask your administrator.',
+      unitPrice: 'Unit price',
+      perImage: 'per image',
+      estimated: 'Estimated cost',
+      actual: 'Actual cost',
+      balance: 'Balance',
+      available: 'Available',
+      availableHint: 'Available = balance minus what queued jobs reserve.',
+      shortfall: '{amount} short',
+      currencyNote: 'All amounts are in US dollars ($).',
+    },
+
+    workbench: {
+      title: 'Workbench',
+      description: 'Upload product photos, set prompts and ratio, generate in batch.',
+      placeholder: 'Image generation is under construction. The panel below checks the backend connection.',
+
+      stepUpload: 'Step 1 · Product photos',
+      stepPrompt: 'Step 2 · Pick a category, describe the product, let AI write the prompt',
+      stepRatio: 'Step 3 · Aspect ratio',
+      stepSubmit: 'Step 4 · Review cost and submit',
+
+      summaryTitle: 'Batch size',
+      summaryFormula: '{assets} photos × {prompts} prompts = {total} images',
+      summaryOrder: 'Order: photo 1 runs all prompts, then photo 2.',
+      nameLabel: 'Batch name (optional)',
+      namePlaceholder: 'e.g. Summer arrivals - white background',
+
+      submit: 'Submit',
+      submitting: 'Submitting…',
+      submitted: 'Submitted. Progress below.',
+
+      emptyAssets: 'No product photos yet.',
+      emptyPrompts: 'No prompts yet.',
+      needAsset: 'Select at least one product photo.',
+      needPrompt: 'No prompt yet. Press "Ask AI", or pick one from the library.',
+    },
+
+    upload: {
+      fromResult: 'From a previous result',
+      title: 'Product photos',
+      dropHere: 'Drop images here, or click to choose',
+      hint: 'JPG / PNG / WEBP / HEIC (iPhone format), up to 20MB each, multi-select supported.',
+      choose: 'Choose images',
+      uploading: 'Uploading… {percent}%',
+      done: 'Uploaded',
+      failed: 'Upload failed',
+      retry: 'Upload again',
+      remove: 'Remove',
+      tooLarge: 'Over 20MB. Compress it and upload again.',
+      unsupported: 'Format not supported. Use JPG / PNG / WEBP / HEIC.',
+      empty: 'This file is empty. Pick another one.',
+      countLimit: 'Up to {max} images at a time. Upload in batches.',
+      preview: 'Preview',
+      previewFailed: 'Preview failed. The file was uploaded and still works.',
+    },
+
+    ratio: {
+      title: 'Aspect ratio',
+      hint: 'The photo is padded with white borders to reach the ratio; the product is never cropped.',
+      labels: {
+        r1x1: 'Main image (square)',
+        r3x4: 'Detail page (portrait)',
+        r4x3: 'Landscape',
+        r16x9: 'Banner',
+        r9x16: 'Full-screen portrait',
+      },
+      tier: 'Estimated tier {tier}',
+      tierHint: 'Billing follows the real output size, which may land on a different tier.',
+    },
+
+    prompt: {
+      title: 'Prompts',
+      fromLibrary: 'Pick from library',
+      writeOwn: 'Write your own',
+      writePlaceholder: 'e.g. pure white background, soft top light, product centered, premium look',
+      add: 'Add to this batch',
+      selected: '{count} selected',
+      clear: 'Clear selection',
+      searchPlaceholder: 'Search prompts…',
+      category: 'Category',
+      allCategories: 'All categories',
+      copyText: 'Copy this prompt',
+      snapshotNote: 'The prompt text is stored with the job; later library edits do not change your history.',
+    },
+
+    // AI prompt suggestion (step 2). Keys mirror zh/designkit.ts exactly.
+    // Two facts must stay explicit in any wording: the 5 referenced prompts are
+    // only the reasoning (one image is generated, not five), and the step takes
+    // 1-2 minutes.
+    suggest: {
+      title: 'Let AI write the prompt',
+      description:
+        'Pick a category and describe the product. AI reads your photo, picks 5 library prompts as references, and merges them into one.',
+
+      categoryLabel: 'Category',
+      categoryHint: 'Not sure? Pick "All categories" and AI decides from the photo.',
+      allCategories: 'All categories (AI decides)',
+      categoryLoading: 'Loading categories…',
+      categoryFailed: 'Categories failed to load. "All categories" still works.',
+
+      featuresLabel: 'Product details',
+      featuresHint: 'Describe the product itself: material, colour, selling points, mood. No prompt writing needed.',
+      featuresPlaceholder: 'e.g. off-white knitted cardigan, autumn arrival, very soft, gentle Japanese look',
+      featuresOptional: 'Optional. More detail, better fit.',
+      featuresTooLong: 'Up to {max} characters.',
+
+      button: 'Ask AI',
+      again: 'Suggest again',
+      running: 'AI is picking…',
+      runningHint: 'Takes about 1–2 minutes; keep this page open. This step only writes a prompt — no image, no charge.',
+
+      resultTitle: 'Suggested prompt',
+      resultHint: 'Edit freely. This prompt generates one image.',
+      usedCategory: 'Picked from "{name}"',
+      guessedCategory: 'AI read the photo as "{name}" and picked from that category. Wrong? Choose one and ask again.',
+      candidatesTitle: 'The 5 references',
+      candidatesHint: 'References only — they are not generated separately. Only the prompt above is used.',
+      candidateUntitled: '(no title)',
+
+      needAsset: 'Select a product photo in step 1 first. AI needs the photo.',
+      failed: 'No suggestion this time. Press "Ask AI" again, or pick from the library.',
+      empty: 'AI returned nothing. Add detail under "Product details" (material, colour, mood) and retry.',
+      timeout: 'Timed out. Try again shortly; this step is never charged.',
+      unavailable: 'AI suggestions are not available yet — contact your administrator. Picking from the library still works.',
+    },
+
+    estimate: {
+      title: 'Cost estimate',
+      calculating: 'Calculating…',
+      total: '{count} images in this batch',
+      unitPrice: '{price} per image',
+      estimatedCost: 'Estimated cost {amount}',
+      balance: 'Balance {amount}',
+      available: 'Available {amount}',
+      unconfirmed: 'Unit price for this ratio is not measured yet, so no total. Start small, or ask your administrator.',
+      insufficient: 'Not enough available balance — {amount} short.',
+      insufficientHint: 'Select fewer images, or press "Request quota".',
+      overLimit: 'At most {max} images per submission; this batch has {count}. Split it up.',
+      sufficient: 'Balance is sufficient.',
+    },
+
+    confirm: {
+      title: 'Confirm submission',
+      body: '{count} images, about {amount}. Generation starts and is charged on submit.',
+      bodyUnconfirmed: '{count} images. Unit price for this ratio is not measured yet; you are charged for what is actually generated.',
+      note: 'After submitting, "Stop queue" cancels images that have not started; images already generating finish and are charged.',
+      submit: 'Submit',
+      cancel: 'Not yet',
+    },
+
+    job: {
+      title: 'Progress',
+      untitled: 'Untitled batch',
+      createdAt: 'Submitted',
+      finishedAt: 'Finished',
+      ratio: 'Ratio',
+      total: '{count} images',
+      progress: '{done} of {total} done',
+      counts: '{success} succeeded · {fail} failed · {cancelled} stopped',
+      running: '{count} generating',
+      pending: '{count} queued',
+      waitHint: 'About 20 seconds per image. This page refreshes itself; closing it does not stop generation.',
+      paused: 'Paused in background; updates when you return.',
+      reconnecting: 'Connection unstable, reconnecting…',
+      finishedAll: 'All done.',
+      finishedPartial: '{success} done, {fail} failed.',
+      finishedFailed: 'The whole batch failed.',
+      finishedCancelled: 'Queue stopped.',
+      cancelledCostNote: 'Images that had started finish and are charged as usual; find them in "My Images".',
+      seq: 'Image {seq}',
+      promptOfThis: 'Prompt used',
+      viewImages: 'View images',
+      openJob: 'Open batch',
+      backToList: 'Back to list',
+      listTitle: 'Job history',
+      listEmpty: 'No jobs yet. Submit your first batch from the workbench.',
+      billedCost: 'Charged {amount}',
+      attempt: 'Attempt {n}',
+      attemptLimit: 'Up to {max} attempts',
+    },
+
+    jobStatus: {
+      created: 'Submitted',
+      holding: 'Preparing',
+      running: 'Generating',
+      settling: 'Settling',
+      succeeded: 'All succeeded',
+      partially_failed: 'Partly succeeded',
+      failed: 'Failed',
+      cancelled: 'Stopped',
+    },
+
+    itemStatus: {
+      pending: 'Queued',
+      running: 'Generating',
+      succeeded: 'Done',
+      failed: 'Failed',
+      cancelled: 'Stopped',
+    },
+
+    stop: {
+      button: 'Stop queue',
+      title: 'Stop the queue?',
+      body: '{pending} images have not started — stopping cancels them, no charge. The {running} generating now will finish and be charged; they appear in "My Images".',
+      confirm: 'Stop',
+      cancel: 'Keep going',
+      done: 'Stopped. The rest will not be generated.',
+    },
+
+    retry: {
+      button: 'Retry this image',
+      title: 'Retry this image?',
+      body: 'A retry generates a new image and is charged again ({price} this time).',
+      bodyUnconfirmed: 'A retry generates a new image and is charged again. Unit price for this ratio is not measured yet.',
+      timeoutWarning: 'The last attempt timed out: the image was probably generated and charged, only the result never arrived. A retry charges again.',
+      limit: 'All {max} attempts used. Submit a new batch to continue.',
+      confirm: 'Retry',
+      cancel: 'Not now',
+      done: 'Queued again.',
+    },
+
+    gallery: {
+      continueAlreadyAdded: 'Already in step 1.',
+      continueFromImage: 'Generate from this',
+      continueHint: 'Use this image as a new product photo for the next round; prompt and ratio can change.',
+      continueDone: 'Added to step 1.',
+      continueFailed: 'Could not add it. Try again.',
+      continueRunning: 'Preparing…',
+      title: 'My Images',
+      description: 'Generated images, grouped by batch. Download individually or as a batch.',
+      placeholder: 'No images yet.',
+      empty: 'No images yet.',
+      downloadOne: 'Download',
+      downloadJob: 'Download this batch',
+      openLarge: 'View full size',
+      imageLoading: 'Loading image…',
+      imageFailed: 'Failed to load. Click to retry, or reload the page.',
+      imageSize: '{width} × {height}',
+      deleteConfirm: 'Delete this image? It cannot be recovered, and charges are not refunded.',
+    },
+
+    inspiration: {
+      title: 'Prompt Library',
+      description: 'Browse prompts by category; send the ones you like to the workbench.',
+      placeholder: 'Prompts not imported yet.',
+      useThis: 'Use this prompt',
+      added: 'Sent to the workbench.',
+
+      searchLabel: 'Search prompts',
+      searchPlaceholder: 'Searches titles and bodies, e.g. white background',
+      searchTooLong: 'Keywords are limited to {max} characters.',
+      allCategories: 'All',
+      categoryTitle: 'Category',
+      variableCount: '{count} blanks to fill',
+      resultTotal: '{count} prompts in the library.',
+      resultFiltered: '{count} prompts match.',
+
+      detailTitle: 'Prompt details',
+      bodyLabel: 'Full prompt (goes to the workbench)',
+      variablesTitle: 'Blanks to fill in',
+      variablesHint:
+        'Your input replaces the blanks. Author defaults are pre-filled — change them freely; empty blanks keep their marker and can still be edited in the workbench.',
+      variablePlaceholder: 'e.g. light oak',
+      variablesUnfilled: '{count} blanks still empty. You can fill them in the workbench.',
+      previewNote: 'Sample image by the original author, not from your product photo.',
+      previewFailed: 'Sample image failed to load. The prompt itself still works.',
+      disabled: 'This prompt was retired. It still works; a newer one is recommended.',
+      attribution: 'Prompts come from the YouMind open prompt library, used under CC BY 4.0.',
+
+      emptyTitle: 'The prompt library is empty',
+      emptyForUser:
+        'Prompts are not imported yet — an administrator must press "Sync now" on this page. Until then, "Ask AI" in the workbench has nothing to pick from either.',
+      emptyForAdmin: 'Never synced. Press "Sync now"; importing takes about fifteen seconds.',
+      goWorkbench: 'Open the workbench',
+      noResultTitle: 'No matching prompts',
+      noResultHint: 'Try another keyword, or press "All" for other categories.',
+      resetFilters: 'Clear filters',
+
+      fromLibraryTitle: 'Prompts from the library',
+      fromLibraryHint: 'Generation follows the list order. Remove any you do not want.',
+
+      sync: {
+        title: 'Prompt library sync',
+        description: 'Pull prompts from the open prompt library. Administrators only.',
+
+        start: 'Sync now',
+        starting: 'Starting…',
+        running: 'Syncing…',
+        progress: 'Fetched {fetched} · added {inserted} · updated {updated} · unchanged {skipped}',
+        libraryCount: '{prompts} prompts, {categories} categories.',
+        autoNote: 'Automatic sync runs every 12 hours; manual syncing is rarely needed.',
+
+        failedHint: 'Repeated failures usually mean no internet access: check the selected proxy, or try "No proxy" once.',
+        openProxies: 'Open proxy management',
+
+        proxyLabel: 'Proxy used for syncing',
+        proxyFallbackHint: 'Affects the prompt library sync only, never image generation.',
+        proxyEmpty: 'No proxies added yet. Add one first if syncing needs one.',
+        proxySaving: 'Saving…',
+        proxySaved: 'Saved. The next sync uses it.',
+
+        unavailable: 'Syncing is not available yet — contact your administrator. Browsing and search are unaffected.',
+      },
+    },
+
+    usage: {
+      title: 'This month',
+      images: '{count} images this month',
+      cost: 'Spent {amount}',
+      balance: 'Balance {amount}',
+      note: 'Spending counts actual charges, including failed-but-billed images; the image count covers only images still in "My Images". The two are not meant to match.',
+      unavailable: 'Usage statistics are not available yet.',
+    },
+
+    quota: {
+      request: 'Request quota',
+      title: 'Request quota',
+      body: 'Notifies your administrator to add quota. Add a note about what it is for.',
+      reasonPlaceholder: 'e.g. about 200 detail images for the summer collection this week',
+      submit: 'Send to administrator',
+      done: 'Administrator notified.',
+      contact: 'Or contact your administrator directly: {contact}',
+    },
+
+    errors: {
+      withCode: '{message} (code {code})',
+      requestId: 'Trace id {id}',
+      screenshotHint: 'Send a screenshot of this box to your administrator.',
+
+      network: 'Cannot reach the server. Check the connection or reload; if it persists, screenshot this for your administrator.',
+      timeout: 'No response. Try again shortly.',
+      auth: 'Session expired. Sign in again.',
+      authRevoked: 'The password was changed. Sign in again.',
+      authSessionChanged: 'This browser switched accounts. Reload the page and sign in.',
+      accountDisabled: 'This account is disabled. Contact your administrator.',
+      permission: 'No permission. Contact your administrator.',
+      quota: 'Quota used up. Contact your administrator.',
+      balance: 'Not enough balance. Select fewer images, or press "Request quota".',
+      rateLimit: 'Too many actions. Wait a few seconds.',
+      notFound: 'Record not found; it may have been deleted. Reload the page.',
+      conflict: 'The page is out of date. Reload and try again.',
+      tooLarge: 'File over 20MB. Compress it and upload again.',
+      unsupported: 'Format not supported. Use JPG / PNG / WEBP / HEIC.',
+      upstream: 'The image service is unreachable. Try again shortly; if it persists, send the code to your administrator.',
+      server: 'Server error. Try again later; if it persists, send the code to your administrator.',
+      badRequest: 'Invalid input. Check and retry; if it persists, reload the page.',
+      canceled: 'Cancelled.',
+      unknown: 'Something went wrong. Retry; if it persists, send the code to your administrator.',
+    },
+
+    // Product image settings (admin only). Keys mirror zh/designkit.ts exactly —
+    // a missing key renders as the raw key path on screen.
+    settings: {
+      title: 'Product Image Settings',
+      description: 'Ratios, model, batch limits and prices. Press "Save settings" at the bottom when done.',
+
+      loading: 'Loading settings…',
+      loadFailed: 'Failed to load settings.',
+      unavailable: 'Not available yet',
+      unavailableHint: 'The settings service is not ready, usually a database issue. Generation continues on the current configuration. Screenshot this for the technical owner.',
+
+      save: 'Save settings',
+      saving: 'Saving…',
+      saved: 'Saved',
+      savedAt: 'Saved just now ({time})',
+      noChanges: 'Nothing changed.',
+      discard: 'Discard changes',
+      unsavedHint: 'Unsaved changes.',
+      restartTitle: 'These need a restart to fully take effect',
+      warningTitle: 'Saved — notes below',
+
+      sectionOutput: 'Output',
+      sectionOutputHint: 'What operators can pick, and which model generates.',
+
+      ratiosLabel: 'Image ratios',
+      ratiosHint: 'Ratios selectable in step 3; the order here is the button order. Format "width:height", e.g. 3:4.',
+      ratiosDanger: 'With none left, nothing can be submitted. At most {max}.',
+      ratiosAdd: 'Add ratio',
+      ratiosPlaceholder: 'e.g. 3:4',
+      ratiosRemove: 'Remove this ratio',
+      ratiosUp: 'Move up',
+      ratiosDown: 'Move down',
+      ratiosDefault: 'The first one is selected by default.',
+      ratiosInvalid: '"{ratio}" is not valid. Write "width:height", e.g. 3:4.',
+      ratiosDuplicate: '"{ratio}" is listed twice. Remove the duplicate.',
+      ratiosEmpty: 'Keep at least one ratio.',
+      ratiosTooMany: 'At most {max} ratios.',
+
+      modelLabel: 'Image model',
+      modelHint: 'The model name sent to the gateway, spelled exactly as the gateway lists it.',
+      modelDanger: 'A wrong name gives no warning — every image fails with "model not found". Check on the gateway first.',
+      modelPlaceholder: 'gpt-image-2',
+      modelEmpty: 'The image model cannot be empty.',
+      modelTooLong: 'Model name too long (max {max} characters).',
+      modelHasSpace: 'The model name cannot contain spaces.',
+
+      sectionThroughput: 'Batch size and speed',
+      sectionThroughputHint: 'Images per submission, timeout, concurrency.',
+
+      maxBatchLabel: 'Max images per submission',
+      maxBatchHint: 'Upper bound per submission (photos × prompts); anything above is rejected with the limit shown.',
+      maxBatchDanger: '0 blocks everyone; hundreds make submission feel unresponsive. Around 50 works.',
+      maxBatchRange: '"Max images per submission" must be between {min} and {max}.',
+
+      timeoutLabel: 'Per-image timeout (seconds)',
+      timeoutHint: 'An image past this time is marked failed. Default 180.',
+      timeoutDanger: 'Too short fails good images (already charged); too long lets a stuck image block the queue. Leave it unless sure.',
+      timeoutRange: '"Per-image timeout" must be between {min} and {max} seconds.',
+
+      concurrencyLabel: 'Images generated at once',
+      concurrencyHint: 'Simultaneous requests to the gateway. Default 4.',
+      concurrencyDanger: 'Stay at or below {safe}: the gateway allows 5 concurrent requests per account; filled up, even your own UI actions queue — everything slow, no error shown.',
+      concurrencyRange: '"Images generated at once" must be between {min} and {max}.',
+      concurrencyOverSafe: 'Above the recommended {safe}: your own UI actions will queue. Continue?',
+
+      sectionDimension: 'Image size and billing tier',
+      sectionDimensionHint: 'Longest-edge limit before sending. Directly decides the billing tier.',
+
+      maxDimensionLabel: 'Longest edge (pixels)',
+      maxDimensionHint: 'Maximum longer edge after padding. Default 2048.',
+      maxDimensionDanger: '≤2048 is the 2K tier; above is 4K, noticeably pricier. Check the price preview after changing.',
+      maxDimensionRange: '"Longest edge" must be between {min} and {max}.',
+
+      previewTitle: 'Price preview',
+      previewHint: 'Computed from the current "longest edge"; the table follows your edits.',
+      previewRatio: 'Ratio',
+      previewSize: 'Output size',
+      previewTier: 'Billing tier',
+      previewUnitPrice: 'Price per image',
+      previewMultiplierNote: 'Per-image prices, same as operators see. The multiplier {multiplier} only applies to batch totals.',
+      previewUnsaved: 'Based on current unsaved input.',
+      previewEmpty: 'No ratios configured, nothing to preview.',
+
+      sectionPricing: 'Pricing',
+      sectionPricingHint: 'Price per image. The "estimated cost" operators see comes from these numbers.',
+
+      pricingUnconfirmedTitle: 'Blank tiers show "price not confirmed"',
+      pricingUnconfirmedHint: 'Real prices are known only after a real generation. Leave untested tiers blank — blank shows "price not confirmed", never $0. A literal 0 reads as free and invites huge batches.',
+
+      unitPriceLabel: '{tier} price per image (USD)',
+      unitPriceHint1K: 'Longest edge 1024 or below.',
+      unitPriceHint2K: 'Longest edge 1025–2048. Most images land here by default.',
+      unitPriceHint4K: 'Longest edge above 2048.',
+      unitPricePlaceholder: 'Blank if untested',
+      unitPriceUnconfirmed: 'Blank = price not confirmed',
+      unitPriceInvalid: '"{tier} price per image" must be a dollar amount such as 0.042, or blank.',
+      unitPriceZero: '"{tier} price per image" cannot be 0 or negative. Leave blank instead.',
+      unitPriceTooBig: '"{tier} price per image" is ${amount}, over the ${max} limit. Extra zero?',
+
+      rateMultiplierLabel: 'Price multiplier',
+      rateMultiplierHint: 'Multiplies the prices above. 1 = as-is, 1.2 = +20%, 0.9 = −10%. Blank = as-is.',
+      rateMultiplierDanger: '0 shows every batch as free and invites huge batches.',
+      rateMultiplierPlaceholder: '1',
+      rateMultiplierInvalid: '"Price multiplier" must be a number such as 1 or 1.2. Blank = as-is.',
+      rateMultiplierRange: '"Price multiplier" must be between {min} and {max}.',
+
+      sectionContact: 'Who to contact',
+      sectionContactHint: 'Shown on "not enough balance" and quota requests.',
+
+      adminContactLabel: 'Administrator contact',
+      adminContactHint: 'WeChat ID, phone number or name; shown in the "not enough balance" message.',
+      adminContactDanger: 'If blank, operators only see "contact your administrator" without knowing who — top-up menus are hidden from them.',
+      adminContactPlaceholder: 'e.g. WeChat monica-designkit',
+      adminContactTooLong: '"Administrator contact" too long (max {max} characters).',
+      adminContactEmptyWarn: 'No contact configured. Filling it in is recommended.',
+
+      sectionSync: 'Prompt library sync',
+      sectionSyncHint: 'Whether syncing goes through a proxy.',
+      syncProxyLabel: 'Proxy used for syncing',
+      syncProxyDirect: 'No proxy (direct)',
+      syncReadonly: 'Change this on the Prompt Library page; read-only here.',
+      syncOpen: 'Open the Prompt Library page',
+      syncWhyReadonly: 'One place to change it, so two screens can never disagree.',
+    },
+
+    health: {
+      title: 'Backend connectivity',
+      checking: 'Checking…',
+      ok: 'Backend reachable.',
+      failed: 'Cannot reach the backend.',
+      failedHint: 'Screenshot this for your administrator.',
+      recheck: 'Check again',
+      endpointLabel: 'Endpoint: ',
+      statusLabel: 'Reported status: ',
+      dbLabel: 'Database: ',
+      dbFailed: 'Backend is up but the database is unreachable — generation will not work.',
+      dbFailedHint: 'Usually the database container is down. Screenshot this for your administrator.',
+      moduleLabel: 'Module status: ',
+      moduleDegraded: 'Database is fine, but configuration is missing — generation will not work.',
+      moduleDegradedHint: 'Missing pieces are listed below. Screenshot this for your administrator.',
+      errorLabel: 'Error: ',
+      httpStatus: 'HTTP status: {status}',
+      unknown: 'Unknown',
+    },
+  },
+}

@@ -1,0 +1,976 @@
+<!-- @dsCard group="产品端" name="我的图片" subtitle="批次归档 · 大图网格 · lightbox · 删除确认 · 空态" width="1440" -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>我的图片 · DesignKit 产品端</title>
+<style>
+/*
+ * DesignKit Dark — 设计系统地基（v3 定稿实现）
+ * ---------------------------------------------------------------------------
+ * 用途双重：
+ *   1. 全部设计稿（Claude Design 三个项目）的共用样式，逐字内联进每张稿；
+ *   2. 实施时 tokens.css 换值与 designkit-ui.css 深色化的对照蓝本。
+ *
+ * 令牌名与 frontend/src/features/designkit/theme/tokens.css **一字不差**，
+ * 只换值（v3 3.2 对照表）；新增三个：--dk-image-canvas / --dk-accent-2 / --dk-glow。
+ * 组件类名沿用 designkit-ui.css 现有词汇（dk-button--primary-action、
+ * dk-size-option、dk-dropzone、dk-thumb…），新组件按同一命名法追加——
+ * 这样设计稿里的每个类名在代码库里都有着落，交接零翻译。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 底面 */
+  --dk-canvas: #0b0f1a;
+  --dk-surface: #131a2b;
+  --dk-surface-subtle: #101625;
+  --dk-surface-raised: #1b2337;
+  --dk-surface-hover: rgba(124, 107, 255, 0.08);
+  --dk-surface-pressed: rgba(124, 107, 255, 0.14);
+  --dk-overlay: rgba(4, 7, 14, 0.66);
+  --dk-border: #273049;
+  --dk-border-strong: #3a466b;
+
+  /* 文字 */
+  --dk-text: #f2f5fa;
+  --dk-text-secondary: #a8b3c7;
+  --dk-text-tertiary: #7a85a0;
+  --dk-text-disabled: #5a6580;
+  --dk-text-inverse: #0b0f1a;
+
+  /* 动作与强调 */
+  --dk-action: #7c6bff;
+  --dk-action-hover: #8f80ff;
+  --dk-action-pressed: #6b5af0;
+  --dk-accent: #5ea2ff;
+  --dk-accent-strong: #82b7ff;
+  --dk-accent-soft: rgba(94, 162, 255, 0.16);
+  --dk-focus: rgba(124, 107, 255, 0.45);
+
+  /* 反馈 */
+  --dk-success: #34d399;
+  --dk-success-soft: rgba(52, 211, 153, 0.14);
+  --dk-warning: #fbbf24;
+  --dk-warning-soft: rgba(251, 191, 36, 0.14);
+  --dk-danger: #f87171;
+  --dk-danger-strong: #ef6b6b;
+  --dk-danger-soft: rgba(248, 113, 113, 0.14);
+  --dk-info-soft: rgba(56, 189, 248, 0.14);
+
+  /* 新增（v3） */
+  --dk-image-canvas: #17191e;   /* 图像衬底：中性灰，无蓝紫偏色 */
+  --dk-accent-2: #2dd4bf;       /* 数据点缀青，仅数据强调 */
+  --dk-glow: rgba(124, 107, 255, 0.2); /* 氛围光：登录页/官网限定 */
+
+  /* 字体与字号（Inter 优先，v3） */
+  --dk-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "HarmonyOS Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --dk-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --dk-text-xs: 12px; --dk-text-sm: 13px; --dk-text-md: 14px;
+  --dk-text-lg: 16px; --dk-text-xl: 20px; --dk-text-2xl: 28px;
+  --dk-leading-tight: 1.3; --dk-leading: 1.55;
+
+  /* 间距 / 圆角 / 投影（深色投影 = 细内描边 + 深投影） */
+  --dk-space-1: 4px; --dk-space-2: 8px; --dk-space-3: 12px; --dk-space-4: 16px;
+  --dk-space-5: 20px; --dk-space-6: 24px; --dk-space-7: 28px; --dk-space-8: 32px;
+  --dk-space-9: 36px; --dk-space-10: 40px; --dk-space-12: 48px;
+  --dk-radius-sm: 6px; --dk-radius-md: 8px; --dk-radius-lg: 12px; --dk-radius-pill: 999px;
+  --dk-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --dk-shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --dk-shadow-overlay: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* 外壳尺寸（沿用现值；toolrail 保留令牌但外壳维持上游侧栏——拍板增补） */
+  --dk-topbar-h: 54px; --dk-toolrail-w: 68px; --dk-config-w: 400px;
+  --dk-control-h: 40px; --dk-primary-h: 44px; --dk-bottom-nav-h: 64px;
+  --dk-content-max: 1440px;
+  --dk-z-sticky: 20; --dk-z-nav: 30; --dk-z-overlay: 100; --dk-z-toast: 120; --dk-z-lightbox: 140;
+  --dk-motion-fast: 120ms; --dk-motion-normal: 180ms;
+  --dk-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── 基础 ─────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--dk-canvas);
+  color: var(--dk-text);
+  font-family: var(--dk-font-sans);
+  font-size: var(--dk-text-md);
+  line-height: var(--dk-leading);
+  letter-spacing: 0.01em; /* 中文字距克制，≤0.04em */
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(124, 107, 255, 0.35); }
+a { color: var(--dk-accent); text-decoration: none; }
+a:hover { color: var(--dk-accent-strong); }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--dk-focus); border-radius: var(--dk-radius-sm); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #273049; border-radius: 999px; border: 2px solid var(--dk-canvas); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 排版助手（与 designkit-ui.css 同名） */
+.dk-page-title { font-size: var(--dk-text-2xl); font-weight: 700; line-height: var(--dk-leading-tight); margin: 0; }
+.dk-page-desc { color: var(--dk-text-secondary); margin: 6px 0 0; }
+.dk-eyebrow { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); text-transform: uppercase; }
+.dk-panel-title { font-size: var(--dk-text-lg); font-weight: 600; margin: 0; }
+.dk-panel-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin: 2px 0 0; }
+.dk-label { display: block; font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text-secondary); margin-bottom: 6px; }
+.dk-note { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); margin: 0; }
+.dk-note--quiet { color: var(--dk-text-tertiary); }
+.dk-note--warning { color: var(--dk-warning); }
+.dk-note--danger { color: var(--dk-danger); }
+.dk-note--success { color: var(--dk-success); }
+.dk-muted { color: var(--dk-text-tertiary); }
+.dk-mono-note { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+/* 金额与数量：等宽数字、600、主文字色——关键信息绝不弱化 */
+.dk-money { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dk-text); }
+.dk-money--accent { color: var(--dk-accent-2); } /* 数据强调限定 */
+.dk-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── 面板 ─────────────────────────────────────────────────────── */
+.dk-panel {
+  background: var(--dk-surface);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-5);
+  box-shadow: var(--dk-shadow-1);
+}
+.dk-panel--subtle { background: var(--dk-surface-subtle); box-shadow: none; }
+.dk-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dk-space-3); margin-bottom: var(--dk-space-4); }
+
+/* ── 按钮（主/次/危险/安静/小号 + 花钱变体） ───────────────────── */
+.dk-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--dk-control-h); padding: 0 16px;
+  border-radius: var(--dk-radius-md); border: 1px solid transparent;
+  background: var(--dk-surface-raised); color: var(--dk-text);
+  font: 600 var(--dk-text-md)/1 var(--dk-font-sans); cursor: pointer;
+  transition: background var(--dk-motion-fast) var(--dk-ease-out),
+              border-color var(--dk-motion-fast) var(--dk-ease-out),
+              transform var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-button:hover { background: #232c44; }
+.dk-button:active { transform: translateY(1px); }
+.dk-button:disabled { color: var(--dk-text-disabled); background: var(--dk-surface-subtle); cursor: not-allowed; transform: none; }
+.dk-button--primary-action { background: var(--dk-action); color: #fff; height: var(--dk-primary-h); }
+.dk-button--primary-action:hover { background: var(--dk-action-hover); }
+.dk-button--primary-action:active { background: var(--dk-action-pressed); }
+.dk-button--primary-action:disabled { background: #3d3a66; color: rgba(255,255,255,.45); }
+.dk-button--secondary { background: transparent; border-color: var(--dk-border-strong); }
+.dk-button--secondary:hover { background: var(--dk-surface-hover); border-color: var(--dk-action); }
+.dk-button--danger { background: transparent; border-color: var(--dk-danger); color: var(--dk-danger); }
+.dk-button--danger:hover { background: var(--dk-danger-soft); }
+.dk-button--danger.is-solid { background: var(--dk-danger); color: #1a0b0b; border-color: transparent; }
+.dk-button--quiet { background: transparent; color: var(--dk-accent); padding: 0 8px; height: auto; }
+.dk-button--quiet:hover { background: transparent; color: var(--dk-accent-strong); text-decoration: underline; }
+.dk-button--sm { height: 32px; padding: 0 12px; font-size: var(--dk-text-sm); }
+.dk-button--block { width: 100%; }
+/* 花钱按钮：价格小字缀在文案后（「让 AI 推荐 · $0.09~$0.34」） */
+.dk-button__price { font-weight: 500; font-size: var(--dk-text-xs); opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+/* ── 表单 ─────────────────────────────────────────────────────── */
+.dk-input, .dk-textarea, .dk-select {
+  width: 100%; background: var(--dk-surface-subtle);
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  color: var(--dk-text); font: 400 var(--dk-text-md)/var(--dk-leading) var(--dk-font-sans);
+  padding: 9px 12px; transition: border-color var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-input { height: var(--dk-control-h); }
+.dk-input::placeholder, .dk-textarea::placeholder { color: var(--dk-text-tertiary); }
+.dk-input:hover, .dk-textarea:hover, .dk-select:hover { border-color: var(--dk-border-strong); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { outline: none; border-color: var(--dk-action); box-shadow: 0 0 0 3px var(--dk-focus); }
+.dk-input.is-error, .dk-textarea.is-error { border-color: var(--dk-danger); }
+.dk-input:disabled, .dk-textarea:disabled, .dk-select:disabled { color: var(--dk-text-disabled); background: var(--dk-surface); }
+.dk-field-error { font-size: var(--dk-text-sm); color: var(--dk-danger); margin-top: 6px; }
+.dk-char-count { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); text-align: right; }
+.dk-char-count.is-over { color: var(--dk-danger); font-weight: 600; }
+.dk-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--dk-text-tertiary) 50%), linear-gradient(135deg, var(--dk-text-tertiary) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+/* 字段两级说明：hint 灰字；danger = 警告色 4px 左边线 + soft 底 */
+.dk-field-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin-top: 6px; }
+.dk-danger-note {
+  margin-top: 8px; padding: 8px 12px; font-size: var(--dk-text-sm);
+  color: var(--dk-warning); background: var(--dk-warning-soft);
+  border-left: 4px solid var(--dk-warning); border-radius: 0 var(--dk-radius-sm) var(--dk-radius-sm) 0;
+}
+
+/* chips（分类单选） */
+.dk-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border);
+  background: var(--dk-surface); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm); cursor: pointer;
+}
+.dk-chip:hover { border-color: var(--dk-border-strong); color: var(--dk-text); }
+.dk-chip.is-selected { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+
+/* 开关 / 复选 / 单选（后台场景） */
+.dk-switch { position: relative; width: 40px; height: 22px; border-radius: 999px; background: var(--dk-border-strong); border: none; cursor: pointer; transition: background var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #e7e9f2; transition: transform var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch.is-on { background: var(--dk-action); }
+.dk-switch.is-on::after { transform: translateX(18px); }
+.dk-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); cursor: pointer; }
+.dk-check__box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--dk-border-strong); background: var(--dk-surface-subtle); display: inline-grid; place-items: center; }
+.dk-check.is-checked .dk-check__box { background: var(--dk-action); border-color: var(--dk-action); }
+.dk-check.is-checked .dk-check__box::after { content: "✓"; color: #fff; font-size: 11px; font-weight: 700; }
+
+/* ── 上传区 ───────────────────────────────────────────────────── */
+.dk-dropzone {
+  display: grid; place-items: center; gap: 6px; text-align: center;
+  padding: var(--dk-space-8) var(--dk-space-5);
+  border: 1.5px dashed var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  background: var(--dk-surface-subtle); color: var(--dk-text-secondary); cursor: pointer;
+  transition: border-color var(--dk-motion-fast) var(--dk-ease-out), background var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-dropzone:hover { border-color: var(--dk-action); }
+.dk-dropzone.is-dragover { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.06); }
+.dk-dropzone__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-dropzone__meta { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* 缩略图（商品图/结果图共用视觉；衬底一律 --dk-image-canvas） */
+.dk-thumb { position: relative; border-radius: var(--dk-radius-md); overflow: hidden; border: 1px solid var(--dk-border); background: var(--dk-image-canvas); }
+.dk-thumb.is-white { background: #ffffff; }
+.dk-thumb__media { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.dk-thumb__tag {
+  position: absolute; top: 6px; left: 6px; padding: 2px 8px;
+  border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 600;
+  background: rgba(11, 15, 26, 0.78); color: var(--dk-text-secondary); backdrop-filter: blur(4px);
+}
+.dk-thumb__tag--ok { color: var(--dk-success); }
+.dk-thumb__tag--fail { color: var(--dk-danger); }
+.dk-thumb__overlay {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 8px;
+  background: rgba(4, 7, 14, 0.55); opacity: 0; transition: opacity var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-thumb:hover .dk-thumb__overlay { opacity: 1; }
+
+/* 比例选择块：按真实宽高比绘制 */
+.dk-size-options { display: flex; flex-wrap: wrap; gap: var(--dk-space-3); }
+.dk-size-option {
+  display: grid; gap: 6px; justify-items: center; padding: 10px 12px 8px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle); cursor: pointer; position: relative;
+}
+.dk-size-option:hover { border-color: var(--dk-border-strong); }
+.dk-size-option.is-selected { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.1); box-shadow: 0 0 0 1px var(--dk-action); }
+.dk-size-option__shape { background: var(--dk-border-strong); border-radius: 3px; height: 34px; }
+.dk-size-option.is-selected .dk-size-option__shape { background: var(--dk-action); }
+.dk-size-option__label { font-size: var(--dk-text-sm); font-weight: 600; }
+.dk-size-option__ratio { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+.dk-size-option__tier { position: absolute; top: 4px; right: 6px; font-size: 10px; color: var(--dk-text-tertiary); }
+
+/* ── 状态徽章 ─────────────────────────────────────────────────── */
+.dk-badge {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px;
+  border-radius: var(--dk-radius-pill); font-size: var(--dk-text-xs); font-weight: 600;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+}
+.dk-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.dk-badge--success { background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-badge--danger { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-badge--warning { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-badge--info { background: var(--dk-accent-soft); color: var(--dk-accent-strong); }
+.dk-badge--running .dk-badge__dot { animation: dk-pulse 1.2s ease-in-out infinite; }
+@keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* 进度条 */
+.dk-progress-track { height: 6px; border-radius: 999px; background: var(--dk-surface-raised); overflow: hidden; }
+.dk-progress-bar { height: 100%; border-radius: 999px; background: var(--dk-action); transition: width var(--dk-motion-normal) var(--dk-ease-out); }
+
+/* ── 提示与警报 ───────────────────────────────────────────────── */
+.dk-alert {
+  display: grid; gap: 4px; padding: 12px 14px;
+  border-radius: var(--dk-radius-md); border: 1px solid var(--dk-border);
+  background: var(--dk-surface-subtle); font-size: var(--dk-text-sm);
+}
+.dk-alert--danger { border-color: rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-alert--warning { border-color: rgba(251, 191, 36, 0.4); background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-alert--success { border-color: rgba(52, 211, 153, 0.4); background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-alert--info { border-color: rgba(94, 162, 255, 0.4); background: var(--dk-info-soft); color: var(--dk-accent-strong); }
+.dk-alert__sub { color: var(--dk-text-secondary); font-weight: 400; }
+
+/* toast（顶部居中，180ms 滑入） */
+.dk-toast {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-radius: var(--dk-radius-md); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); box-shadow: var(--dk-shadow-2);
+  font-size: var(--dk-text-sm); font-weight: 500;
+}
+.dk-toast--success { border-color: rgba(52, 211, 153, 0.5); }
+.dk-toast--error { border-color: rgba(248, 113, 113, 0.5); }
+
+/* ── 弹窗 ─────────────────────────────────────────────────────── */
+.dk-dialog-overlay { position: fixed; inset: 0; background: var(--dk-overlay); display: grid; place-items: center; z-index: var(--dk-z-overlay); }
+.dk-dialog {
+  width: min(92vw, 440px); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-6); box-shadow: var(--dk-shadow-overlay);
+}
+.dk-dialog__title { font-size: var(--dk-text-lg); font-weight: 700; margin: 0 0 10px; }
+.dk-dialog__body { color: var(--dk-text-secondary); font-size: var(--dk-text-md); }
+.dk-dialog--danger .dk-dialog__title { color: var(--dk-danger); }
+.dk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--dk-space-3); margin-top: var(--dk-space-6); }
+
+/* ── 数据卡（本月出图 / 花费 / 余额） ─────────────────────────── */
+.dk-usage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--dk-space-3); }
+.dk-usage-cell { background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); padding: 14px 18px; }
+.dk-usage-cell__label { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-usage-cell__value { font-size: var(--dk-text-xl); margin-top: 2px; }
+
+/* ── 空状态 ───────────────────────────────────────────────────── */
+.dk-empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: var(--dk-space-10) var(--dk-space-5); color: var(--dk-text-secondary); }
+.dk-empty__icon { opacity: 0.9; }
+.dk-empty__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-empty__description { max-width: 44ch; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* ── 骨架屏（微光 2s；减少动态效果时静态） ────────────────────── */
+.dk-skeleton { position: relative; overflow: hidden; background: var(--dk-surface-raised); border-radius: var(--dk-radius-md); }
+.dk-skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%);
+  animation: dk-shimmer 2s linear infinite;
+}
+@keyframes dk-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* ── 后台表单场景（S-UP 样板的规矩） ──────────────────────────── */
+/* 信息密度高一档：13px 主档、行高收紧 */
+.dk-admin { font-size: var(--dk-text-sm); }
+.dk-table { width: 100%; border-collapse: collapse; background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; }
+.dk-table th {
+  position: sticky; top: 0; z-index: 1; text-align: left;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs); font-weight: 600; padding: 10px 14px;
+  border-bottom: 1px solid var(--dk-border-strong);
+}
+.dk-table td { padding: 10px 14px; border-bottom: 1px solid var(--dk-border); font-size: var(--dk-text-sm); }
+.dk-table tbody tr:nth-child(even) { background: var(--dk-surface-subtle); } /* 斑马纹 = 次级底 */
+.dk-table tbody tr:hover { background: var(--dk-surface-hover); }
+.dk-pager { display: flex; align-items: center; gap: 6px; }
+.dk-pager__btn { min-width: 30px; height: 30px; border-radius: var(--dk-radius-sm); border: 1px solid var(--dk-border); background: transparent; color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-pager__btn.is-current { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--dk-border); }
+.dk-tab { padding: 10px 16px; border: none; background: none; color: var(--dk-text-secondary); font: 600 var(--dk-text-md) var(--dk-font-sans); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dk-tab.is-active { color: var(--dk-text); border-bottom-color: var(--dk-action); }
+.dk-crumbs { display: flex; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-crumbs a { color: var(--dk-text-tertiary); }
+.dk-crumbs .is-current { color: var(--dk-text-secondary); }
+.dk-sidenav { width: 220px; padding: var(--dk-space-3); display: grid; gap: 2px; align-content: start; }
+.dk-sidenav__group { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-weight: 600; padding: 12px 10px 4px; letter-spacing: 0.04em; }
+.dk-sidenav__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--dk-radius-md); color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-sidenav__item:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-sidenav__item.is-active { background: var(--dk-accent-soft); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-savebar {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--dk-space-4);
+  padding: 14px var(--dk-space-5); background: rgba(19, 26, 43, 0.92); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--dk-border-strong); z-index: var(--dk-z-sticky);
+}
+.dk-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-sm); font-size: 11px; font-weight: 600; background: var(--dk-surface-raised); color: var(--dk-text-secondary); }
+
+/* 四级配置标记徽章（帮助中心/配置手册用）*/
+.dk-mark { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 700; }
+.dk-mark--must { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-mark--suggest { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-mark--skip { background: var(--dk-surface-raised); color: var(--dk-text-tertiary); }
+.dk-mark--forbid { background: rgba(248, 113, 113, 0.24); color: #ffb4b4; }
+
+/* 报错块（运营看得懂的报错） */
+.dk-errorblock { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--dk-radius-md); border: 1px solid rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); }
+.dk-errorblock__msg { color: var(--dk-danger); font-weight: 600; }
+.dk-errorblock__meta { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-errorblock__how { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+
+/* 氛围光（登录页/官网限定；正文区禁用） */
+.dk-glow-spot { position: absolute; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, var(--dk-glow), transparent 70%); pointer-events: none; }
+
+/* ── 减少动态效果 ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   页面自有样式（dk-x- 前缀）—— 我的图片 S5
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 画稿骨架：1440 定宽，一列多个演示区 */
+.dk-x-stage { width: 1440px; margin: 0 auto; padding: 28px 0 72px; display: grid; gap: 16px; }
+
+/* 设计稿标注（给评审看的说明，不是产品文案） */
+.dk-x-annot { display: flex; align-items: center; gap: 10px; margin-top: 20px; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); letter-spacing: 0.02em; }
+.dk-x-annot::after { content: ""; flex: 1; height: 1px; background: var(--dk-border); }
+.dk-x-annot__tag { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border-strong); background: var(--dk-surface-raised); color: var(--dk-accent-strong); font-weight: 700; }
+
+/* 应用外壳：上游同款文字侧栏（拍板增补 #1），深色皮 */
+.dk-x-frame { display: flex; align-items: stretch; background: var(--dk-canvas); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; box-shadow: var(--dk-shadow-1); }
+.dk-x-sidebar { width: 256px; flex: none; display: flex; flex-direction: column; background: var(--dk-surface-subtle); border-right: 1px solid var(--dk-border); }
+.dk-x-sidebar-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; }
+.dk-x-logo { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--dk-surface-raised); border: 1px solid var(--dk-border); }
+.dk-x-logo svg { width: 22px; height: 22px; display: block; }
+.dk-x-wordmark { font-size: 17px; font-weight: 400; color: var(--dk-text); letter-spacing: 0.01em; }
+.dk-x-wordmark b { font-weight: 800; color: var(--dk-action); }
+.dk-x-sidebar .dk-sidenav { width: auto; padding: 6px 12px; }
+.dk-x-sidebar .dk-sidenav__item { height: 40px; font-size: var(--dk-text-md); }
+.dk-x-navicon { width: 20px; height: 20px; flex: none; }
+.dk-x-sidebar-foot { margin-top: auto; border-top: 1px solid var(--dk-border); padding: 12px; }
+.dk-x-sidebar-foot .dk-sidenav__item { width: 100%; background: none; border: none; text-align: left; }
+.dk-x-main { flex: 1; min-width: 0; padding: 32px 40px 48px; }
+
+/* 批次卡（对应 designkit-ui.css 的 dk-history-card） */
+.dk-x-batch-list { display: grid; gap: 12px; }
+.dk-x-batch { display: grid; gap: 8px; padding: 16px 18px; border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); background: var(--dk-surface-subtle); cursor: pointer; transition: border-color var(--dk-motion-fast) var(--dk-ease-out), background var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-x-batch:hover { border-color: var(--dk-border-strong); background: var(--dk-surface-hover); }
+.dk-x-batch.is-open { border-color: var(--dk-action); box-shadow: 0 0 0 1px var(--dk-action); }
+.dk-x-batch__title { display: flex; align-items: center; gap: 10px; font-size: var(--dk-text-lg); font-weight: 600; }
+.dk-x-meta { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-x-batch__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 2px; }
+.dk-x-batch__cost { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-x-batch__actions { display: flex; gap: 10px; }
+.dk-x-listend { display: flex; justify-content: center; margin-top: 14px; }
+
+/* 批次详情：档案信息 */
+.dk-x-facts { display: grid; grid-template-columns: repeat(5, auto); gap: 8px 44px; justify-content: start; margin: 14px 0 0; }
+.dk-x-facts dt { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-x-facts dd { margin: 2px 0 0; font-size: var(--dk-text-sm); color: var(--dk-text); }
+
+/* 大图网格：一行 3 张 */
+.dk-x-shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 18px; }
+.dk-x-shot { display: grid; gap: 8px; align-content: start; }
+.dk-x-shot__canvas { aspect-ratio: 1; display: grid; place-items: center; }
+.dk-x-art { width: 56%; height: 56%; color: var(--dk-text-secondary); }
+.dk-thumb.is-white .dk-x-art { color: var(--dk-text-inverse); }
+.dk-x-shot__bill { margin: 0 2px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+/* 悬停操作：设计稿里第 2 张强制常显 */
+.dk-x-shot--hover .dk-thumb__overlay { opacity: 1; }
+.dk-thumb__overlay .dk-button { min-width: 168px; justify-content: flex-start; }
+/* 白底切换控件（演示一处）：深/白两个衬底swatch，当前项描紫 */
+.dk-x-bgswitch { position: absolute; top: 8px; right: 8px; z-index: 2; display: inline-flex; gap: 5px; padding: 4px; border-radius: var(--dk-radius-pill); background: rgba(11, 15, 26, 0.78); border: 1px solid var(--dk-border-strong); backdrop-filter: blur(4px); }
+.dk-x-bgswitch__opt { width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid var(--dk-border-strong); cursor: pointer; }
+.dk-x-bgswitch__opt--dark { background: var(--dk-image-canvas); }
+.dk-x-bgswitch__opt--white { background: #ffffff; }
+.dk-x-bgswitch__opt.is-cur { box-shadow: 0 0 0 2px var(--dk-action); }
+/* 失败占位卡 */
+.dk-x-thumb--failed { border-color: rgba(248, 113, 113, 0.4); }
+.dk-x-thumb--failed .dk-x-shot__canvas { align-content: center; display: grid; gap: 12px; justify-items: center; padding: 0 22px; }
+.dk-x-art--fail { width: 52px; height: 52px; color: var(--dk-danger); opacity: 0.9; }
+.dk-x-failmsg { text-align: center; }
+.dk-x-tag--right { left: auto; right: 6px; }
+.dk-x-retryrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 2px; }
+
+/* toast 小样 */
+.dk-x-toastrow { display: flex; gap: 14px; flex-wrap: wrap; }
+.dk-x-ticon { width: 16px; height: 16px; flex: none; }
+.dk-x-ticon--ok { color: var(--dk-success); }
+.dk-x-ticon--info { color: var(--dk-accent-strong); }
+
+/* lightbox 沉浸层（z 层用 --dk-z-lightbox；此处为画稿内静态呈现） */
+.dk-x-lb-stage { position: relative; height: 780px; border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); background: var(--dk-canvas); overflow: hidden; }
+.dk-x-lb-behind { position: absolute; inset: 0; padding: 36px 48px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; align-content: start; }
+.dk-x-lb-behind .dk-skeleton { aspect-ratio: 1; }
+.dk-x-lb { position: absolute; inset: 0; z-index: var(--dk-z-lightbox); background: var(--dk-overlay); backdrop-filter: blur(3px); display: grid; place-items: center; }
+.dk-x-lb-body { display: grid; justify-items: center; gap: 14px; width: 620px; }
+.dk-x-lb-figure { width: 400px; aspect-ratio: 1; display: grid; place-items: center; box-shadow: var(--dk-shadow-overlay); }
+.dk-x-lb-figure .dk-x-art { width: 60%; height: 60%; }
+.dk-x-lb-meta { display: flex; align-items: center; gap: 10px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); font-variant-numeric: tabular-nums; }
+.dk-x-lb-prompt { width: 100%; display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-md); background: var(--dk-surface); text-align: left; }
+.dk-x-lb-prompt__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dk-x-lb-prompt__text { margin: 0; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+.dk-x-lb-actions { display: flex; gap: 12px; }
+.dk-x-lb-close { position: absolute; top: 18px; right: 18px; z-index: 2; }
+.dk-x-lb-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--dk-border-strong); background: var(--dk-surface-raised); color: var(--dk-text); display: grid; place-items: center; cursor: pointer; box-shadow: var(--dk-shadow-2); }
+.dk-x-lb-arrow:hover { border-color: var(--dk-action); background: #232c44; }
+.dk-x-lb-arrow--prev { left: 26px; }
+.dk-x-lb-arrow--next { right: 26px; }
+.dk-x-lb-fail { position: absolute; left: 26px; bottom: 26px; z-index: 2; width: 336px; }
+.dk-x-lb-fail .dk-button { justify-self: start; margin-top: 4px; }
+
+/* 删除确认 / 空态 演示台 */
+.dk-x-dialog-stage { position: relative; height: 340px; border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); background: var(--dk-canvas); overflow: hidden; }
+.dk-x-dialog-stage .dk-dialog-overlay { position: absolute; }
+.dk-x-empty-stage { display: grid; justify-content: center; padding: 8px 0; }
+.dk-x-empty-panel { width: 760px; }
+.dk-x-empty-frames { width: 200px; height: 160px; color: var(--dk-text-tertiary); }
+</style>
+</head>
+<body>
+
+<!-- 商品图占位与插画：细线条抽象商品，白灰线 + 少量紫（inline symbol，全稿复用） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- 按压瓶（洗护/精华） -->
+    <symbol id="px-bottle" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="42" y="48" width="36" height="52" rx="9"/>
+        <path d="M53 48v-9h14v9"/>
+        <rect x="55" y="27" width="10" height="12" rx="2.5"/>
+        <path d="M65 30h10v4h-7"/>
+        <path d="M52 80h16" opacity="0.55"/>
+      </g>
+      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round">
+        <path d="M50 68h20"/>
+      </g>
+    </symbol>
+    <!-- 马克杯 -->
+    <symbol id="px-mug" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M40 48h34v24a12 12 0 0 1-12 12H52a12 12 0 0 1-12-12z"/>
+        <path d="M74 54h6a8 8 0 0 1 0 16h-6"/>
+        <path d="M38 92h44" opacity="0.55"/>
+      </g>
+      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round">
+        <path d="M52 38c0-4 4-5 4-9M63 38c0-4 4-5 4-9"/>
+      </g>
+    </symbol>
+    <!-- 针织上衣（衣物轮廓） -->
+    <symbol id="px-knit" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M60 34c-3 3.5-9 3.5-12 0l-15 6.5 6.5 14 6.5-3.2V84h28V51.3l6.5 3.2 6.5-14L72 34c-3 3.5-9 3.5-12 0z"/>
+        <path d="M53 34.8c2.5 3.6 11.5 3.6 14 0" opacity="0.55"/>
+        <path d="M48 78h24" opacity="0.55"/>
+      </g>
+      <g stroke="none" fill="#7C6BFF">
+        <circle cx="60" cy="52" r="1.6"/>
+        <circle cx="60" cy="62" r="1.6"/>
+        <circle cx="60" cy="72" r="1.6"/>
+      </g>
+    </symbol>
+    <!-- 面霜罐 -->
+    <symbol id="px-jar" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="42" y="52" width="36" height="34" rx="9"/>
+        <rect x="39" y="41" width="42" height="11" rx="5"/>
+        <path d="M50 74h20" opacity="0.55"/>
+      </g>
+      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round">
+        <path d="M46 46.5h28"/>
+      </g>
+    </symbol>
+    <!-- 香薰蜡烛 -->
+    <symbol id="px-candle" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="44" y="52" width="32" height="40" rx="7"/>
+        <path d="M60 52v-7"/>
+        <path d="M50 72h20" opacity="0.55"/>
+      </g>
+      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M60 34c3.4 3.2 0 7 0 7s-3.4-3.8 0-7z"/>
+      </g>
+    </symbol>
+    <!-- 滴管瓶 -->
+    <symbol id="px-dropper" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="48" y="52" width="24" height="44" rx="7"/>
+        <path d="M52 52v-6h16v6"/>
+        <rect x="54" y="33" width="12" height="13" rx="4"/>
+      </g>
+      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M60 70c3 3.4 3 7.4 0 7.4s-3-4 0-7.4z"/>
+      </g>
+    </symbol>
+    <!-- 失败占位：加载不出来的图 -->
+    <symbol id="px-broken" viewBox="0 0 48 48">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="6" y="9" width="36" height="30" rx="4"/>
+        <path d="M11 33l7.5-7.5 3.5 3.5M30 30.5l4-4L41 33"/>
+        <path d="M24 17v6"/>
+        <circle cx="24" cy="27.5" r="0.9"/>
+      </g>
+    </symbol>
+    <!-- 空态插画：三个错落的空相框（v2 9.4） -->
+    <symbol id="px-frames" viewBox="0 0 200 160">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M54 18v16M113 8v14M167 24v16"/>
+        <circle cx="54" cy="17" r="1.4"/>
+        <circle cx="113" cy="7" r="1.4"/>
+        <circle cx="167" cy="23" r="1.4"/>
+        <rect x="24" y="40" width="60" height="76" rx="4" transform="rotate(-6 54 78)"/>
+        <rect x="80" y="26" width="66" height="88" rx="4"/>
+        <rect x="88" y="34" width="50" height="72" opacity="0.5"/>
+        <rect x="142" y="44" width="52" height="70" rx="4" transform="rotate(5 168 79)"/>
+        <path d="M14 132h172" opacity="0.4"/>
+      </g>
+      <g stroke="none" fill="#7C6BFF">
+        <circle cx="113" cy="70" r="3.2"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="dk-x-stage">
+
+  <!-- ═══ 应用外壳：侧栏 + 我的图片主内容 ═══ -->
+  <div class="dk-x-frame">
+
+    <!-- 侧栏：上游 AppSidebar 同款结构，深色化；运营只看四项 -->
+    <aside class="dk-x-sidebar">
+      <div class="dk-x-sidebar-head">
+        <span class="dk-x-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+            <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+            <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+            <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/>
+            <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+            <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+          </svg>
+        </span>
+        <span class="dk-x-wordmark">Design<b>Kit</b></span>
+      </div>
+      <nav class="dk-sidenav">
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M10.8 6.5 8.6 10h2.8l-2.2 3.5"/></svg>
+          生成工作台
+        </a>
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 8.2a3.5 3.5 0 1 1 7 0c0 1.6-1 2.4-1.6 3.4-.3.5-.4 1-.4 1.6H8.5c0-.6-.1-1.1-.4-1.6C7.5 10.6 6.5 9.8 6.5 8.2z"/><path d="M8.5 15.7h3M9.2 17.7h1.6"/></svg>
+          灵感库
+        </a>
+        <a class="dk-sidenav__item is-active" aria-current="page">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="11" rx="2"/><circle cx="7.1" cy="8.1" r="1.1"/><path d="M3.6 13.4 7.8 9.8l3 2.6 2.3-1.9 3.2 2.7"/></svg>
+          我的图片
+        </a>
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="6.8" r="2.8"/><path d="M4.6 16.5a5.4 5.4 0 0 1 10.8 0"/></svg>
+          个人资料
+        </a>
+      </nav>
+      <div class="dk-x-sidebar-foot">
+        <button type="button" class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 5-4.5 5 4.5 5M15.5 5 11 10l4.5 5"/></svg>
+          收起
+        </button>
+      </div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="dk-x-main">
+      <header>
+        <p class="dk-eyebrow">商品图</p>
+        <h1 class="dk-page-title">我的图片</h1>
+        <p class="dk-page-desc">出过的图按批次归档，可单张下载或打包下载。</p>
+      </header>
+
+      <!-- 出图记录：批次卡列表 -->
+      <div class="dk-x-annot"><span class="dk-x-annot__tag">第一屏</span>回来找图先看到的：按提交批次归档，时间倒序</div>
+      <section class="dk-panel" style="margin-top:10px">
+        <div class="dk-panel-head">
+          <h2 class="dk-panel-title">出图记录</h2>
+          <button type="button" class="dk-button dk-button--quiet dk-button--sm">刷新</button>
+        </div>
+        <div class="dk-x-batch-list">
+
+          <!-- 批次卡 1（下方已展开这一批） -->
+          <article class="dk-x-batch is-open">
+            <div class="dk-x-batch__title">
+              <span>夏季新款-白底主图</span>
+              <span class="dk-badge dk-badge--warning"><span class="dk-badge__dot" aria-hidden="true"></span>部分成功</span>
+            </div>
+            <div class="dk-x-meta">
+              <span>提交时间 2026-08-15 10:24</span>
+              <span>比例 1:1 · 主图（正方形）</span>
+              <span>共 9 张</span>
+            </div>
+            <div class="dk-x-batch__foot">
+              <span class="dk-note">成功 8 · 失败 1 · 已停止 0</span>
+              <span class="dk-x-batch__cost">实际花费 <span class="dk-money">$9.00</span></span>
+            </div>
+            <div class="dk-x-batch__actions">
+              <button type="button" class="dk-button dk-button--secondary dk-button--sm">打开这一批</button>
+              <button type="button" class="dk-button dk-button--sm">
+                <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5h13v8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M3.5 7.5 5.2 4.5h9.6l1.7 3M10 10v4.2m0 0 2.2-2.2M10 14.2l-2.2-2.2"/></svg>
+                打包下载这一批
+              </button>
+            </div>
+          </article>
+
+          <!-- 批次卡 2：未命名 + 全部成功 -->
+          <article class="dk-x-batch">
+            <div class="dk-x-batch__title">
+              <span>未命名批次</span>
+              <span class="dk-badge dk-badge--success"><span class="dk-badge__dot" aria-hidden="true"></span>全部成功</span>
+            </div>
+            <div class="dk-x-meta">
+              <span>提交时间 2026-08-14 16:03</span>
+              <span>比例 3:4 · 详情竖版</span>
+              <span>共 6 张</span>
+            </div>
+            <div class="dk-x-batch__foot">
+              <span class="dk-note">成功 6 · 失败 0 · 已停止 0</span>
+              <span class="dk-x-batch__cost">实际花费 <span class="dk-money">$6.00</span></span>
+            </div>
+            <div class="dk-x-batch__actions">
+              <button type="button" class="dk-button dk-button--secondary dk-button--sm">打开这一批</button>
+              <button type="button" class="dk-button dk-button--sm">
+                <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5h13v8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M3.5 7.5 5.2 4.5h9.6l1.7 3M10 10v4.2m0 0 2.2-2.2M10 14.2l-2.2-2.2"/></svg>
+                打包下载这一批
+              </button>
+            </div>
+          </article>
+
+        </div>
+        <div class="dk-x-listend"><p class="dk-note dk-note--quiet">没有更多了</p></div>
+      </section>
+
+      <!-- 展开的批次详情 -->
+      <div class="dk-x-annot"><span class="dk-x-annot__tag">状态演示</span>点「打开这一批」之后 —— 图片严格按「第几张」排列；第 2 张常显了悬停操作，第 3 张演示白底衬底切换</div>
+      <div style="margin-top:10px">
+        <button type="button" class="dk-button dk-button--quiet dk-button--sm">← 返回列表</button>
+        <section class="dk-panel" style="margin-top:12px">
+          <div class="dk-x-batch__title">
+            <span>夏季新款-白底主图</span>
+            <span class="dk-badge dk-badge--warning"><span class="dk-badge__dot" aria-hidden="true"></span>部分成功</span>
+          </div>
+          <dl class="dk-x-facts">
+            <div><dt>提交时间</dt><dd>2026-08-15 10:24</dd></div>
+            <div><dt>完成时间</dt><dd>2026-08-15 10:31</dd></div>
+            <div><dt>比例</dt><dd>1:1 · 主图（正方形）</dd></div>
+            <div><dt>共 9 张</dt><dd>成功 8 · 失败 1 · 已停止 0</dd></div>
+            <div><dt>实际花费</dt><dd><span class="dk-money">$9.00</span></dd></div>
+          </dl>
+
+          <div class="dk-x-shots">
+
+            <!-- 第 1 张 -->
+            <figure class="dk-x-shot" style="margin:0">
+              <div class="dk-thumb">
+                <span class="dk-thumb__tag">第 1 张</span>
+                <div class="dk-x-shot__canvas"><svg class="dk-x-art" aria-hidden="true"><use href="#px-bottle"/></svg></div>
+                <div class="dk-thumb__overlay">
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>下载这张</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="8.8" r="4.8"/><path d="m12.4 12.4 4.1 4.1M7 8.8h3.6M8.8 7v3.6"/></svg>看大图</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>用这张继续生成</button>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+            </figure>
+
+            <!-- 第 2 张：悬停操作强制常显 -->
+            <figure class="dk-x-shot dk-x-shot--hover" style="margin:0">
+              <div class="dk-thumb">
+                <span class="dk-thumb__tag">第 2 张</span>
+                <div class="dk-x-shot__canvas"><svg class="dk-x-art" aria-hidden="true"><use href="#px-mug"/></svg></div>
+                <div class="dk-thumb__overlay">
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>下载这张</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="8.8" r="4.8"/><path d="m12.4 12.4 4.1 4.1M7 8.8h3.6M8.8 7v3.6"/></svg>看大图</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>用这张继续生成</button>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+            </figure>
+
+            <!-- 第 3 张：白底衬底 + 切换控件（当前=白） -->
+            <figure class="dk-x-shot" style="margin:0">
+              <div class="dk-thumb is-white">
+                <span class="dk-thumb__tag">第 3 张</span>
+                <span class="dk-x-bgswitch">
+                  <button type="button" class="dk-x-bgswitch__opt dk-x-bgswitch__opt--dark" aria-label="深色衬底"></button>
+                  <button type="button" class="dk-x-bgswitch__opt dk-x-bgswitch__opt--white is-cur" aria-label="白色衬底"></button>
+                </span>
+                <div class="dk-x-shot__canvas"><svg class="dk-x-art" aria-hidden="true"><use href="#px-knit"/></svg></div>
+                <div class="dk-thumb__overlay">
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>下载这张</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="8.8" r="4.8"/><path d="m12.4 12.4 4.1 4.1M7 8.8h3.6M8.8 7v3.6"/></svg>看大图</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>用这张继续生成</button>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+            </figure>
+
+            <!-- 第 4 张 -->
+            <figure class="dk-x-shot" style="margin:0">
+              <div class="dk-thumb">
+                <span class="dk-thumb__tag">第 4 张</span>
+                <div class="dk-x-shot__canvas"><svg class="dk-x-art" aria-hidden="true"><use href="#px-jar"/></svg></div>
+                <div class="dk-thumb__overlay">
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>下载这张</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="8.8" r="4.8"/><path d="m12.4 12.4 4.1 4.1M7 8.8h3.6M8.8 7v3.6"/></svg>看大图</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>用这张继续生成</button>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+            </figure>
+
+            <!-- 第 5 张：失败占位卡 + 原因摘要 + 重试（重试 = 重新花一次钱） -->
+            <figure class="dk-x-shot" style="margin:0">
+              <div class="dk-thumb dk-x-thumb--failed">
+                <span class="dk-thumb__tag">第 5 张</span>
+                <span class="dk-thumb__tag dk-thumb__tag--fail dk-x-tag--right">失败</span>
+                <div class="dk-x-shot__canvas">
+                  <svg class="dk-x-art--fail" aria-hidden="true"><use href="#px-broken"/></svg>
+                  <p class="dk-note dk-note--danger dk-clamp-2 dk-x-failmsg">出图服务暂时连不上，稍等一会儿再试；一直这样就把错误码截图给管理员。</p>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+              <div class="dk-x-retryrow">
+                <button type="button" class="dk-button dk-button--secondary dk-button--sm">
+                  <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 10a5.5 5.5 0 1 0 1.7-4L4.5 7.6"/><path d="M4.5 3.8v3.8h3.8"/></svg>
+                  重试这一张 <span class="dk-button__price">· $1</span>
+                </button>
+                <span class="dk-note dk-note--quiet">第 2 次尝试 · 最多能试 3 次</span>
+              </div>
+            </figure>
+
+            <!-- 第 6 张 -->
+            <figure class="dk-x-shot" style="margin:0">
+              <div class="dk-thumb">
+                <span class="dk-thumb__tag">第 6 张</span>
+                <div class="dk-x-shot__canvas"><svg class="dk-x-art" aria-hidden="true"><use href="#px-candle"/></svg></div>
+                <div class="dk-thumb__overlay">
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>下载这张</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="8.8" r="4.8"/><path d="m12.4 12.4 4.1 4.1M7 8.8h3.6M8.8 7v3.6"/></svg>看大图</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>用这张继续生成</button>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+            </figure>
+
+            <!-- 第 7 张 -->
+            <figure class="dk-x-shot" style="margin:0">
+              <div class="dk-thumb">
+                <span class="dk-thumb__tag">第 7 张</span>
+                <div class="dk-x-shot__canvas"><svg class="dk-x-art" aria-hidden="true"><use href="#px-dropper"/></svg></div>
+                <div class="dk-thumb__overlay">
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>下载这张</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="8.8" r="4.8"/><path d="m12.4 12.4 4.1 4.1M7 8.8h3.6M8.8 7v3.6"/></svg>看大图</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>用这张继续生成</button>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+            </figure>
+
+            <!-- 第 8 张 -->
+            <figure class="dk-x-shot" style="margin:0">
+              <div class="dk-thumb">
+                <span class="dk-thumb__tag">第 8 张</span>
+                <div class="dk-x-shot__canvas"><svg class="dk-x-art" aria-hidden="true"><use href="#px-bottle"/></svg></div>
+                <div class="dk-thumb__overlay">
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>下载这张</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="8.8" r="4.8"/><path d="m12.4 12.4 4.1 4.1M7 8.8h3.6M8.8 7v3.6"/></svg>看大图</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>用这张继续生成</button>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+            </figure>
+
+            <!-- 第 9 张 -->
+            <figure class="dk-x-shot" style="margin:0">
+              <div class="dk-thumb">
+                <span class="dk-thumb__tag">第 9 张</span>
+                <div class="dk-x-shot__canvas"><svg class="dk-x-art" aria-hidden="true"><use href="#px-mug"/></svg></div>
+                <div class="dk-thumb__overlay">
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>下载这张</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.8" cy="8.8" r="4.8"/><path d="m12.4 12.4 4.1 4.1M7 8.8h3.6M8.8 7v3.6"/></svg>看大图</button>
+                  <button type="button" class="dk-button dk-button--sm"><svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>用这张继续生成</button>
+                </div>
+              </div>
+              <figcaption class="dk-x-shot__bill">这一张扣了 <span class="dk-money">$1</span></figcaption>
+            </figure>
+
+          </div>
+        </section>
+      </div>
+
+      <!-- 「用这张继续生成」的两种回执 -->
+      <div class="dk-x-annot"><span class="dk-x-annot__tag">回执小样</span>点「用这张继续生成」之后（顶部居中弹出）</div>
+      <div class="dk-x-toastrow" style="margin-top:10px">
+        <div class="dk-toast dk-toast--success">
+          <svg class="dk-x-ticon dk-x-ticon--ok" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 10.5 3.6 3.6 7.4-8.2"/></svg>
+          已加入第一步的商品图。
+        </div>
+        <div class="dk-toast">
+          <svg class="dk-x-ticon dk-x-ticon--info" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6.5"/><path d="M10 9v4M10 6.6v.2"/></svg>
+          这张图已经在第一步里了。
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══ lightbox 沉浸层 ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">沉浸层</span>点「看大图」之后 —— 深遮罩盖住整页，左右可切换；左下角同时演示图没加载出来的样子</div>
+  <div class="dk-x-lb-stage">
+    <!-- 遮罩后面隐约是原页面 -->
+    <div class="dk-x-lb-behind" aria-hidden="true">
+      <div class="dk-skeleton"></div><div class="dk-skeleton"></div><div class="dk-skeleton"></div><div class="dk-skeleton"></div>
+      <div class="dk-skeleton"></div><div class="dk-skeleton"></div><div class="dk-skeleton"></div><div class="dk-skeleton"></div>
+    </div>
+    <div class="dk-x-lb">
+      <button type="button" class="dk-button dk-button--sm dk-x-lb-close">
+        <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="m5.5 5.5 9 9m0-9-9 9"/></svg>
+        关闭
+      </button>
+      <button type="button" class="dk-x-lb-arrow dk-x-lb-arrow--prev" aria-label="上一张">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m12 4.5-5.5 5.5L12 15.5"/></svg>
+      </button>
+      <button type="button" class="dk-x-lb-arrow dk-x-lb-arrow--next" aria-label="下一张">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m8 4.5 5.5 5.5L8 15.5"/></svg>
+      </button>
+
+      <div class="dk-x-lb-body">
+        <div class="dk-thumb dk-x-lb-figure">
+          <svg class="dk-x-art" aria-hidden="true"><use href="#px-mug"/></svg>
+        </div>
+        <div class="dk-x-lb-meta">
+          <span>第 2 张</span>
+          <span aria-hidden="true">·</span>
+          <span>1254 × 1254</span>
+        </div>
+        <div class="dk-x-lb-prompt">
+          <div class="dk-x-lb-prompt__head">
+            <span class="dk-label" style="margin:0">用的提示词</span>
+            <button type="button" class="dk-button dk-button--quiet dk-button--sm">
+              <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="9.5" height="9.5" rx="2"/><path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-6A1.5 1.5 0 0 0 4 5.5v6A1.5 1.5 0 0 0 5.5 13H7"/></svg>
+              复制这条提示词
+            </button>
+          </div>
+          <p class="dk-x-lb-prompt__text">纯白背景，柔和顶光，产品居中，高级质感</p>
+        </div>
+        <div class="dk-x-lb-actions">
+          <button type="button" class="dk-button dk-button--primary-action">
+            <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.5m0 0 3.2-3.2M10 12 6.8 8.8M4.5 16h11"/></svg>
+            下载这张
+          </button>
+          <button type="button" class="dk-button dk-button--secondary" style="height:var(--dk-primary-h)">
+            <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.3a5.6 5.6 0 0 1 9.6-2.5l1.4 1.5M15.5 11.7a5.6 5.6 0 0 1-9.6 2.5l-1.4-1.5"/><path d="M15.5 3.8v3.5H12M4.5 16.2v-3.5H8"/></svg>
+            用这张继续生成
+          </button>
+        </div>
+      </div>
+
+      <!-- 失败态：图没加载出来 -->
+      <div class="dk-alert dk-alert--danger dk-x-lb-fail">
+        <p style="margin:0">这张图没加载出来。点一下重试；一直不行就刷新页面。</p>
+        <button type="button" class="dk-button dk-button--secondary dk-button--sm">再试一次</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 删除确认（危险变体） ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">危险确认</span>删掉一张图之前的二次确认 ——「取消」只用来关这个弹窗</div>
+  <div class="dk-x-dialog-stage">
+    <div class="dk-dialog-overlay">
+      <div class="dk-dialog dk-dialog--danger" role="alertdialog">
+        <h3 class="dk-dialog__title">删除这张图？</h3>
+        <p class="dk-dialog__body" style="margin:0">删除后找不回来，已扣的费用不退。</p>
+        <div class="dk-dialog-actions">
+          <button type="button" class="dk-button dk-button--secondary">取消</button>
+          <button type="button" class="dk-button dk-button--danger is-solid">删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 空态 ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">空态</span>一张都没出过的时候 —— 三个空相框插画（细线条几何风）</div>
+  <div class="dk-x-empty-stage">
+    <section class="dk-panel dk-x-empty-panel">
+      <div class="dk-empty">
+        <svg class="dk-x-empty-frames dk-empty__icon" aria-hidden="true"><use href="#px-frames"/></svg>
+        <p class="dk-empty__title">还没有出图记录。</p>
+        <p class="dk-empty__description">还没有出图记录。去「生成工作台」提交第一批。</p>
+        <button type="button" class="dk-button" style="margin-top:6px">去工作台</button>
+      </div>
+    </section>
+  </div>
+
+</div>
+</body>
+</html>

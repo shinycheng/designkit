@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- DesignKit mark · 方向 A「DK 取景框」（暂定，monica 挑定后可整体替换本文件） -->
+  <!-- 取景框四角；右下角用电光紫做点睛 -->
+  <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+  <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+  <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+  <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/>
+  <!-- D -->
+  <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+  <!-- K -->
+  <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+</svg>

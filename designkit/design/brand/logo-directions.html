@@ -1,0 +1,123 @@
+<!-- @dsCard group="品牌" name="Logo 四方向（待挑选）" subtitle="A 取景框 · B 画框留白 · C 光圈 · D 花括号" width="1280" -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DesignKit · Logo 四方向</title>
+<style>
+:root{--canvas:#0B0F1A;--surface:#131A2B;--raised:#1B2337;--border:#273049;--text:#F2F5FA;--sub:#A8B3C7;--faint:#7A85A0;--purple:#7C6BFF;}
+*{box-sizing:border-box}body{margin:0;background:var(--canvas);color:var(--text);font-family:"Inter",-apple-system,"HarmonyOS Sans SC","PingFang SC",sans-serif;padding:48px}
+h1{font-size:28px;margin:0}p.lead{color:var(--sub);margin:8px 0 40px;max-width:70ch}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;box-shadow:0 0 0 1px rgba(255,255,255,.04),0 8px 24px rgba(0,0,0,.4)}
+.card.pick{border-color:var(--purple);box-shadow:0 0 0 1px var(--purple),0 8px 24px rgba(0,0,0,.4)}
+.dir{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.dir b{font-size:20px}.dir span{color:var(--faint);font-size:13px}
+.rec{display:inline-flex;height:20px;align-items:center;padding:0 8px;border-radius:999px;background:rgba(124,107,255,.16);color:#B9AEFF;font-size:11px;font-weight:700;margin-left:auto}
+.rows{display:grid;gap:20px;margin-top:20px}
+.row{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.row .lab{width:96px;flex:none;font-size:12px;color:var(--faint)}
+.lockup{display:flex;align-items:center;gap:12px}
+.word{font-size:26px;letter-spacing:-.02em}.word .d{font-weight:400}.word .k{font-weight:800;color:var(--purple)}
+.mono .word .k{color:var(--text)}
+.chip{display:grid;place-items:center;width:56px;height:56px;border-radius:14px;background:var(--canvas);border:1px solid var(--border)}
+.chip.on-purple{background:var(--purple);border-color:transparent}
+.s24{display:flex;gap:14px;align-items:center}
+.s24 .box{display:grid;place-items:center;width:36px;height:36px;border-radius:9px;background:var(--canvas);border:1px solid var(--border)}
+.note{margin-top:18px;font-size:13px;color:var(--sub);border-top:1px solid var(--border);padding-top:14px}
+svg{display:block}
+footer{margin-top:36px;color:var(--faint);font-size:13px}
+</style>
+</head>
+<body>
+<h1>DesignKit · Logo 四个方向</h1>
+<p class="lead">纯英文字标，无中文元素。线性 1.75~2px，主体白/浅灰、点缀电光紫 #7C6BFF。每个方向给：mark、横版组合、单色反白、24px 缩小检查。<b style="color:var(--text)">A 为暂定推荐</b>（已用于全部页面稿的占位）；挑定其它方向后换一个文件即全站生效。</p>
+
+<div class="grid">
+
+<!-- ═══ A ═══ -->
+<div class="card pick">
+  <div class="dir"><b>A · DK 取景框</b><span>相机取景框四角 + DK 字母骨架</span><span class="rec">推荐 · 页面稿占位中</span></div>
+  <div class="rows">
+    <div class="row"><span class="lab">mark</span>
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/><path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/><path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/><path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/><path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/><path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/></svg>
+    </div>
+    <div class="row"><span class="lab">横版</span>
+      <span class="lockup"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/><path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/><path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/><path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/><path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/><path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/></svg>
+      <span class="word"><span class="d">Design</span><span class="k">Kit</span></span></span>
+    </div>
+    <div class="row"><span class="lab">单色反白</span>
+      <span class="chip on-purple"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/><path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/><path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/><path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17"/><path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/><path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/></svg></span>
+      <span class="lockup mono"><span class="word"><span class="d">Design</span><span class="k">Kit</span></span></span>
+    </div>
+    <div class="row"><span class="lab">24px 检查</span>
+      <span class="s24"><span class="box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/><path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/><path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/><path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/><path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/><path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/></svg></span><span style="color:var(--faint);font-size:12px">笔画在 24px 仍可辨认</span></span>
+    </div>
+  </div>
+  <div class="note">含义最直给：取景框 = 出图，DK = 品牌。缺点：字母骨架在极小尺寸（16px favicon）要减细节——favicon 版只保留四角 + 紫角。</div>
+</div>
+
+<!-- ═══ B ═══ -->
+<div class="card">
+  <div class="dir"><b>B · 画框与留白</b><span>补白边意象：产品点安坐画框中央</span></div>
+  <div class="rows">
+    <div class="row"><span class="lab">mark</span>
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><circle cx="12" cy="12" r="2.6" fill="#7C6BFF" stroke="none"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2" stroke="#7A85A0" stroke-width="1.5"/></svg>
+    </div>
+    <div class="row"><span class="lab">横版</span>
+      <span class="lockup"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><circle cx="12" cy="12" r="2.6" fill="#7C6BFF" stroke="none"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2" stroke="#7A85A0" stroke-width="1.5"/></svg><span class="word"><span class="d">Design</span><span class="k">Kit</span></span></span>
+    </div>
+    <div class="row"><span class="lab">单色反白</span>
+      <span class="chip on-purple"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><circle cx="12" cy="12" r="2.6" fill="#fff" stroke="none"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2" stroke-width="1.5"/></svg></span>
+    </div>
+    <div class="row"><span class="lab">24px 检查</span>
+      <span class="s24"><span class="box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><circle cx="12" cy="12" r="2.6" fill="#7C6BFF" stroke="none"/></svg></span><span style="color:var(--faint);font-size:12px">小尺寸自动省略边距刻度线</span></span>
+    </div>
+  </div>
+  <div class="note">最贴「比例护栏：补白边、产品永不被裁」这条产品主张；几何最简、缩到 16px 依然成立。缺点：识别度偏通用（像「对焦」类图标）。</div>
+</div>
+
+<!-- ═══ C ═══ -->
+<div class="card">
+  <div class="dir"><b>C · 光圈</b><span>快门六叶片的几何简化</span></div>
+  <div class="rows">
+    <div class="row"><span class="lab">mark</span>
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m14.3 8.6 4.2 7.3"/><path d="M9.7 8.6h8.5"/><path d="m7.4 12.1 4.3-7.4"/><path d="m9.7 15.5-4.2-7.3" stroke="#7C6BFF"/><path d="M14.3 15.5H5.8"/><path d="m16.6 12.1-4.3 7.4"/></svg>
+    </div>
+    <div class="row"><span class="lab">横版</span>
+      <span class="lockup"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m14.3 8.6 4.2 7.3"/><path d="M9.7 8.6h8.5"/><path d="m7.4 12.1 4.3-7.4"/><path d="m9.7 15.5-4.2-7.3" stroke="#7C6BFF"/><path d="M14.3 15.5H5.8"/><path d="m16.6 12.1-4.3 7.4"/></svg><span class="word"><span class="d">Design</span><span class="k">Kit</span></span></span>
+    </div>
+    <div class="row"><span class="lab">单色反白</span>
+      <span class="chip on-purple"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m14.3 8.6 4.2 7.3"/><path d="M9.7 8.6h8.5"/><path d="m7.4 12.1 4.3-7.4"/><path d="m9.7 15.5-4.2-7.3"/><path d="M14.3 15.5H5.8"/><path d="m16.6 12.1-4.3 7.4"/></svg></span>
+    </div>
+    <div class="row"><span class="lab">24px 检查</span>
+      <span class="s24"><span class="box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m14.3 8.6 4.2 7.3"/><path d="M9.7 8.6h8.5"/><path d="m7.4 12.1 4.3-7.4"/><path d="m9.7 15.5-4.2-7.3" stroke="#7C6BFF"/><path d="M14.3 15.5H5.8"/><path d="m16.6 12.1-4.3 7.4"/></svg></span><span style="color:var(--faint);font-size:12px">线条略密，16px 需减为三叶</span></span>
+    </div>
+  </div>
+  <div class="note">摄影气质最浓、动感最强。缺点：与通用「光圈」图标撞形最严重，品牌独占性弱。</div>
+</div>
+
+<!-- ═══ D ═══ -->
+<div class="card">
+  <div class="dir"><b>D · 花括号与画框</b><span>提示词 { } 生成图片的因果</span></div>
+  <div class="rows">
+    <div class="row"><span class="lab">mark</span>
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.8c-1.8 0-2.7 1-2.7 2.7v2.2c0 1.3-.7 2.1-1.9 2.3v1c1.2.2 1.9 1 1.9 2.3v2.2c0 1.7.9 2.7 2.7 2.7" stroke="#7C6BFF"/><rect x="11.5" y="6.5" width="9" height="11" rx="2"/><circle cx="16" cy="12" r="1.8" fill="#F2F5FA" stroke="none"/></svg>
+    </div>
+    <div class="row"><span class="lab">横版</span>
+      <span class="lockup"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.8c-1.8 0-2.7 1-2.7 2.7v2.2c0 1.3-.7 2.1-1.9 2.3v1c1.2.2 1.9 1 1.9 2.3v2.2c0 1.7.9 2.7 2.7 2.7" stroke="#7C6BFF"/><rect x="11.5" y="6.5" width="9" height="11" rx="2"/><circle cx="16" cy="12" r="1.8" fill="#F2F5FA" stroke="none"/></svg><span class="word"><span class="d">Design</span><span class="k">Kit</span></span></span>
+    </div>
+    <div class="row"><span class="lab">单色反白</span>
+      <span class="chip on-purple"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.8c-1.8 0-2.7 1-2.7 2.7v2.2c0 1.3-.7 2.1-1.9 2.3v1c1.2.2 1.9 1 1.9 2.3v2.2c0 1.7.9 2.7 2.7 2.7"/><rect x="11.5" y="6.5" width="9" height="11" rx="2"/><circle cx="16" cy="12" r="1.8" fill="#fff" stroke="none"/></svg></span>
+    </div>
+    <div class="row"><span class="lab">24px 检查</span>
+      <span class="s24"><span class="box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.8c-1.8 0-2.7 1-2.7 2.7v2.2c0 1.3-.7 2.1-1.9 2.3v1c1.2.2 1.9 1 1.9 2.3v2.2c0 1.7.9 2.7 2.7 2.7" stroke="#7C6BFF"/><rect x="11.5" y="6.5" width="9" height="11" rx="2"/><circle cx="16" cy="12" r="1.8" fill="#F2F5FA" stroke="none"/></svg></span><span style="color:var(--faint);font-size:12px">两个元素并置，24px 边界</span></span>
+    </div>
+  </div>
+  <div class="note">故事性最强：提示词（{ }）生成图（框），正是产品的核心机制。缺点：双元素构图不对称，居中排版和 favicon 裁切要多调。</div>
+</div>
+
+</div>
+<footer>字标统一：几何无衬线（Inter），「Design」常规、「Kit」加重 + 电光紫。挑定方向后回复编号即可——mark 独立成文件（system/mark-a.svg），全站从这一处引用。</footer>
+</body>
+</html>

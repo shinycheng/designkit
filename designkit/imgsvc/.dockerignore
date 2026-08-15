@@ -1,0 +1,13 @@
+# 构建镜像时不需要的东西。少拷贝一点，构建更快、镜像更干净。
+README.md
+selfcheck.py
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+selfcheck-out/

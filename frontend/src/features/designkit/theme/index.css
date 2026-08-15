@@ -1,0 +1,19 @@
+/*
+ * designkit 换肤层 · 总入口 —— DesignKit Dark
+ * ===========================================================================
+ * 全站唯一主题：深色（monica 2026-08-15 拍板 D1/D2，推翻 8-13 的「只留白天」）。
+ * 整个产品（包括上游 Sub2API 的管理后台）的外观由两层决定：
+ *
+ *   1. tokens.css   设计令牌（--dk-* 变量），值 = 《设计手册-v3-定稿.md》3.2 表。
+ *   2. bridge.css   桥接层：浏览器原生件 + 新手引导压制 + 上游零星写死色。
+ *
+ * 上游页面的深色**不在这里做**——做在 tailwind.config.js 的调色板源头
+ * （dark 色阶 → DesignKit 深蓝，primary → 电光紫），编译期生效。
+ * 把 <html> 钉死在 dark class 的活儿在 theme/force-dark.ts。
+ *
+ * 引入点在 `frontend/src/router/index.ts` 顶部，原因写在那一行上方的注释里。
+ * 老的 light-only.css / force-light.ts / auth-light.css 已随浅色主题删除。
+ */
+
+@import './tokens.css';
+@import './bridge.css';

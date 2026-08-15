@@ -1,0 +1,158 @@
+# 前端热更新开发服务 —— 叠加在上游的 docker-compose.dev.yml 之上。
+#
+# 解决的问题：
+#   上游自带的开发编排是「改一行代码就重新 docker build 整个镜像」，
+#   前端改一次要等好几分钟。而生成工作台那几千行前端要移植，
+#   这个等待时间会把工期整个吃掉。
+#
+#   这个文件加一个跑 vite 开发服务器的容器：改 .vue 文件，浏览器秒级刷新。
+#   **本机不需要安装 Node 或 pnpm**，全在容器里。
+#
+# 用法（推荐直接用 designkit/bin/dk-dev.sh，它就是跑下面这条）：
+#   cd deploy
+#   docker compose -f docker-compose.dev.yml -f docker-compose.designkit-dev.yml up
+#
+#   然后浏览器开 http://localhost:3000  ← 开发用这个（带热更新）
+#   后端 API 走 http://localhost:8080   ← vite 会自动把 /api /v1 /setup 转发过去
+#
+# 注意：这个文件只用于开发。发布镜像仍然走根目录的 Dockerfile 多阶段构建。
+
+services:
+  designkit-frontend-dev:
+    image: node:24-alpine
+    container_name: designkit-frontend-dev
+    working_dir: /app/frontend
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${VITE_DEV_PORT:-3000}:3000"
+    volumes:
+      - ../frontend:/app/frontend
+      # ⚠ 必须把仓库根的 docs/ 也挂进来（只读）。
+      #   上游有两个页面用 `?raw` 直接 import 仓库根目录下的合规文档：
+      #     components/admin/AdminComplianceDialog.vue
+      #     views/public/LegalDocumentView.vue
+      #   路径是 `../../../../docs/legal/admin-compliance.zh.md`，
+      #   从 /app/frontend/src/components/admin/ 往上四级正好是 /app/docs/，
+      #   **落在 frontend/ 挂载之外**。
+      #   不挂的话，开发服务器一打开首页就整屏报
+      #   「Failed to resolve import ... Does the file exist?」，整个界面进不去。
+      #   生产构建不会暴露这个问题——那是在完整源码树里跑的，路径天然存在。
+      - ../docs:/app/docs:ro
+      # node_modules 用具名卷，不要让宿主机目录盖住它：
+      # 一是 macOS 上绑定挂载 node_modules 特别慢，
+      # 二是 esbuild/rollup 这类带原生二进制的包，容器里装的是 Linux 版，
+      #   泄漏到宿主机会让人误以为本机能直接跑 node。
+      - designkit-frontend-node-modules:/app/frontend/node_modules
+    environment:
+      # vite.config.ts 读这两个变量：转发目标和监听端口
+      - VITE_DEV_PROXY_TARGET=http://sub2api:8080
+      - VITE_DEV_PORT=3000
+      # 国内装包走镜像源；要用官方源就把它设成 https://registry.npmjs.org
+      - NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
+      # 绑定挂载在 macOS/Windows 上收不到 inotify 事件，必须轮询才有热更新
+      - CHOKIDAR_USEPOLLING=true
+      - TZ=${TZ:-Asia/Shanghai}
+    # pnpm 版本跟 Dockerfile 里钉的一致（pnpm@9），避免锁文件被改写
+    command: >
+      sh -c '
+        corepack enable &&
+        corepack prepare pnpm@9 --activate &&
+        pnpm install --frozen-lockfile --prefer-offline &&
+        pnpm dev
+      '
+    depends_on:
+      - sub2api
+    networks:
+      - sub2api-network
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # 图像预处理服务（Python / FastAPI）
+  # ═══════════════════════════════════════════════════════════════════════
+  # 干什么：把运营上传的商品图变成能直接发给生图网关的样子——
+  #   HEIC 转码、按 EXIF 摆正、按目标比例补白边、透明底合成白底、限制最长边。
+  #
+  # 为什么单独一个容器：补边是**控制出图比例的唯一手段**，而这套逻辑是
+  #   Pillow 上多年踩坑攒出来的，用 Go 重写风险高、收益只是少一个容器。
+  #
+  # ⚠ 故意不写 ports：它只服务同一个 docker 网络里的 sub2api，
+  #   不该能从宿主机或局域网直接访问。要单独调试见
+  #   designkit/imgsvc/README.md（在本机用 uvicorn 起，不用改这个文件）。
+  designkit-imgsvc:
+    build:
+      context: ../designkit/imgsvc
+      dockerfile: Dockerfile
+    image: designkit-imgsvc:dev
+    container_name: designkit-imgsvc
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # 留空 = 不校验鉴权（开发默认）。填了之后 Go 侧必须带
+      # `Authorization: Bearer <同一个值>`，两边用的是同一个 .env 变量。
+      - DESIGNKIT_IMGSVC_TOKEN=${DESIGNKIT_IMGSVC_TOKEN:-}
+      # ⚠ 输出图最长边的默认上限。**它直接决定出图落 2K 还是 4K 计费档**
+      #   （最长边 ≤1024→1K、≤2048→2K、更大→4K）。改它等于改钱。
+      #   每次请求也可以用 max_dimension 表单字段单独覆盖。
+      - DESIGNKIT_IMGSVC_DEFAULT_MAX_DIMENSION=${DESIGNKIT_IMGSVC_DEFAULT_MAX_DIMENSION:-2048}
+      # 单张上传上限，默认 20MB（界面提示也写 20MB，两边要一致）
+      - DESIGNKIT_IMGSVC_MAX_UPLOAD_BYTES=${DESIGNKIT_IMGSVC_MAX_UPLOAD_BYTES:-20971520}
+      # 解码前先按像素数拦一道，防止「1MB 的 PNG 解出来 1.2 亿像素」把内存吃光
+      - DESIGNKIT_IMGSVC_MAX_PIXELS=${DESIGNKIT_IMGSVC_MAX_PIXELS:-80000000}
+      # 同时处理几张。群晖内存小就调到 2。
+      - DESIGNKIT_IMGSVC_MAX_CONCURRENCY=${DESIGNKIT_IMGSVC_MAX_CONCURRENCY:-4}
+      - TZ=${TZ:-Asia/Shanghai}
+    networks:
+      - sub2api-network
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # 只给上游的 sub2api 容器补三个环境变量，别的一律不动
+  # ═══════════════════════════════════════════════════════════════════════
+  # compose 会把多个 -f 文件里同名服务的 environment 按变量名合并，
+  # 所以这里只写要加的几条，docker-compose.dev.yml 里其余几十条原样保留。
+  #
+  # ⚠ NO_PROXY 这条是必须的，而且很容易漏：
+  #   上游 dev 编排给 sub2api 配了走宿主机的 HTTP_PROXY/HTTPS_PROXY（国内装包用），
+  #   NO_PROXY 名单里只有 `postgres,redis,sub2api` 和几个**网段**。
+  #   Go 的代理判断是按**主机名**匹配的，`designkit-imgsvc` 这个名字既不在名单里、
+  #   也不会被 172.16.0.0/12 这类网段规则命中（那要先解析成 IP，Go 不会替你解析）。
+  #   不加的话，后端调图像服务会先去连宿主机的代理端口，然后失败——
+  #   现象是「本机明明起着服务，出图却报连不上」，很难往代理上想。
+  #
+  #   下面重复了一遍上游的默认名单并在末尾加上 designkit-imgsvc。
+  #   如果你在 .env 里自定义了 SUB2API_DEV_NO_PROXY，**记得自己把
+  #   designkit-imgsvc 加进去**。
+  sub2api:
+    environment:
+      # ⚠ 走反向代理（群晖「登录门户 → 高级 → 反向代理」）之后必须配这一项。
+      #
+      # 原因：反向代理跑在群晖宿主机上，它连的是宿主机的 18080 端口。
+      # 这种「宿主机 → 已发布端口」的连接，容器里看到的来源 IP 会被 Docker
+      # 换成网桥网关（172.x.0.1），**所有访客都变成同一个 IP**。
+      # 后端默认一个可信代理都不信（http.go:103 走 SetTrustedProxies(nil)），
+      # 于是 X-Forwarded-For 里那个真实 IP 被丢掉，登录失败次数、公开端点
+      # 300 次/分/IP 这些限制会把全部访客算成一个人 —— 一个人被锁，所有人进不去。
+      #
+      # 172.16.0.0/12 覆盖 Docker 默认的全部网桥网段。这只是「愿意读它转发头」，
+      # 不等于放行任何人：能连到 18080 的只有宿主机自己。
+      # 不用反向代理、直接从路由器把端口转到 18080 时，这一项填了也无害
+      #（那种情况下来源 IP 本来就是真实的公网 IP，不经过网关转换）。
+      - SERVER_TRUSTED_PROXIES=${SERVER_TRUSTED_PROXIES:-172.16.0.0/12}
+      - NO_PROXY=${SUB2API_DEV_NO_PROXY:-127.0.0.1,localhost,::1,postgres,redis,sub2api,designkit-imgsvc,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,.local}
+      - no_proxy=${SUB2API_DEV_NO_PROXY:-127.0.0.1,localhost,::1,postgres,redis,sub2api,designkit-imgsvc,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,.local}
+      # 后端用这三个变量找图像服务（走 os.Getenv，不进 config.Config）
+      - DESIGNKIT_IMGSVC_URL=${DESIGNKIT_IMGSVC_URL:-http://designkit-imgsvc:8000}
+      - DESIGNKIT_IMGSVC_TOKEN=${DESIGNKIT_IMGSVC_TOKEN:-}
+      - DESIGNKIT_IMGSVC_TIMEOUT_SECONDS=${DESIGNKIT_IMGSVC_TIMEOUT_SECONDS:-60}
+      # 生成的图和上传的商品图落在哪。
+      # 默认值 /app/data/designkit 正好在上面 dev.yml 挂进来的 ./data 里，
+      # 所以容器重建也不会丢图。这里显式写出来是因为：
+      # 这个目录建不出来（NAS 上权限没配对是常见情况）→ 素材和结果图两个服务
+      # 都建不起来 → 健康检查报 module_status=degraded 并列出中文原因。
+      - DESIGNKIT_STORAGE_DIR=${DESIGNKIT_STORAGE_DIR:-/app/data/designkit}
+    depends_on:
+      designkit-imgsvc:
+        # 只等它起来，不等 healthcheck 变绿：出图链路第一次用到它的时候
+        # 早就过去了，卡在这里只会让整套环境启动变慢。
+        condition: service_started
+
+volumes:
+  designkit-frontend-node-modules:

@@ -1,0 +1,29 @@
+# 上游改动清点（只清点、不拦截，脚本退出码恒 0）：
+# 列出相对基线 v0.1.175 改过哪些上游文件，供吸收上游更新时对照，
+# 也是 NOTICE.md 修改披露的数据来源。2026-08-13 起不再做合并纪律拦截。
+name: designkit 上游改动清点
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  upstream-touch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 需要完整历史才能跟基线 tag 求 merge-base
+
+      - name: 拉取上游基线 tag
+        run: |
+          git remote add upstream https://github.com/Wei-Shaw/sub2api 2>/dev/null || true
+          # 只取 tag，不取分支，省时间
+          git fetch --no-tags upstream \
+            "+refs/tags/*:refs/tags/*" --depth=1 2>/dev/null \
+            || git fetch upstream --tags
+
+      - name: 断言未改动白名单外的上游文件
+        run: bash designkit/bin/check-upstream-touch.sh

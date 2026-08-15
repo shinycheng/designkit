@@ -1,0 +1,100 @@
+/*
+ * designkit 桥接层 —— DesignKit Dark 版
+ * ===========================================================================
+ * 2026-08-15 重写。老版 772 行干的是「把上游 Tailwind 的青色调色板逐类改成
+ * designkit 浅色」；深色改版后**那套活儿几乎整体消失**，因为换了打法：
+ *
+ *   上游本来就有完整深色皮（tailwind.config.js 的 darkMode:'class'），
+ *   我们直接改了 tailwind.config.js 的调色板源头——dark 色阶换成 DesignKit
+ *   的深蓝、primary 从 teal 换成电光紫。上游几十个后台页、style.css 里所有
+ *   `@apply primary-*` 的按钮和焦点环，编译期就长成我们的样子，零选择器覆盖。
+ *
+ * 所以本文件只剩三类活儿：
+ *   1. Tailwind 管不到的浏览器原生件（滚动条、选区、字体栈）；
+ *   2. 从 light-only.css 搬来的**非主题**规则（新手引导 driver.js 压制——
+ *      那是行为规则不是配色规则，删主题时不能陪葬）；
+ *   3. 上游个别写死颜色、没走调色板的零件（发现一个修一个，
+ *      验收标准是设计稿 product/08-上游后台深色样板.html）。
+ *
+ * ⚠ 本层加载早于上游 style.css（router/index.ts 顶部 import），
+ * 所以需要压过上游的地方仍然用 !important——这不是偷懒，是加载顺序使然。
+ */
+
+/* ── 1. 浏览器原生件 ────────────────────────────────────────────── */
+
+html,
+body {
+  background: var(--dk-canvas) !important;
+  font-family: var(--dk-font-sans) !important;
+}
+
+::selection {
+  background: rgba(124, 107, 255, 0.35);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dk-border);
+  border-radius: 999px;
+  border: 2px solid var(--dk-canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dk-border-strong);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--dk-font-mono) !important;
+}
+
+/* ── 2. 新手引导压制（从 light-only.css 原样搬来，与主题无关） ──────
+   主开关在 features/designkit/upstream/suppress-onboarding.ts。
+   这里是兜底：那个标记的键名里带上游硬编码的 storageVersion
+   （当前 v4_interactive），上游哪天 bump 它，键就对不上、引导会重新弹。
+
+   引导用的是 driver.js：一个全屏遮罩 + 一个气泡 + 给 <body> 挂 driver-active
+   并锁滚动。三样都要处理——只藏气泡不解锁滚动的话，页面会变成
+   「什么都看不见但也滚不动」，比弹窗本身还糟。 */
+
+.driver-overlay,
+.driver-popover,
+svg.driver-overlay-animated {
+  display: none !important;
+}
+
+/* driver.js 会给 html/body 加类并锁住滚动，得解开，否则页面滚不动。 */
+html.driver-active,
+body.driver-active,
+html.driver-fade,
+body.driver-fade {
+  overflow: auto !important;
+  pointer-events: auto !important;
+}
+
+/* 被「高亮」的元素会被抬到遮罩之上并加描边，遮罩没了就不需要这些了。 */
+.driver-active-element,
+.driver-highlighted-element {
+  position: static !important;
+  z-index: auto !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* ── 3. 上游零星写死的颜色 ──────────────────────────────────────────
+   tailwind.config.js 的 backgroundImage 里有两条写死 teal 十六进制的渐变，
+   已在 config 里一并换紫；这里兜一层给用行内/老类名的残留。
+   发现新的写死颜色 → 加在这一段，并在行上注明出处页面。 */
+
+/* 上游若干图表容器在深色下配白底内衬（ECharts 默认背景），压成图像衬底色：
+   图表读的是 JS 配色（跟随 dark class），容器底色跟上即可。 */
+.dark .echarts-container,
+.dark [_echarts_instance_] {
+  background: transparent !important;
+}

@@ -1,0 +1,1331 @@
+<!-- @dsCard group="官网" name="帮助中心" subtitle="双手册 · 四级标记徽章 · 粘性目录" width="1440" -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>帮助中心 · DesignKit</title>
+<style>
+/*
+ * DesignKit Dark — 设计系统地基（v3 定稿实现）
+ * ---------------------------------------------------------------------------
+ * 用途双重：
+ *   1. 全部设计稿（Claude Design 三个项目）的共用样式，逐字内联进每张稿；
+ *   2. 实施时 tokens.css 换值与 designkit-ui.css 深色化的对照蓝本。
+ *
+ * 令牌名与 frontend/src/features/designkit/theme/tokens.css **一字不差**，
+ * 只换值（v3 3.2 对照表）；新增三个：--dk-image-canvas / --dk-accent-2 / --dk-glow。
+ * 组件类名沿用 designkit-ui.css 现有词汇（dk-button--primary-action、
+ * dk-size-option、dk-dropzone、dk-thumb…），新组件按同一命名法追加——
+ * 这样设计稿里的每个类名在代码库里都有着落，交接零翻译。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 底面 */
+  --dk-canvas: #0b0f1a;
+  --dk-surface: #131a2b;
+  --dk-surface-subtle: #101625;
+  --dk-surface-raised: #1b2337;
+  --dk-surface-hover: rgba(124, 107, 255, 0.08);
+  --dk-surface-pressed: rgba(124, 107, 255, 0.14);
+  --dk-overlay: rgba(4, 7, 14, 0.66);
+  --dk-border: #273049;
+  --dk-border-strong: #3a466b;
+
+  /* 文字 */
+  --dk-text: #f2f5fa;
+  --dk-text-secondary: #a8b3c7;
+  --dk-text-tertiary: #7a85a0;
+  --dk-text-disabled: #5a6580;
+  --dk-text-inverse: #0b0f1a;
+
+  /* 动作与强调 */
+  --dk-action: #7c6bff;
+  --dk-action-hover: #8f80ff;
+  --dk-action-pressed: #6b5af0;
+  --dk-accent: #5ea2ff;
+  --dk-accent-strong: #82b7ff;
+  --dk-accent-soft: rgba(94, 162, 255, 0.16);
+  --dk-focus: rgba(124, 107, 255, 0.45);
+
+  /* 反馈 */
+  --dk-success: #34d399;
+  --dk-success-soft: rgba(52, 211, 153, 0.14);
+  --dk-warning: #fbbf24;
+  --dk-warning-soft: rgba(251, 191, 36, 0.14);
+  --dk-danger: #f87171;
+  --dk-danger-strong: #ef6b6b;
+  --dk-danger-soft: rgba(248, 113, 113, 0.14);
+  --dk-info-soft: rgba(56, 189, 248, 0.14);
+
+  /* 新增（v3） */
+  --dk-image-canvas: #17191e;   /* 图像衬底：中性灰，无蓝紫偏色 */
+  --dk-accent-2: #2dd4bf;       /* 数据点缀青，仅数据强调 */
+  --dk-glow: rgba(124, 107, 255, 0.2); /* 氛围光：登录页/官网限定 */
+
+  /* 字体与字号（Inter 优先，v3） */
+  --dk-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "HarmonyOS Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --dk-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --dk-text-xs: 12px; --dk-text-sm: 13px; --dk-text-md: 14px;
+  --dk-text-lg: 16px; --dk-text-xl: 20px; --dk-text-2xl: 28px;
+  --dk-leading-tight: 1.3; --dk-leading: 1.55;
+
+  /* 间距 / 圆角 / 投影（深色投影 = 细内描边 + 深投影） */
+  --dk-space-1: 4px; --dk-space-2: 8px; --dk-space-3: 12px; --dk-space-4: 16px;
+  --dk-space-5: 20px; --dk-space-6: 24px; --dk-space-7: 28px; --dk-space-8: 32px;
+  --dk-space-9: 36px; --dk-space-10: 40px; --dk-space-12: 48px;
+  --dk-radius-sm: 6px; --dk-radius-md: 8px; --dk-radius-lg: 12px; --dk-radius-pill: 999px;
+  --dk-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --dk-shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --dk-shadow-overlay: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* 外壳尺寸（沿用现值；toolrail 保留令牌但外壳维持上游侧栏——拍板增补） */
+  --dk-topbar-h: 54px; --dk-toolrail-w: 68px; --dk-config-w: 400px;
+  --dk-control-h: 40px; --dk-primary-h: 44px; --dk-bottom-nav-h: 64px;
+  --dk-content-max: 1440px;
+  --dk-z-sticky: 20; --dk-z-nav: 30; --dk-z-overlay: 100; --dk-z-toast: 120; --dk-z-lightbox: 140;
+  --dk-motion-fast: 120ms; --dk-motion-normal: 180ms;
+  --dk-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── 基础 ─────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--dk-canvas);
+  color: var(--dk-text);
+  font-family: var(--dk-font-sans);
+  font-size: var(--dk-text-md);
+  line-height: var(--dk-leading);
+  letter-spacing: 0.01em; /* 中文字距克制，≤0.04em */
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(124, 107, 255, 0.35); }
+a { color: var(--dk-accent); text-decoration: none; }
+a:hover { color: var(--dk-accent-strong); }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--dk-focus); border-radius: var(--dk-radius-sm); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #273049; border-radius: 999px; border: 2px solid var(--dk-canvas); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 排版助手（与 designkit-ui.css 同名） */
+.dk-page-title { font-size: var(--dk-text-2xl); font-weight: 700; line-height: var(--dk-leading-tight); margin: 0; }
+.dk-page-desc { color: var(--dk-text-secondary); margin: 6px 0 0; }
+.dk-eyebrow { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); text-transform: uppercase; }
+.dk-panel-title { font-size: var(--dk-text-lg); font-weight: 600; margin: 0; }
+.dk-panel-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin: 2px 0 0; }
+.dk-label { display: block; font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text-secondary); margin-bottom: 6px; }
+.dk-note { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); margin: 0; }
+.dk-note--quiet { color: var(--dk-text-tertiary); }
+.dk-note--warning { color: var(--dk-warning); }
+.dk-note--danger { color: var(--dk-danger); }
+.dk-note--success { color: var(--dk-success); }
+.dk-muted { color: var(--dk-text-tertiary); }
+.dk-mono-note { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+/* 金额与数量：等宽数字、600、主文字色——关键信息绝不弱化 */
+.dk-money { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dk-text); }
+.dk-money--accent { color: var(--dk-accent-2); } /* 数据强调限定 */
+.dk-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── 面板 ─────────────────────────────────────────────────────── */
+.dk-panel {
+  background: var(--dk-surface);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-5);
+  box-shadow: var(--dk-shadow-1);
+}
+.dk-panel--subtle { background: var(--dk-surface-subtle); box-shadow: none; }
+.dk-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dk-space-3); margin-bottom: var(--dk-space-4); }
+
+/* ── 按钮（主/次/危险/安静/小号 + 花钱变体） ───────────────────── */
+.dk-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--dk-control-h); padding: 0 16px;
+  border-radius: var(--dk-radius-md); border: 1px solid transparent;
+  background: var(--dk-surface-raised); color: var(--dk-text);
+  font: 600 var(--dk-text-md)/1 var(--dk-font-sans); cursor: pointer;
+  transition: background var(--dk-motion-fast) var(--dk-ease-out),
+              border-color var(--dk-motion-fast) var(--dk-ease-out),
+              transform var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-button:hover { background: #232c44; }
+.dk-button:active { transform: translateY(1px); }
+.dk-button:disabled { color: var(--dk-text-disabled); background: var(--dk-surface-subtle); cursor: not-allowed; transform: none; }
+.dk-button--primary-action { background: var(--dk-action); color: #fff; height: var(--dk-primary-h); }
+.dk-button--primary-action:hover { background: var(--dk-action-hover); }
+.dk-button--primary-action:active { background: var(--dk-action-pressed); }
+.dk-button--primary-action:disabled { background: #3d3a66; color: rgba(255,255,255,.45); }
+.dk-button--secondary { background: transparent; border-color: var(--dk-border-strong); }
+.dk-button--secondary:hover { background: var(--dk-surface-hover); border-color: var(--dk-action); }
+.dk-button--danger { background: transparent; border-color: var(--dk-danger); color: var(--dk-danger); }
+.dk-button--danger:hover { background: var(--dk-danger-soft); }
+.dk-button--danger.is-solid { background: var(--dk-danger); color: #1a0b0b; border-color: transparent; }
+.dk-button--quiet { background: transparent; color: var(--dk-accent); padding: 0 8px; height: auto; }
+.dk-button--quiet:hover { background: transparent; color: var(--dk-accent-strong); text-decoration: underline; }
+.dk-button--sm { height: 32px; padding: 0 12px; font-size: var(--dk-text-sm); }
+.dk-button--block { width: 100%; }
+/* 花钱按钮：价格小字缀在文案后（「让 AI 推荐 · $0.09~$0.34」） */
+.dk-button__price { font-weight: 500; font-size: var(--dk-text-xs); opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+/* ── 表单 ─────────────────────────────────────────────────────── */
+.dk-input, .dk-textarea, .dk-select {
+  width: 100%; background: var(--dk-surface-subtle);
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  color: var(--dk-text); font: 400 var(--dk-text-md)/var(--dk-leading) var(--dk-font-sans);
+  padding: 9px 12px; transition: border-color var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-input { height: var(--dk-control-h); }
+.dk-input::placeholder, .dk-textarea::placeholder { color: var(--dk-text-tertiary); }
+.dk-input:hover, .dk-textarea:hover, .dk-select:hover { border-color: var(--dk-border-strong); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { outline: none; border-color: var(--dk-action); box-shadow: 0 0 0 3px var(--dk-focus); }
+.dk-input.is-error, .dk-textarea.is-error { border-color: var(--dk-danger); }
+.dk-input:disabled, .dk-textarea:disabled, .dk-select:disabled { color: var(--dk-text-disabled); background: var(--dk-surface); }
+.dk-field-error { font-size: var(--dk-text-sm); color: var(--dk-danger); margin-top: 6px; }
+.dk-char-count { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); text-align: right; }
+.dk-char-count.is-over { color: var(--dk-danger); font-weight: 600; }
+.dk-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--dk-text-tertiary) 50%), linear-gradient(135deg, var(--dk-text-tertiary) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+/* 字段两级说明：hint 灰字；danger = 警告色 4px 左边线 + soft 底 */
+.dk-field-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin-top: 6px; }
+.dk-danger-note {
+  margin-top: 8px; padding: 8px 12px; font-size: var(--dk-text-sm);
+  color: var(--dk-warning); background: var(--dk-warning-soft);
+  border-left: 4px solid var(--dk-warning); border-radius: 0 var(--dk-radius-sm) var(--dk-radius-sm) 0;
+}
+
+/* chips（分类单选） */
+.dk-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border);
+  background: var(--dk-surface); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm); cursor: pointer;
+}
+.dk-chip:hover { border-color: var(--dk-border-strong); color: var(--dk-text); }
+.dk-chip.is-selected { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+
+/* 开关 / 复选 / 单选（后台场景） */
+.dk-switch { position: relative; width: 40px; height: 22px; border-radius: 999px; background: var(--dk-border-strong); border: none; cursor: pointer; transition: background var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #e7e9f2; transition: transform var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch.is-on { background: var(--dk-action); }
+.dk-switch.is-on::after { transform: translateX(18px); }
+.dk-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); cursor: pointer; }
+.dk-check__box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--dk-border-strong); background: var(--dk-surface-subtle); display: inline-grid; place-items: center; }
+.dk-check.is-checked .dk-check__box { background: var(--dk-action); border-color: var(--dk-action); }
+.dk-check.is-checked .dk-check__box::after { content: "✓"; color: #fff; font-size: 11px; font-weight: 700; }
+
+/* ── 上传区 ───────────────────────────────────────────────────── */
+.dk-dropzone {
+  display: grid; place-items: center; gap: 6px; text-align: center;
+  padding: var(--dk-space-8) var(--dk-space-5);
+  border: 1.5px dashed var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  background: var(--dk-surface-subtle); color: var(--dk-text-secondary); cursor: pointer;
+  transition: border-color var(--dk-motion-fast) var(--dk-ease-out), background var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-dropzone:hover { border-color: var(--dk-action); }
+.dk-dropzone.is-dragover { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.06); }
+.dk-dropzone__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-dropzone__meta { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* 缩略图（商品图/结果图共用视觉；衬底一律 --dk-image-canvas） */
+.dk-thumb { position: relative; border-radius: var(--dk-radius-md); overflow: hidden; border: 1px solid var(--dk-border); background: var(--dk-image-canvas); }
+.dk-thumb.is-white { background: #ffffff; }
+.dk-thumb__media { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.dk-thumb__tag {
+  position: absolute; top: 6px; left: 6px; padding: 2px 8px;
+  border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 600;
+  background: rgba(11, 15, 26, 0.78); color: var(--dk-text-secondary); backdrop-filter: blur(4px);
+}
+.dk-thumb__tag--ok { color: var(--dk-success); }
+.dk-thumb__tag--fail { color: var(--dk-danger); }
+.dk-thumb__overlay {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 8px;
+  background: rgba(4, 7, 14, 0.55); opacity: 0; transition: opacity var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-thumb:hover .dk-thumb__overlay { opacity: 1; }
+
+/* 比例选择块：按真实宽高比绘制 */
+.dk-size-options { display: flex; flex-wrap: wrap; gap: var(--dk-space-3); }
+.dk-size-option {
+  display: grid; gap: 6px; justify-items: center; padding: 10px 12px 8px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle); cursor: pointer; position: relative;
+}
+.dk-size-option:hover { border-color: var(--dk-border-strong); }
+.dk-size-option.is-selected { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.1); box-shadow: 0 0 0 1px var(--dk-action); }
+.dk-size-option__shape { background: var(--dk-border-strong); border-radius: 3px; height: 34px; }
+.dk-size-option.is-selected .dk-size-option__shape { background: var(--dk-action); }
+.dk-size-option__label { font-size: var(--dk-text-sm); font-weight: 600; }
+.dk-size-option__ratio { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+.dk-size-option__tier { position: absolute; top: 4px; right: 6px; font-size: 10px; color: var(--dk-text-tertiary); }
+
+/* ── 状态徽章 ─────────────────────────────────────────────────── */
+.dk-badge {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px;
+  border-radius: var(--dk-radius-pill); font-size: var(--dk-text-xs); font-weight: 600;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+}
+.dk-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.dk-badge--success { background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-badge--danger { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-badge--warning { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-badge--info { background: var(--dk-accent-soft); color: var(--dk-accent-strong); }
+.dk-badge--running .dk-badge__dot { animation: dk-pulse 1.2s ease-in-out infinite; }
+@keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* 进度条 */
+.dk-progress-track { height: 6px; border-radius: 999px; background: var(--dk-surface-raised); overflow: hidden; }
+.dk-progress-bar { height: 100%; border-radius: 999px; background: var(--dk-action); transition: width var(--dk-motion-normal) var(--dk-ease-out); }
+
+/* ── 提示与警报 ───────────────────────────────────────────────── */
+.dk-alert {
+  display: grid; gap: 4px; padding: 12px 14px;
+  border-radius: var(--dk-radius-md); border: 1px solid var(--dk-border);
+  background: var(--dk-surface-subtle); font-size: var(--dk-text-sm);
+}
+.dk-alert--danger { border-color: rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-alert--warning { border-color: rgba(251, 191, 36, 0.4); background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-alert--success { border-color: rgba(52, 211, 153, 0.4); background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-alert--info { border-color: rgba(94, 162, 255, 0.4); background: var(--dk-info-soft); color: var(--dk-accent-strong); }
+.dk-alert__sub { color: var(--dk-text-secondary); font-weight: 400; }
+
+/* toast（顶部居中，180ms 滑入） */
+.dk-toast {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-radius: var(--dk-radius-md); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); box-shadow: var(--dk-shadow-2);
+  font-size: var(--dk-text-sm); font-weight: 500;
+}
+.dk-toast--success { border-color: rgba(52, 211, 153, 0.5); }
+.dk-toast--error { border-color: rgba(248, 113, 113, 0.5); }
+
+/* ── 弹窗 ─────────────────────────────────────────────────────── */
+.dk-dialog-overlay { position: fixed; inset: 0; background: var(--dk-overlay); display: grid; place-items: center; z-index: var(--dk-z-overlay); }
+.dk-dialog {
+  width: min(92vw, 440px); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-6); box-shadow: var(--dk-shadow-overlay);
+}
+.dk-dialog__title { font-size: var(--dk-text-lg); font-weight: 700; margin: 0 0 10px; }
+.dk-dialog__body { color: var(--dk-text-secondary); font-size: var(--dk-text-md); }
+.dk-dialog--danger .dk-dialog__title { color: var(--dk-danger); }
+.dk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--dk-space-3); margin-top: var(--dk-space-6); }
+
+/* ── 数据卡（本月出图 / 花费 / 余额） ─────────────────────────── */
+.dk-usage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--dk-space-3); }
+.dk-usage-cell { background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); padding: 14px 18px; }
+.dk-usage-cell__label { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-usage-cell__value { font-size: var(--dk-text-xl); margin-top: 2px; }
+
+/* ── 空状态 ───────────────────────────────────────────────────── */
+.dk-empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: var(--dk-space-10) var(--dk-space-5); color: var(--dk-text-secondary); }
+.dk-empty__icon { opacity: 0.9; }
+.dk-empty__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-empty__description { max-width: 44ch; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* ── 骨架屏（微光 2s；减少动态效果时静态） ────────────────────── */
+.dk-skeleton { position: relative; overflow: hidden; background: var(--dk-surface-raised); border-radius: var(--dk-radius-md); }
+.dk-skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%);
+  animation: dk-shimmer 2s linear infinite;
+}
+@keyframes dk-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* ── 后台表单场景（S-UP 样板的规矩） ──────────────────────────── */
+/* 信息密度高一档：13px 主档、行高收紧 */
+.dk-admin { font-size: var(--dk-text-sm); }
+.dk-table { width: 100%; border-collapse: collapse; background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; }
+.dk-table th {
+  position: sticky; top: 0; z-index: 1; text-align: left;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs); font-weight: 600; padding: 10px 14px;
+  border-bottom: 1px solid var(--dk-border-strong);
+}
+.dk-table td { padding: 10px 14px; border-bottom: 1px solid var(--dk-border); font-size: var(--dk-text-sm); }
+.dk-table tbody tr:nth-child(even) { background: var(--dk-surface-subtle); } /* 斑马纹 = 次级底 */
+.dk-table tbody tr:hover { background: var(--dk-surface-hover); }
+.dk-pager { display: flex; align-items: center; gap: 6px; }
+.dk-pager__btn { min-width: 30px; height: 30px; border-radius: var(--dk-radius-sm); border: 1px solid var(--dk-border); background: transparent; color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-pager__btn.is-current { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--dk-border); }
+.dk-tab { padding: 10px 16px; border: none; background: none; color: var(--dk-text-secondary); font: 600 var(--dk-text-md) var(--dk-font-sans); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dk-tab.is-active { color: var(--dk-text); border-bottom-color: var(--dk-action); }
+.dk-crumbs { display: flex; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-crumbs a { color: var(--dk-text-tertiary); }
+.dk-crumbs .is-current { color: var(--dk-text-secondary); }
+.dk-sidenav { width: 220px; padding: var(--dk-space-3); display: grid; gap: 2px; align-content: start; }
+.dk-sidenav__group { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-weight: 600; padding: 12px 10px 4px; letter-spacing: 0.04em; }
+.dk-sidenav__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--dk-radius-md); color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-sidenav__item:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-sidenav__item.is-active { background: var(--dk-accent-soft); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-savebar {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--dk-space-4);
+  padding: 14px var(--dk-space-5); background: rgba(19, 26, 43, 0.92); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--dk-border-strong); z-index: var(--dk-z-sticky);
+}
+.dk-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-sm); font-size: 11px; font-weight: 600; background: var(--dk-surface-raised); color: var(--dk-text-secondary); }
+
+/* 四级配置标记徽章（帮助中心/配置手册用）*/
+.dk-mark { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 700; }
+.dk-mark--must { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-mark--suggest { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-mark--skip { background: var(--dk-surface-raised); color: var(--dk-text-tertiary); }
+.dk-mark--forbid { background: rgba(248, 113, 113, 0.24); color: #ffb4b4; }
+
+/* 报错块（运营看得懂的报错） */
+.dk-errorblock { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--dk-radius-md); border: 1px solid rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); }
+.dk-errorblock__msg { color: var(--dk-danger); font-weight: 600; }
+.dk-errorblock__meta { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-errorblock__how { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+
+/* 氛围光（登录页/官网限定；正文区禁用） */
+.dk-glow-spot { position: absolute; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, var(--dk-glow), transparent 70%); pointer-events: none; }
+
+/* ── 减少动态效果 ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   以下为「帮助中心」页面自有样式（dk-x- 前缀）
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 视觉隐藏的标签页切换 radio（checkbox hack，静态可用） */
+.dk-x-tabswitch { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ── 站点导航（与首页同款） ── */
+.dk-x-nav { position: sticky; top: 0; z-index: var(--dk-z-nav); background: var(--dk-canvas); border-bottom: 1px solid var(--dk-border); }
+.dk-x-nav__inner { max-width: 1200px; margin: 0 auto; height: 64px; padding: 0 var(--dk-space-6); display: flex; align-items: center; gap: var(--dk-space-8); }
+.dk-x-logo { display: inline-flex; align-items: center; gap: 10px; color: var(--dk-text); }
+.dk-x-logo:hover { color: var(--dk-text); }
+.dk-x-logo svg { width: 26px; height: 26px; display: block; }
+.dk-x-logo__word { font-size: 17px; letter-spacing: 0.01em; font-weight: 400; }
+.dk-x-logo__word b { font-weight: 700; color: var(--dk-action); }
+.dk-x-nav__links { display: flex; align-items: center; gap: var(--dk-space-6); margin-left: auto; }
+.dk-x-nav__link { color: var(--dk-text-secondary); font-size: var(--dk-text-md); }
+.dk-x-nav__link:hover { color: var(--dk-text); }
+.dk-x-nav__link.is-current { color: var(--dk-accent-strong); font-weight: 600; }
+
+/* ── 页头与大标签页 ── */
+.dk-x-hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--dk-border); background: var(--dk-surface-subtle); }
+.dk-x-hero .dk-glow-spot { top: -320px; left: 50%; transform: translateX(-50%); }
+.dk-x-hero__inner { position: relative; max-width: 1200px; margin: 0 auto; padding: var(--dk-space-12) var(--dk-space-6) 0; }
+.dk-x-hero__title { font-size: 34px; font-weight: 700; line-height: var(--dk-leading-tight); margin: 0; }
+.dk-x-hero__desc { color: var(--dk-text-secondary); font-size: var(--dk-text-lg); margin: 10px 0 0; max-width: 62ch; }
+.dk-x-tabbar { display: flex; gap: var(--dk-space-3); margin-top: var(--dk-space-8); }
+.dk-x-tab {
+  display: grid; gap: 2px; padding: 14px 22px 16px; min-width: 260px; cursor: pointer;
+  border: 1px solid var(--dk-border); border-bottom: none;
+  border-radius: var(--dk-radius-lg) var(--dk-radius-lg) 0 0;
+  background: var(--dk-surface); color: var(--dk-text-secondary);
+  transition: background var(--dk-motion-fast) var(--dk-ease-out), color var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-x-tab:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-x-tab__role { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); }
+.dk-x-tab__name { font-size: var(--dk-text-lg); font-weight: 700; color: inherit; }
+.dk-x-tab__desc { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+#dkx-tab-ops:checked ~ .dk-x-page .dk-x-tab[for="dkx-tab-ops"],
+#dkx-tab-admin:checked ~ .dk-x-page .dk-x-tab[for="dkx-tab-admin"] {
+  background: var(--dk-accent-soft); border-color: var(--dk-accent);
+  box-shadow: inset 0 3px 0 var(--dk-accent);
+}
+#dkx-tab-ops:checked ~ .dk-x-page .dk-x-tab[for="dkx-tab-ops"] .dk-x-tab__name,
+#dkx-tab-admin:checked ~ .dk-x-page .dk-x-tab[for="dkx-tab-admin"] .dk-x-tab__name { color: var(--dk-accent-strong); }
+#dkx-tab-ops:focus-visible ~ .dk-x-page .dk-x-tab[for="dkx-tab-ops"],
+#dkx-tab-admin:focus-visible ~ .dk-x-page .dk-x-tab[for="dkx-tab-admin"] { box-shadow: 0 0 0 3px var(--dk-focus); }
+
+/* ── 双栏文档布局：240px 粘性目录 + 720px 正文 ── */
+.dk-x-doc { display: none; max-width: 1200px; margin: 0 auto; padding: var(--dk-space-10) var(--dk-space-6) var(--dk-space-12); grid-template-columns: 240px 720px; gap: var(--dk-space-12); justify-content: center; }
+#dkx-tab-ops:checked ~ .dk-x-page .dk-x-doc--ops { display: grid; }
+#dkx-tab-admin:checked ~ .dk-x-page .dk-x-doc--admin { display: grid; }
+
+.dk-x-toc { position: sticky; top: 88px; align-self: start; max-height: calc(100vh - 112px); overflow: auto; padding-right: 4px; }
+.dk-x-toc__title { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); text-transform: uppercase; margin: 0 0 8px; padding: 0 10px; }
+.dk-x-toc__group { font-size: var(--dk-text-xs); font-weight: 600; color: var(--dk-text-tertiary); letter-spacing: 0.04em; padding: 14px 10px 4px; }
+.dk-x-toc a { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--dk-radius-md); color: var(--dk-text-secondary); font-size: var(--dk-text-sm); }
+.dk-x-toc a:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-x-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--dk-border-strong); }
+.dk-x-dot--must { background: var(--dk-danger); }
+.dk-x-dot--suggest { background: var(--dk-warning); }
+.dk-x-dot--skip { background: var(--dk-text-tertiary); }
+.dk-x-dot--forbid { background: var(--dk-danger); box-shadow: 0 0 0 2px var(--dk-danger-soft); }
+
+/* ── 正文排版 ── */
+.dk-x-article { min-width: 0; }
+.dk-x-article [id] { scroll-margin-top: 88px; }
+.dk-x-updated { display: inline-flex; align-items: center; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin: 6px 0 0; }
+.dk-x-article h2 { font-size: var(--dk-text-xl); font-weight: 700; line-height: var(--dk-leading-tight); margin: var(--dk-space-10) 0 var(--dk-space-3); padding-top: var(--dk-space-6); border-top: 1px solid var(--dk-border); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dk-x-article h2:first-of-type { border-top: none; padding-top: 0; margin-top: var(--dk-space-8); }
+.dk-x-article h3 { font-size: var(--dk-text-lg); font-weight: 600; margin: var(--dk-space-6) 0 var(--dk-space-2); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dk-x-article h4 { font-size: var(--dk-text-md); font-weight: 600; margin: var(--dk-space-5) 0 var(--dk-space-2); }
+.dk-x-article p { color: var(--dk-text-secondary); margin: 0 0 var(--dk-space-3); }
+.dk-x-article p strong, .dk-x-article li strong, .dk-x-article td strong { color: var(--dk-text); }
+.dk-x-article ul { margin: 0 0 var(--dk-space-3); padding-left: 20px; color: var(--dk-text-secondary); }
+.dk-x-article li { margin: 4px 0; }
+.dk-x-lead { font-size: var(--dk-text-lg); color: var(--dk-text); }
+
+/* 行内代码（金额与按钮名） */
+.dk-x-code { font-family: var(--dk-font-mono); font-size: 0.92em; padding: 1px 7px; border-radius: var(--dk-radius-sm); background: var(--dk-surface-raised); border: 1px solid var(--dk-border); color: var(--dk-text); white-space: nowrap; }
+
+/* 引用示例（商品特点那句） */
+.dk-x-quote { margin: var(--dk-space-3) 0; padding: 10px 14px; border-left: 3px solid var(--dk-accent); background: var(--dk-surface-subtle); border-radius: 0 var(--dk-radius-md) var(--dk-radius-md) 0; color: var(--dk-text-secondary); font-size: var(--dk-text-sm); }
+
+/* 编号步骤块：大编号 */
+.dk-x-step { display: grid; grid-template-columns: 56px 1fr; gap: var(--dk-space-5); margin: var(--dk-space-6) 0; }
+.dk-x-step__num { width: 56px; height: 56px; border-radius: var(--dk-radius-lg); border: 1px solid var(--dk-border-strong); background: var(--dk-surface-raised); display: grid; place-items: center; font-size: 24px; font-weight: 700; color: var(--dk-action); font-variant-numeric: tabular-nums; box-shadow: var(--dk-shadow-1); }
+.dk-x-step__num--sub { font-size: var(--dk-text-lg); }
+.dk-x-step__body { min-width: 0; }
+.dk-x-step__body > h3:first-child, .dk-x-step__body > h2:first-child { margin-top: 8px; border-top: none; padding-top: 0; }
+
+/* 内层小编号列表（AI 推荐的 4 个小步） */
+.dk-x-ol { list-style: none; margin: 0 0 var(--dk-space-3); padding: 0; counter-reset: dkxol; }
+.dk-x-ol > li { counter-increment: dkxol; position: relative; padding-left: 38px; margin: 0 0 var(--dk-space-3); color: var(--dk-text-secondary); }
+.dk-x-ol > li::before { content: counter(dkxol); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%; background: var(--dk-accent-soft); color: var(--dk-accent-strong); font-size: var(--dk-text-sm); font-weight: 700; display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+
+/* 警示块加标题变体（在 .dk-danger-note 之上） */
+.dk-x-warnblock { margin: var(--dk-space-3) 0; padding: 12px 16px; font-size: var(--dk-text-sm); background: var(--dk-warning-soft); border-left: 4px solid var(--dk-warning); border-radius: 0 var(--dk-radius-md) var(--dk-radius-md) 0; color: var(--dk-text-secondary); }
+.dk-x-warnblock__title { color: var(--dk-warning); font-weight: 700; margin: 0 0 4px; font-size: var(--dk-text-md); }
+.dk-x-forbidblock { margin: var(--dk-space-3) 0; padding: 12px 16px; font-size: var(--dk-text-sm); background: var(--dk-danger-soft); border-left: 4px solid var(--dk-danger); border-radius: 0 var(--dk-radius-md) var(--dk-radius-md) 0; color: var(--dk-text-secondary); }
+.dk-x-forbidblock__title { color: var(--dk-danger); font-weight: 700; margin: 0 0 4px; font-size: var(--dk-text-md); }
+
+/* 「怎么确认做对了」核对块 */
+.dk-x-verify { margin: var(--dk-space-3) 0; padding: 10px 14px; font-size: var(--dk-text-sm); background: var(--dk-success-soft); border-left: 4px solid var(--dk-success); border-radius: 0 var(--dk-radius-md) var(--dk-radius-md) 0; color: var(--dk-text-secondary); }
+.dk-x-verify strong { color: var(--dk-success); }
+
+/* 表格容器：横向滚动 + 表头不吸顶（文档流内） */
+.dk-x-table-wrap { margin: var(--dk-space-3) 0 var(--dk-space-4); overflow-x: auto; border-radius: var(--dk-radius-lg); box-shadow: var(--dk-shadow-1); }
+.dk-x-table-wrap .dk-table th { position: static; }
+.dk-x-table-wrap .dk-table td { color: var(--dk-text-secondary); vertical-align: top; }
+
+/* 普通提示块沿用 .dk-alert；补一个带间距的容器节奏 */
+.dk-x-article .dk-alert { margin: var(--dk-space-3) 0 var(--dk-space-4); }
+.dk-x-article .dk-danger-note { margin: var(--dk-space-3) 0 var(--dk-space-4); }
+
+/* ── 页脚（与首页同款） ── */
+.dk-x-footer { border-top: 1px solid var(--dk-border); background: var(--dk-surface-subtle); }
+.dk-x-footer__inner { max-width: 1200px; margin: 0 auto; padding: var(--dk-space-10) var(--dk-space-6); display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dk-space-8); flex-wrap: wrap; }
+.dk-x-footer__brand { display: grid; gap: 10px; max-width: 40ch; }
+.dk-x-footer__desc { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin: 0; }
+.dk-x-footer__links { display: flex; gap: var(--dk-space-8); }
+.dk-x-footer__col { display: grid; gap: 8px; align-content: start; }
+.dk-x-footer__colname { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); text-transform: uppercase; }
+.dk-x-footer__col a { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+.dk-x-footer__col a:hover { color: var(--dk-text); }
+.dk-x-footer__legal { max-width: 1200px; margin: 0 auto; padding: 0 var(--dk-space-6) var(--dk-space-8); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+
+/* ── 窄屏 ── */
+@media (max-width: 960px) {
+  .dk-x-doc { grid-template-columns: 1fr; gap: var(--dk-space-6); }
+  .dk-x-toc { position: static; max-height: none; border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); background: var(--dk-surface); padding: var(--dk-space-3); }
+  .dk-x-tab { min-width: 0; flex: 1; padding: 12px 14px; }
+  .dk-x-nav__links { gap: var(--dk-space-4); }
+  .dk-x-nav__link--anchor { display: none; }
+  .dk-x-step { grid-template-columns: 40px 1fr; gap: var(--dk-space-3); }
+  .dk-x-step__num { width: 40px; height: 40px; font-size: var(--dk-text-lg); }
+}
+</style>
+</head>
+<body>
+
+<input class="dk-x-tabswitch" type="radio" name="dkx-doc" id="dkx-tab-ops" checked>
+<input class="dk-x-tabswitch" type="radio" name="dkx-doc" id="dkx-tab-admin">
+
+<div class="dk-x-page">
+
+  <!-- ═══ 站点导航（同首页） ═══ -->
+  <nav class="dk-x-nav">
+    <div class="dk-x-nav__inner">
+      <a class="dk-x-logo" href="#">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+          <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+          <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+          <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/>
+          <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+          <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+        </svg>
+        <span class="dk-x-logo__word">Design<b>Kit</b></span>
+      </a>
+      <div class="dk-x-nav__links">
+        <a class="dk-x-nav__link dk-x-nav__link--anchor" href="#">功能</a>
+        <a class="dk-x-nav__link dk-x-nav__link--anchor" href="#">流程</a>
+        <a class="dk-x-nav__link dk-x-nav__link--anchor" href="#">部署</a>
+        <a class="dk-x-nav__link dk-x-nav__link--anchor" href="#">常见问题</a>
+        <a class="dk-x-nav__link is-current" href="#">帮助</a>
+        <a class="dk-button dk-button--primary-action" style="height: 40px;" href="#">申请试用</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══ 页头 + 双手册大标签页 ═══ -->
+  <header class="dk-x-hero">
+    <span class="dk-glow-spot" aria-hidden="true"></span>
+    <div class="dk-x-hero__inner">
+      <p class="dk-eyebrow">帮助中心</p>
+      <h1 class="dk-x-hero__title">两本手册，把这套系统说明白</h1>
+      <p class="dk-x-hero__desc">运营每天照着《开始使用》出图；管理员照着《配置手册》从零配到能稳定出图。写法跟系统本身一样直白：说清楚做什么、为什么，报错告诉你该怎么办。</p>
+      <div class="dk-x-tabbar" role="tablist">
+        <label class="dk-x-tab" for="dkx-tab-ops" role="tab">
+          <span class="dk-x-tab__role">运营</span>
+          <span class="dk-x-tab__name">开始使用</span>
+          <span class="dk-x-tab__desc">每天用这套系统出图的人看这本</span>
+        </label>
+        <label class="dk-x-tab" for="dkx-tab-admin" role="tab">
+          <span class="dk-x-tab__role">管理员</span>
+          <span class="dk-x-tab__name">配置手册</span>
+          <span class="dk-x-tab__desc">从零配置一套新系统的人看这本</span>
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+  <!-- ════════════════════════════════════════════════════════════
+       手册一：运营 · 开始使用
+       ════════════════════════════════════════════════════════════ -->
+  <section class="dk-x-doc dk-x-doc--ops" role="tabpanel">
+
+    <aside class="dk-x-toc" aria-label="开始使用 目录">
+      <p class="dk-x-toc__title">本页目录</p>
+      <a href="#ops-1"><span class="dk-x-dot"></span>一、先确认系统在跑</a>
+      <a href="#ops-2"><span class="dk-x-dot"></span>二、出一张图：三步</a>
+      <a href="#ops-3"><span class="dk-x-dot"></span>三、关于钱</a>
+      <a href="#ops-3b"><span class="dk-x-dot"></span>三·五、用出好的图接着做下一轮</a>
+      <a href="#ops-4"><span class="dk-x-dot"></span>四、几个按钮的准确含义</a>
+      <a href="#ops-5"><span class="dk-x-dot"></span>五、出问题了怎么办</a>
+      <a href="#ops-6"><span class="dk-x-dot"></span>六、已知的限制</a>
+      <a href="#ops-7"><span class="dk-x-dot"></span>七、日常操作</a>
+    </aside>
+
+    <article class="dk-x-article">
+      <h1 class="dk-page-title">开始使用</h1>
+      <p class="dk-x-updated">最后更新：2026-08-15</p>
+      <div class="dk-alert dk-alert--info" style="margin-top: 16px;">
+        这份手册面向<strong>每天用这套系统出图的人</strong>。要从零配置一套新系统，切到上面的「管理员 · 配置手册」标签。
+      </div>
+
+      <h2 id="ops-1">一、先确认系统在跑</h2>
+      <p>浏览器<strong>打开管理员给你的地址</strong>。看到登录页就说明系统活着，用管理员给你的账号登录。</p>
+      <p>登录之后左边菜单只有四项：<strong>生成工作台 / 灵感库 / 我的图片 / 个人资料</strong>。别的面向程序员的菜单对你是隐藏的，不用管。</p>
+
+      <h2 id="ops-2">二、出一张图：三步</h2>
+
+      <div class="dk-x-step">
+        <div class="dk-x-step__num">1</div>
+        <div class="dk-x-step__body">
+          <h3>第一步 · 选商品图</h3>
+          <p>点上传，或者直接拖进去。</p>
+          <ul>
+            <li>支持 JPG、PNG、WEBP、<strong>HEIC</strong>（苹果手机默认格式，不用先转）</li>
+            <li>单张不超过 <strong>20MB</strong>，可以一次选多张</li>
+            <li>手机拍的、微信发的都行</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="dk-x-step">
+        <div class="dk-x-step__num">2</div>
+        <div class="dk-x-step__body">
+          <h3>第二步 · 让 AI 配提示词</h3>
+          <p><strong>你不需要会写提示词。</strong>这一步是这样的：</p>
+          <ol class="dk-x-ol">
+            <li><strong>选一个大致分类</strong>——电商主图、社交媒体帖子、海报与传单……不确定就选「<strong>全部分类（AI 看图判断）</strong>」，它会看着你的图判该按哪一类。</li>
+            <li><strong>写一句商品特点</strong>——注意这里填的<strong>不是提示词</strong>，是关于商品的<strong>事实</strong>：
+              <div class="dk-x-quote">米白色针织开衫，秋冬新品，主打柔软亲肤，想要日系温柔的感觉</div>
+              材质、颜色、卖点、想要什么感觉，写这些就行。不填也能推荐，填了更贴。</li>
+            <li><strong>点 <span class="dk-x-code">让 AI 推荐</span></strong>——它会看你上传的商品图（最多看 3 张），从灵感库里挑 5 条参考，合成<strong>一条</strong>提示词。
+              <div class="dk-danger-note">要等 1~2 分钟（分类越大越久），这期间别关页面。这一步只是想提示词，<strong>不出图、也不扣出图的钱</strong>。</div></li>
+            <li><strong>结果可以直接改</strong>——那个框里的字就是最终要用的。觉得哪里不对直接改。下面折叠的「AI 参考的 5 条」可以点开看它凭什么这么推荐。<strong>这 5 条不会各出一张图</strong>，真正出图用的只有上面那一条。</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="dk-x-step">
+        <div class="dk-x-step__num">3</div>
+        <div class="dk-x-step__body">
+          <h3>第三步 · 选出图比例</h3>
+          <p><span class="dk-x-code">1:1</span>（主图）、<span class="dk-x-code">3:4</span>（详情竖版）、<span class="dk-x-code">4:3</span>、<span class="dk-x-code">16:9</span>（banner）、<span class="dk-x-code">9:16</span>。</p>
+          <p>我们会给你的商品图<strong>补白边</strong>到目标比例，<strong>产品本身不会被裁掉</strong>。</p>
+        </div>
+      </div>
+
+      <p>然后看一眼「花费预估」，点提交。<strong>提交前会再确认一次</strong>，上面写着这一批几张、多少钱。</p>
+
+      <h2 id="ops-3">三、关于钱</h2>
+      <p class="dk-x-lead"><strong>一张图 = <span class="dk-x-code">$1</span>。</strong>界面上所有金额都是美元。</p>
+      <p>余额那个数字<strong>就是你还能出几张</strong>。比如余额 <span class="dk-money">80</span> = 还能出 80 张。</p>
+      <div class="dk-alert">
+        严格说会有一点零头：AI 配提示词那一步也要花钱（一次 <span class="dk-x-code">$0.09 ~ $0.34</span>，看分类多大）。所以你会看到 <span class="dk-money">98.97</span> 这种带小数的余额，而不是整数。相对出一张图 $1，这部分占 10%~33%。
+      </div>
+      <div class="dk-danger-note"><strong>反复点「重新推荐」是真的在花钱</strong>，虽然比出图便宜得多。</div>
+      <p><strong>余额不够时</strong>会直接拒绝提交，并告诉你还差多少。旁边有「<strong>申请额度</strong>」按钮，点了会给管理员留一条记录。</p>
+
+      <h2 id="ops-3b">三·五、用出好的图接着做下一轮</h2>
+      <p>每张出好的图下面有两个按钮：<strong>下载</strong> 和 <strong>用这张继续生成</strong>。</p>
+      <p>点「用这张继续生成」，那张图会变成一张<strong>新的商品图</strong>，出现在第一步的列表里（标着「上一轮出的图」）。接着换个提示词、换个比例，就能在这一版基础上再加工。</p>
+      <ul>
+        <li>在<strong>工作台</strong>点（刚出完图）→ 直接加进上面第一步</li>
+        <li>在<strong>我的图片</strong>点（翻旧图）→ 带着那张图跳回工作台</li>
+      </ul>
+      <div class="dk-alert dk-alert--info">
+        同一张图<strong>重复点不会多花钱、也不会存两份</strong>：系统按图片内容认，第二次点会提示「这张图已经在第一步里了」。
+        <span class="dk-alert__sub">它仍然会按你选的比例补白边。所以「继续生成」不是简单重复，是真的在上一版基础上迭代。</span>
+      </div>
+
+      <h2 id="ops-4">四、几个按钮的准确含义</h2>
+
+      <h3>「停止排队」</h3>
+      <div class="dk-x-warnblock">
+        <p class="dk-x-warnblock__title">停止排队 ≠ 不扣费</p>
+        <ul style="margin: 0; padding-left: 18px;">
+          <li>还没开始的那几张 → 不再生成，<strong>不扣费</strong></li>
+          <li><strong>正在生成的那几张 → 停不下来，会跑完，照常扣费</strong>，图会存进「我的图片」</li>
+        </ul>
+      </div>
+      <p><strong>不叫「取消」是有原因的</strong>：出图跟你的浏览器是脱钩的，点了停止或者关掉网页，那边照样在出、照样在扣。既然钱花了，我们就把图留下。</p>
+
+      <h3>「重试这一张」</h3>
+      <div class="dk-x-warnblock">
+        <p class="dk-x-warnblock__title">重试 = 重新出一张图 = 重新收一次钱</p>
+        技术上没法改。所以点了会二次确认并显示单价。每张最多重试 3 次。
+      </div>
+
+      <h3>关掉网页</h3>
+      <p><strong>任务照跑。</strong>回来打开「我的图片」就能看到结果。</p>
+
+      <h2 id="ops-5">五、出问题了怎么办</h2>
+
+      <h3>「余额不足」</h3>
+      <p>按提示找管理员，或者点「申请额度」。</p>
+
+      <h3>之前好好的，突然连续几张都失败</h3>
+      <p>多半是出图通道这个月的额度用完了。<strong>这套系统看不到还剩多少额度</strong>——那个数不在我们这，你自己判断不了。<strong>联系管理员确认。</strong></p>
+
+      <h3>「AI 推荐还没准备好，请联系管理员」</h3>
+      <p>推荐功能没起来。<strong>这期间去灵感库自己挑一条，一样能出图。</strong></p>
+
+      <h3>「这次没推荐出来」</h3>
+      <p>等几秒再点一次。一直不行就去灵感库自己挑。</p>
+
+      <h3>提示词里出现了 <span class="dk-x-code">{主体}</span> 这种花括号</h3>
+      <p>那是灵感库模板里没填的空。AI 合成的提示词不会有这个；如果你是从灵感库直接拿的，点开那条填一下再用。</p>
+
+      <div class="dk-alert dk-alert--info">
+        <strong>解决不了？</strong>联系你团队的管理员；管理员解决不了，通过『申请试用』页的联系方式找我们。
+      </div>
+
+      <h2 id="ops-6">六、已知的限制（先知道，免得以为是坏了）</h2>
+      <div class="dk-x-table-wrap">
+        <table class="dk-table">
+          <thead><tr><th style="width: 38%;">现象</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>推荐要等 1~2 分钟</td><td>后台要跟 AI 对话四轮（判分类 → 粗筛 → 细选 → 合成），分类越大越久</td></tr>
+            <tr><td>传了 5 张图，只出一条提示词</td><td>设计如此。AI 会看其中最多 3 张，写一条适合这一批的。每张商品图各出 1 张图</td></tr>
+            <tr><td>「本月出图 N 张」和「花费」对不上</td><td>两套口径，刻意不统一。出图超时、图被删、还在结算中，都会让张数是 0 而花费不是 0</td></tr>
+            <tr><td>灵感库的词大多是英文标题</td><td>15045 条里 15016 条标题是英文。但<strong>你不用管</strong>——AI 会读，合成出来的提示词是中文</td></tr>
+            <tr><td>系统只能开一套</td><td>这是部署上的约束，管理员那边知道；不是你操作出了问题</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="ops-7">七、日常操作</h2>
+      <ul>
+        <li><strong>看历史</strong>：左边菜单「我的图片」</li>
+        <li><strong>翻灵感库</strong>：左边菜单「灵感库」，11 个分类共 15045 条，每 12 小时自动更新一次</li>
+        <li><strong>看这个月花了多少</strong>：工作台顶部那张卡片</li>
+      </ul>
+    </article>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════
+       手册二：管理员 · 配置手册
+       ════════════════════════════════════════════════════════════ -->
+  <section class="dk-x-doc dk-x-doc--admin" role="tabpanel">
+
+    <aside class="dk-x-toc" aria-label="配置手册 目录">
+      <p class="dk-x-toc__title">本页目录</p>
+      <a href="#adm-intro"><span class="dk-x-dot"></span>怎么用这本手册</a>
+      <div class="dk-x-toc__group">第一部分 · 照着走一遍</div>
+      <a href="#adm-pre"><span class="dk-x-dot"></span>开始之前</a>
+      <a href="#adm-s1"><span class="dk-x-dot dk-x-dot--must"></span>第 1 步 开放注册</a>
+      <a href="#adm-s2"><span class="dk-x-dot dk-x-dot--suggest"></span>第 2 步 界面改成自家的</a>
+      <a href="#adm-s3"><span class="dk-x-dot dk-x-dot--must"></span>第 3 步 建一个分组</a>
+      <a href="#adm-s4"><span class="dk-x-dot dk-x-dot--must"></span>第 4 步 建账号</a>
+      <a href="#adm-s4b"><span class="dk-x-dot dk-x-dot--must"></span>第 4 步·b 账号别共用</a>
+      <a href="#adm-s5"><span class="dk-x-dot dk-x-dot--forbid"></span>第 5 步 不要建渠道</a>
+      <a href="#adm-s6"><span class="dk-x-dot dk-x-dot--must"></span>第 6 步 商品图设置</a>
+      <a href="#adm-s7"><span class="dk-x-dot dk-x-dot--must"></span>第 7 步 重启一次服务</a>
+      <a href="#adm-s8"><span class="dk-x-dot dk-x-dot--must"></span>第 8 步 开号 + 第一张图</a>
+      <a href="#adm-s9"><span class="dk-x-dot dk-x-dot--must"></span>第 9 步 余额 = 还能出几张</a>
+      <a href="#adm-s9b"><span class="dk-x-dot dk-x-dot--suggest"></span>第 9 步·b 推荐的花费</a>
+      <a href="#adm-s10"><span class="dk-x-dot dk-x-dot--must"></span>第 10 步 备份</a>
+      <a href="#adm-s11"><span class="dk-x-dot dk-x-dot--suggest"></span>第 11 步 出问题去哪看</a>
+      <a href="#adm-s12"><span class="dk-x-dot dk-x-dot--skip"></span>第 12 步 灵感库</a>
+      <div class="dk-x-toc__group">第二部分 · 逐菜单（节选）</div>
+      <a href="#adm-menu-admin"><span class="dk-x-dot"></span>管理员能看到的菜单</a>
+      <a href="#adm-menu-ops"><span class="dk-x-dot"></span>运营能看到的菜单</a>
+      <a href="#adm-menu-sys"><span class="dk-x-dot"></span>系统设置里的分区</a>
+      <div class="dk-x-toc__group">附</div>
+      <a href="#adm-public"><span class="dk-x-dot dk-x-dot--must"></span>放公网之前必须做的事</a>
+      <a href="#adm-pitfalls"><span class="dk-x-dot dk-x-dot--suggest"></span>附录 · 容易踩的坑</a>
+    </aside>
+
+    <article class="dk-x-article dk-admin">
+      <h1 class="dk-page-title">配置手册</h1>
+      <p class="dk-x-updated">最后更新：2026-08-15</p>
+
+      <h2 id="adm-intro" style="border-top: none; padding-top: 0; margin-top: 32px;">怎么用这本手册</h2>
+      <p><strong>给谁看</strong>：你（管理员）。照着从上往下做一遍，就能从零配到能稳定出图。</p>
+      <p><strong>怎么用</strong>：第一部分是「照着走」的主线，按顺序做，别跳。第二部分是每个菜单的说明，配的时候当字典查。</p>
+      <p><strong>标记的意思</strong>：</p>
+      <div class="dk-x-table-wrap">
+        <table class="dk-table">
+          <thead><tr><th style="width: 130px;">标记</th><th>意思</th></tr></thead>
+          <tbody>
+            <tr><td><span class="dk-mark dk-mark--must">必须</span></td><td>不做就出不了图，或者会悄悄花错钱</td></tr>
+            <tr><td><span class="dk-mark dk-mark--suggest">建议</span></td><td>不做也能跑，但迟早会后悔</td></tr>
+            <tr><td><span class="dk-mark dk-mark--skip">用不到</span></td><td>你这个阶段用不上。功能代码都在，只是关着，哪天要用再说</td></tr>
+            <tr><td><span class="dk-mark dk-mark--forbid">别碰</span></td><td>碰了会出事，而且不容易发现</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="adm-pre">第一部分 · 照着走一遍 — 开始之前</h2>
+      <p><strong>现在这套系统跑在你的服务器上。</strong>浏览器打开部署时给你的管理地址，用管理员账号登录。密码是系统首次启动时生成的那一个；忘了的话，随部署交付的命令清单里有「找回管理员密码」那条，在你的服务器上敲一遍就能看到。</p>
+      <div class="dk-x-warnblock">
+        <p class="dk-x-warnblock__title">整套服务只能跑一个</p>
+        起第二个会把同一批图结算两遍，用户余额凭空少一截，而且不报错。
+      </div>
+
+      <div class="dk-x-step" id="adm-s1">
+        <div class="dk-x-step__num">1</div>
+        <div class="dk-x-step__body">
+          <h3>开放注册（并配好三道门槛）<span class="dk-mark dk-mark--must">必须</span></h3>
+          <p><strong>在哪</strong>：系统设置 → 「安全与认证」→ 注册设置</p>
+          <p>你要的是让人自己注册，不用你一个个开号。但<strong>注册一开，有三样东西必须同时配好</strong>，否则就是给人免费烧你的钱。</p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th>开关</th><th>设成</th><th>为什么</th></tr></thead>
+              <tbody>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>开放注册</strong></td><td><strong>打开</strong></td><td>这就是你要的</td></tr>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>启用邀请码</strong></td><td><strong>打开</strong></td><td>见 1.1</td></tr>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>注册邮箱后缀白名单</strong></td><td>填你们的邮箱域名，比如 <span class="dk-x-code">@yourcompany.com</span></td><td>见 1.2</td></tr>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>新用户默认余额</strong></td><td><strong>保持 0</strong></td><td>见 1.3</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>1.1 邀请码：谁能注册由你发码决定</h4>
+          <p>打开之后，<strong>没有邀请码就注册不了</strong>。你在「兑换码」菜单里生成码，发给要用的人。这样既省了你一个个开号，又不会有不相干的人进来。</p>
+
+          <h4>1.2 邮箱后缀白名单：现在填，将来放公网时要清空</h4>
+          <div class="dk-danger-note"><strong>这两道门槛是「都要满足」，不是「满足其一」。</strong>填了 <span class="dk-x-code">@yourcompany.com</span> 之后，用 QQ 邮箱、163 邮箱的人<strong>即使有邀请码也注册不了</strong>。</div>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th>阶段</th><th>邀请码</th><th>邮箱白名单</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr><td><strong>现在</strong>（内网试运行）</td><td>开</td><td>填公司域名</td><td>只有拿到码 + 用公司邮箱的人能注册</td></tr>
+                <tr><td><strong>以后放公网</strong></td><td>开</td><td><strong>必须清空</strong></td><td>有邀请码就能注册，外人也可以</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><strong>白名单留空 = 放行所有邮箱</strong>（不是「禁止所有」）。所以将来放公网时，把这一栏清空即可，邀请码继续当门槛。</p>
+
+          <h4>1.3 新用户默认余额保持 0（<strong>这条最重要</strong>）</h4>
+          <p><strong>在哪</strong>：系统设置 → 用户默认值 → <strong>默认余额</strong></p>
+          <p><strong>保持 0。</strong>意思是：<strong>人可以自己注册进来，但要出图得你给额度。</strong>花钱这件事始终在你控制下——就算有不相干的人拿到邀请码注册了，也烧不了你的钱。</p>
+          <div class="dk-alert">如果哪天你想让新人注册完能马上试两张，再把这里改成一个小数目（比如 <span class="dk-x-code">1</span>，大约几张图）。但要接受「每多一个注册的人就多花一点」。</div>
+
+          <h4>1.4 那个会绕过所有门槛的开关</h4>
+          <p>同一页往下有个「<strong>开放钉钉注册</strong>」。它开着的话，别人从钉钉登录<strong>直接就进来了</strong>，上面三道门槛全部绕过。默认是关的，<strong>确认一眼，保持关闭</strong>。</p>
+          <div class="dk-x-verify"><strong>怎么确认做对了：</strong>退出登录 → 打开注册页 → 应该要求填邀请码；随便填个不存在的码，应该被拒绝。</div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s2">
+        <div class="dk-x-step__num">2</div>
+        <div class="dk-x-step__body">
+          <h3>把界面改成自家的<span class="dk-mark dk-mark--suggest">建议</span></h3>
+          <p><strong>在哪</strong>：系统设置 → 「通用设置」→ 站点设置</p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th style="width: 160px;">填什么</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td><strong>站点名称</strong></td><td>改成 <span class="dk-x-code">DesignKit</span>。这个名字会出现在<strong>浏览器标签页</strong>和系统发出的邮件里</td></tr>
+                <tr><td>站点副标题</td><td>随便写，登录页会显示</td></tr>
+                <tr><td>站点 Logo</td><td>PNG/JPG/SVG，最大 300KB，建议 80×80</td></tr>
+                <tr><td>客服联系方式</td><td>出现在页面底部</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="dk-x-verify"><strong>怎么确认做对了：</strong>保存后刷新，浏览器标签页的标题变了。</div>
+          <div class="dk-x-forbidblock">
+            <p class="dk-x-forbidblock__title">这一页有个开关绝对不要开：「Backend 模式」<span class="dk-mark dk-mark--forbid" style="margin-left: 6px;">别碰</span></p>
+            一旦打开，<strong>所有非管理员账号立刻登不上</strong>——不是报错，是直接被拒绝登录。你的运营会全部被挡在门外，而且看不出为什么。
+          </div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s3">
+        <div class="dk-x-step__num">3</div>
+        <div class="dk-x-step__body">
+          <h3>建一个分组<span class="dk-mark dk-mark--must">必须</span></h3>
+          <p><strong>在哪</strong>：分组管理 → 创建分组</p>
+          <p><strong>必须排在建账号之前</strong>——建账号时要勾分组，分组不存在就没得勾。</p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th>填什么</th><th>填成什么</th><th>注意</th></tr></thead>
+              <tbody>
+                <tr><td>名称</td><td>随便，比如 <span class="dk-x-code">出图</span></td><td></td></tr>
+                <tr><td><strong>平台</strong></td><td><strong>改成 OpenAI</strong></td><td>默认是 Anthropic。<strong>保存后永久锁死改不了</strong>，选错只能删掉重建</td></tr>
+                <tr><td>费率倍数</td><td>保持 <span class="dk-x-code">1.0</span></td><td></td></tr>
+                <tr><td>专属分组</td><td><strong>关掉</strong></td><td>关 = 公开分组，所有人自动能用，省掉后面逐个授权</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><strong>同一个表单往下拉，找到「图片生成计费」区块：</strong></p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th>填什么</th><th>填成什么</th></tr></thead>
+              <tbody>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>允许当前分组生图</strong></td><td><strong>必须打开</strong>。OpenAI 平台默认是<strong>关</strong>的</td></tr>
+                <tr><td>1K / 2K / 4K 三档单价</td><td><strong>先留空</strong>，第 9 步再回来填</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="dk-danger-note"><strong>「允许生图」这个开关有个陷阱</strong>：在第 8 步给内部钥匙绑分组<strong>之前</strong>，这个开关不生效（没绑分组时系统一律放行）。所以<strong>第一次出图成功了不代表这项配对了</strong>。绑完分组之后它才开始把关，不开就每张都失败。</div>
+          <div class="dk-danger-note"><strong>三档单价留空不等于免费。</strong>留空的话系统会按它自己的默认价扣（约 <span class="dk-x-code">$0.134</span> / <span class="dk-x-code">$0.201</span> / <span class="dk-x-code">$0.268</span> 一张）。你的出图通道是包月的，那个数字对你毫无意义，还会让「余额」和「还能出几张」完全对不上。<strong>第 9 步必须回来把三格都填成 <span class="dk-x-code">1</span>。</strong></div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s4">
+        <div class="dk-x-step__num">4</div>
+        <div class="dk-x-step__body">
+          <h3>建账号（用 ChatGPT 账号登录）<span class="dk-mark dk-mark--must">必须</span></h3>
+          <p><strong>在哪</strong>：账号管理 → 添加账号</p>
+          <p>你用的是 <strong>ChatGPT Plus 账号登录</strong>（不是填 API 密钥那种）。</p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th>填什么</th><th>填成什么</th></tr></thead>
+              <tbody>
+                <tr><td>平台</td><td><strong>OpenAI</strong>（必须和第 3 步的分组一致）</td></tr>
+                <tr><td>账号类型</td><td><strong>OAuth / ChatGPT 账号登录</strong></td></tr>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>分组</strong></td><td><strong>必须勾上第 3 步建的那个</strong></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>然后按界面提示完成 ChatGPT 授权登录。</p>
+          <div class="dk-danger-note"><strong>Base URL 那一格不用填，填了也没用。</strong>只有「API 密钥类型」的账号才读它；ChatGPT 账号登录一律走 OpenAI 官方通道。</div>
+
+          <h4>4.1 下一页那一堆开关：只有 4 项要管</h4>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th style="width: 170px;">项</th><th>填什么</th></tr></thead>
+              <tbody>
+                <tr><td><strong>并发数</strong></td><td>保持 <span class="dk-x-code">10</span>。第 6 步「同时出几张」设成 4，还剩 6 个余量给你自己点单张</td></tr>
+                <tr><td>负载因子 / 优先级</td><td>保持默认。多个账号之间分流量用的，你只有一个</td></tr>
+                <tr><td><strong>账号计费倍率</strong></td><td>保持 <span class="dk-x-code">1</span>。别填 0——填 0 这个账号的消耗就不进统计，你看不出用了多少</td></tr>
+                <tr><td>过期时间</td><td><strong>留空</strong>（= 不过期）</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><strong>下面那一串开关全部保持关闭</strong>：自动透传、摊平 Codex namespace、WS mode、API 长上下文计费、Codex 指纹收敛——它们要么给写代码的工具用，要么给语音用，跟出图无关。</p>
+          <div class="dk-x-forbidblock">
+            <p class="dk-x-forbidblock__title">「仅允许 Codex 官方客户端」千万不要开<span class="dk-mark dk-mark--forbid" style="margin-left: 6px;">别碰</span></p>
+            开了之后只有 Codex 那类工具能用这个账号，<strong>我们的出图请求会被直接拒掉</strong>，而且报错只说「访问被拒绝」，你根本想不到是这个开关。
+          </div>
+          <div class="dk-x-verify"><strong>怎么确认做对了：</strong>保存后重新打开这个账号，分组那一格显示第 3 步建的分组名。</div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s4b">
+        <div class="dk-x-step__num dk-x-step__num--sub">4·b</div>
+        <div class="dk-x-step__body">
+          <h3>同一个 ChatGPT 账号只给这一套系统用<span class="dk-mark dk-mark--must">必须</span></h3>
+          <p>如果你还有别的工具或旧系统在用<strong>同一个 ChatGPT 账号</strong>出图：<strong>两套同时开着，会共用同一份出图额度</strong>——两边一起出图，额度消耗翻倍，而且互相看不见对方用了多少。等你发现出不了图时，很难想到是被另一套吃掉了。</p>
+          <p>这套系统跑通之后，把别的停掉。</p>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s5">
+        <div class="dk-x-step__num">5</div>
+        <div class="dk-x-step__body">
+          <h3>什么都不要做：不要建渠道<span class="dk-mark dk-mark--forbid">别碰</span></h3>
+          <p><strong>在哪</strong>：渠道管理 → 渠道定价</p>
+          <p><strong>保持一条都不建。</strong>这是最安全的做法。</p>
+          <p><strong>为什么</strong>：查不到渠道定价时，出图自动按「按张收费」走，用的就是第 3 步分组里那三档单价。</p>
+          <div class="dk-x-forbidblock">
+            <p class="dk-x-forbidblock__title">建了会怎样</p>
+            一旦建了渠道并加了一条包含 <span class="dk-x-code">gpt-image-2</span> 的定价，里面「<strong>计费模式</strong>」那一格会<strong>默认预选成 Token</strong>。出图就变成按文字计费，你按张配的单价完全不生效——<strong>费用可能算成 0，也可能算成文字的价钱，而且账面上看不出来</strong>。这一条不是「用不到」，是「<strong>别建</strong>」。
+          </div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s6">
+        <div class="dk-x-step__num">6</div>
+        <div class="dk-x-step__body">
+          <h3>配「商品图设置」<span class="dk-mark dk-mark--must">必须</span></h3>
+          <p><strong>在哪</strong>：左侧「管理」区最下面、紧挨「系统设置」<strong>上面一格</strong>，叫「<strong>商品图设置</strong>」。这一页管的是「出图这件事按什么规矩跑」。</p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th style="width: 190px;">项</th><th style="width: 120px;">默认</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>出图模型</strong></td><td><span class="dk-x-code">gpt-image-2</span></td><td><strong>原样复制</strong>，别改大小写、别加空格。<strong>填错不会有任何提示</strong>，只会每张都失败</td></tr>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>出图比例</strong></td><td>1:1 / 3:4 / 4:3 / 16:9 / 9:16</td><td>一行一个，写成「宽:高」，中间是<strong>英文冒号</strong>。这里的顺序就是运营看到的按钮顺序，第一个默认选中</td></tr>
+                <tr><td><span class="dk-mark dk-mark--suggest">建议</span> 图片最长边</td><td><span class="dk-x-code">2048</span></td><td><strong>2048 及以下算 2K 档，超过就是 4K 档，4K 明显更贵</strong>。下面那张预览表会跟着变，用它看档位跳变</td></tr>
+                <tr><td><span class="dk-mark dk-mark--suggest">建议</span> 同时出几张</td><td><span class="dk-x-code">4</span></td><td><strong>不要填超过 4</strong>。真正卡住的是每个用户的并发上限（默认 5）——出图队列跑的正是运营自己名下的请求，填 4 就只剩 1 个槽位给他手动操作。填满 5 的表现是「点什么都慢」但哪儿都不报错</td></tr>
+                <tr><td><span class="dk-mark dk-mark--suggest">建议</span> 单张出图超时</td><td><span class="dk-x-code">180</span> 秒</td><td>填太短会把本来能出的图判成失败，<strong>而钱可能已经花了</strong>。没把握别动</td></tr>
+                <tr><td><span class="dk-mark dk-mark--must">必须</span> <strong>管理员联系方式</strong></td><td>空</td><td><strong>必须填</strong>一个微信号或手机号</td></tr>
+                <tr><td>单次最多出几张</td><td><span class="dk-x-code">50</span></td><td>运营一次能提交多少张（图数 × 提示词数）</td></tr>
+                <tr><td>三档单价</td><td>空</td><td><strong>先留空</strong>，第 9 步再填</td></tr>
+                <tr><td>价格倍率</td><td>空</td><td>留空 = 按原价</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="dk-danger-note"><strong>管理员联系方式必须填。</strong>不填的话，运营余额不足时界面只会说「请联系管理员」，<strong>却说不出该找谁</strong>——而充值和兑换码菜单对运营是隐藏的，等于死路一条。</div>
+          <div class="dk-x-warnblock">
+            <p class="dk-x-warnblock__title">三档单价「留空」的真实后果，比想象严重</p>
+            留空<strong>不是</strong>「显示价格待确认」这么简单，而是：<strong>冻结额记 0 →「余额不够就拒绝提交」这道拦截整个失效</strong>，而健康检查仍然是绿的，你看不出来。按第 9 步，<strong>三档全填 <span class="dk-x-code">1</span></strong>。而且要填<strong>两处</strong>：这里管预估和冻结，分组那三格管真正扣钱，只填一处会对不上。
+          </div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s7">
+        <div class="dk-x-step__num">7</div>
+        <div class="dk-x-step__body">
+          <h3>重启一次服务<span class="dk-mark dk-mark--must">必须</span></h3>
+          <p>用随部署交付的重启命令，在你的服务器上把服务重启一次。</p>
+          <p><strong>为什么现在重启</strong>：第 6 步里的「同时出几张」「单张出图超时」「图片最长边」这三项，出图队列<strong>只在服务启动那一刻读一次</strong>。趁还没开始出图先重启，省得后面再停一次。</p>
+          <div class="dk-danger-note">特别是「<strong>图片最长边</strong>」：不重启会出现最难查的一种状态——工作台上显示的出图尺寸已经是新值，<strong>真正发给上游的还是旧值</strong>，两边对不上而且不报错。</div>
+          <div class="dk-x-verify"><strong>怎么确认做对了：</strong>浏览器打开 <span class="dk-x-code">你的系统地址/v1/designkit/health</span>，看到 <span class="dk-x-code">status</span>、<span class="dk-x-code">db</span>、<span class="dk-x-code">module_status</span> 三个都是 <span class="dk-x-code">ok</span>。</div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s8">
+        <div class="dk-x-step__num">8</div>
+        <div class="dk-x-step__body">
+          <h3>开运营账号 + 出第一张图<span class="dk-mark dk-mark--must">必须</span></h3>
+
+          <h4>8.1 让运营注册，然后你给额度</h4>
+          <p>因为第 1 步开了自助注册，<strong>你不用一个个建号了</strong>：</p>
+          <ol class="dk-x-ol">
+            <li>在「兑换码」菜单里生成一个邀请码，发给运营</li>
+            <li>运营自己打开系统地址注册</li>
+            <li><strong>你去「用户管理」找到他，在那一行的操作菜单里点「充值」给额度</strong>（单位美元）</li>
+          </ol>
+          <p><strong>没给额度的话，他注册了也出不了图</strong>——因为新用户默认余额是 0。这是故意的：花钱这件事始终在你手上。</p>
+          <div class="dk-alert">不要直接改余额那一格，要用「充值」按钮——界面上也是这么说的。也可以自己建号：用户管理 → 创建用户，填邮箱密码、角色选普通用户。急着测的时候比走注册流程快。</div>
+
+          <h4>8.2 让运营提交一次（<strong>这次一定会失败，是设计如此</strong>）</h4>
+          <p>用刚建的账号登录 → 生成工作台 → 传图 → 选比例 → 写提示词 → <strong>提交</strong>。</p>
+          <p>预期报错：「暂时没有可用的出图账号…」</p>
+          <p><strong>这一步的唯一作用</strong>是让系统自动建出一把内部专用钥匙（名字固定 <span class="dk-x-code">designkit-internal</span>）。这把钥匙<strong>只在提交那一刻创建</strong>，光打开页面不会创建。</p>
+
+          <h4>8.3 给那把钥匙绑分组（<strong>漏了这步就永远出不了图</strong>）<span class="dk-mark dk-mark--must">必须</span></h4>
+          <p><strong>在哪</strong>：管理员账号 → 用户管理 → 那个运营那一行 → 操作菜单 → <strong>API 密钥</strong> → 找到 <span class="dk-x-code">designkit-internal</span> → 改分组 → 选第 3 步建的分组</p>
+          <p><strong>为什么</strong>：系统挑账号时只看「钥匙的分组」和「账号的分组」是不是同一个。这把钥匙创建时<strong>不绑任何分组</strong>，而你的账号在第 4 步绑了分组，两边对不上，于是永远挑不到账号。</p>
+          <div class="dk-x-warnblock">
+            <p class="dk-x-warnblock__title">这是整条主线里最容易漏、漏了症状最难懂的一步</p>
+            账号明明建好了，却一直说「没有可用的出图账号」。
+          </div>
+          <div class="dk-x-verify"><strong>怎么确认做对了：</strong>改完界面会提示「分组修改成功，已自动为用户添加「X」分组权限」。</div>
+
+          <h4>8.4 再提交一次</h4>
+          <p>这次应该能出图了。<strong>一张图约 20 秒。</strong></p>
+          <div class="dk-danger-note"><strong>提醒运营：右上角头像菜单里的「API 密钥」那一页不要动。</strong>他能看到甚至删掉 <span class="dk-x-code">designkit-internal</span>。删掉之后下次提交会自动重建一把，但<strong>又是不绑分组的</strong>，直接回到出不了图的状态。</div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s9">
+        <div class="dk-x-step__num">9</div>
+        <div class="dk-x-step__body">
+          <h3>把余额当成「还能出几张」<span class="dk-mark dk-mark--must">必须</span></h3>
+
+          <h4>9.1 先理解一件事：你没有「每张多少钱」</h4>
+          <p>你的出图通道是 <strong>ChatGPT Plus</strong>，每月固定 <span class="dk-x-code">$20</span>，出多少张都是这个价。<strong>上游不会因为你多出一张图而多收你钱。</strong></p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th></th><th>按张付费（API 密钥）</th><th><strong>你的情况（Plus）</strong></th></tr></thead>
+              <tbody>
+                <tr><td>上游怎么收费</td><td>出一张扣一笔</td><td>每月 $20，包月</td></tr>
+                <tr><td>「真实单价」</td><td>存在，能量出来</td><td><strong>不存在</strong></td></tr>
+                <tr><td>真正的限制</td><td>余额花完</td><td><strong>出图次数上限</strong>，撞到就出不了</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>所以系统里那些金额<strong>不是真花出去的钱，是你给运营记的内部账</strong>。</p>
+
+          <h4>9.2 做法：一张图 = $1</h4>
+          <p><strong>三档全填 <span class="dk-x-code">1</span>。</strong>Plus 的额度按张算、跟图片大小无关，所以分档对你没意义。这样余额数字直接就是「还能出几张」。</p>
+          <div class="dk-x-warnblock">
+            <p class="dk-x-warnblock__title">要填两处，只填一处会对不上</p>
+            <div class="dk-x-table-wrap" style="margin-bottom: 8px;">
+              <table class="dk-table">
+                <thead><tr><th>填哪</th><th>在哪</th><th>管什么</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>商品图设置 → 出图单价</strong></td><td>左边菜单「商品图设置」</td><td><strong>预估和冻结</strong></td></tr>
+                  <tr><td><strong>分组 → 图片单价 1K/2K/4K</strong></td><td>分组管理 → 你那个分组</td><td><strong>真正扣钱</strong></td></tr>
+                </tbody>
+              </table>
+            </div>
+            只填第一处：预估显示 $1，实际只扣 $0.20（回落到系统默认价），余额掉得比账面慢。只填第二处（第一处留空）：<strong>更糟</strong>——冻结额记 0，「余额不够就拒绝提交」这道拦截<strong>整个失效</strong>，而健康检查仍然是绿的，你根本看不出来。两处都填 1 之后，出一张图余额正好掉 <span class="dk-x-code">1.00</span>（实测确认过）。
+          </div>
+          <p>另外记住：<strong>分档不是「图越大越贵」</strong>。系统按输出图的最长边分 1K/2K/4K，实测请求 1:1 返回 1254×1254 → 落 <strong>2K 档</strong>。三档都填 1 就不用管这个。</p>
+
+          <h4>9.3 给运营多少额度：按月额度的 80%</h4>
+          <p>Plus 每月给多少张出图额度，<strong>上游一直在调，别信任何一个写死的数字</strong>。两种办法测出来：</p>
+          <ul>
+            <li><strong>办法一（准，但要花点时间）</strong>：用你的 ChatGPT 账号在官网连续出图，直到它提示到达上限，数一下出了多少张。</li>
+            <li><strong>办法二（省事）</strong>：先按一个保守的数给（比如每人每月 30 张），用一个月看看有没有人撞到「上游拒绝」。没撞到就往上加。</li>
+          </ul>
+          <p><strong>然后</strong>：给运营的额度 = 你测出来的月额度 × 80%。留 20% 余量是因为：你自己也会用，而且撞到上限时出图会直接失败，留点空间比刚好卡满强。</p>
+          <p><strong>在哪给</strong>：用户管理 → 那个人那一行 → 操作菜单 → <strong>充值</strong>。</p>
+
+          <h4>9.4 到底撞没撞上限，在这套系统里看不出来</h4>
+          <p>Plus 的次数限制在<strong>上游那边</strong>，这套系统不知道你还剩多少张。撞上限的表现是：出图失败，错误信息里是上游返回的拒绝原因。看到运营连续几张都失败、而之前一直好好的，<strong>先怀疑是不是这个月的额度用完了</strong>。</p>
+          <div class="dk-x-verify"><strong>怎么确认做对了：</strong>运营在工作台选好图和比例后，角落显示的预估价不再是「价格待确认」，而且数字等于张数。</div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s9b">
+        <div class="dk-x-step__num dk-x-step__num--sub">9·b</div>
+        <div class="dk-x-step__body">
+          <h3>知道「AI 挑提示词」要花多少钱<span class="dk-mark dk-mark--suggest">建议</span></h3>
+          <p>工作台第二步是让 AI 配提示词，<strong>这一步也花钱</strong>（跟出图共用同一个 ChatGPT 账号）。</p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th>分类</th><th>条数</th><th>一次推荐</th><th>耗时</th></tr></thead>
+              <tbody>
+                <tr><td>社交媒体帖子</td><td class="dk-money">3978</td><td><strong class="dk-money">$0.335</strong></td><td>~110 秒</td></tr>
+                <tr><td>产品营销</td><td class="dk-money">3752</td><td class="dk-money">≈ $0.32</td><td>~110 秒</td></tr>
+                <tr><td>电商主图</td><td class="dk-money">428</td><td><strong class="dk-money">$0.093</strong></td><td>~30 秒</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>对比出一张图 $1，推荐占 <strong>10%~33%</strong>。要告诉运营的两句话：</p>
+          <ol class="dk-x-ol">
+            <li><strong>反复点「重新推荐」是真的在花钱。</strong>虽然比出图便宜得多，但不是免费的。</li>
+            <li><strong>余额不再是整数了。</strong>他会看到 <span class="dk-money">98.97</span> 而不是 <span class="dk-money">99</span>，那些小数就是推荐的花费。</li>
+          </ol>
+          <div class="dk-alert">这部分消耗<strong>不算进「本月出图 N 张」</strong>——那个数只统计真的出了图的。但<strong>算进「花费」</strong>。所以运营会看到「张数 0、花费不是 0」，这是正常的。如果觉得太贵，可以让运营<strong>先选具体分类</strong>（比如「电商主图」）而不是「全部分类」：分类越小粗筛越便宜，428 条那个分类只要 $0.09。</div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s10">
+        <div class="dk-x-step__num">10</div>
+        <div class="dk-x-step__body">
+          <h3>备份<span class="dk-mark dk-mark--must">必须</span></h3>
+          <p><strong>这是唯一能把数据捞回来的东西。</strong></p>
+          <p>备份要备<strong>两样</strong>：数据库备份<strong>不含图片</strong>，图片在另一个目录里，两样都要。具体的备份命令和恢复命令<strong>随部署交付</strong>，在你的服务器上敲一遍就行——交付前我们会陪你把「备份 → 恢复」完整演练一次，演练过才算配好。</p>
+          <div class="dk-x-warnblock">
+            <p class="dk-x-warnblock__title">恢复会覆盖现在的数据</p>
+            恢复之前先备份一次当前状态。
+          </div>
+          <p><strong>多久备一次</strong>：出图多的话每天一次。<strong>记得定期删旧的备份文件</strong>，别把服务器的硬盘撑爆。</p>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s11">
+        <div class="dk-x-step__num">11</div>
+        <div class="dk-x-step__body">
+          <h3>学会三个「出问题去哪看」<span class="dk-mark dk-mark--suggest">建议</span></h3>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th style="width: 190px;">看什么</th><th>去哪</th></tr></thead>
+              <tbody>
+                <tr><td><strong>整套系统好不好</strong></td><td>浏览器打开 <span class="dk-x-code">你的系统地址/v1/designkit/health</span>。全好是三个 <span class="dk-x-code">ok</span>；有问题会变成 <span class="dk-x-code">degraded</span> 并<strong>用中文列出缺什么</strong>，可以直接截图发给我们</td></tr>
+                <tr><td><strong>每张图花了多少钱</strong></td><td>左侧「使用记录」</td></tr>
+                <tr><td><strong>谁在后台改了什么</strong></td><td>左侧「操作日志」（<strong>商品图设置那一页的改动不进这里</strong>）</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>后端和图像处理服务的日志，用随部署交付的日志命令在你的服务器上看。</p>
+          <div class="dk-x-warnblock">
+            <p class="dk-x-warnblock__title">有一个症状要特别认识：能提交、一直转圈、不报错</p>
+            这说明出图队列根本没启动，多半是图片存储目录或图像处理服务没配好。打开上面那个 health 网址，中文原因就写在那儿。
+          </div>
+        </div>
+      </div>
+
+      <div class="dk-x-step" id="adm-s12">
+        <div class="dk-x-step__num">12</div>
+        <div class="dk-x-step__body">
+          <h3>灵感库（基本不用管）<span class="dk-mark dk-mark--skip">用不到</span></h3>
+          <p>部署完成后在灵感库页面点一次「<strong>立即同步</strong>」，一万多条提示词就会拉进来。同步完之后<strong>每 12 小时自动同步一次，平时不用手动点</strong>。目前全库 <strong>15045 条提示词、11 个分类</strong>：</p>
+          <div class="dk-x-table-wrap">
+            <table class="dk-table">
+              <thead><tr><th>分类</th><th>条数</th><th>分类</th><th>条数</th></tr></thead>
+              <tbody>
+                <tr><td>社交媒体帖子</td><td class="dk-money">3978</td><td>游戏素材</td><td class="dk-money">524</td></tr>
+                <tr><td>产品营销</td><td class="dk-money">3752</td><td><strong>电商主图</strong></td><td class="dk-money"><strong>428</strong></td></tr>
+                <tr><td>海报与传单</td><td class="dk-money">2785</td><td>应用与网页设计</td><td class="dk-money">402</td></tr>
+                <tr><td>漫画与分镜</td><td class="dk-money">1466</td><td>其他</td><td class="dk-money">367</td></tr>
+                <tr><td>信息图与教育视觉</td><td class="dk-money">638</td><td>视频封面</td><td class="dk-money">72</td></tr>
+                <tr><td>头像与个人形象</td><td class="dk-money">633</td><td></td><td></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><strong>代理</strong>：同步走的代理在灵感库页面选（<strong>不在商品图设置里</strong>，那边是只读的，两处都能改必然出现「这边显示走代理、那边实际直连」）。</p>
+        </div>
+      </div>
+
+      <h2 id="adm-menu-admin">第二部分 · 每个菜单是干什么的</h2>
+      <div class="dk-alert dk-alert--info">本节为<strong>节选</strong>，完整内容随部署交付。</div>
+
+      <h3>管理员能看到的菜单</h3>
+      <div class="dk-x-table-wrap">
+        <table class="dk-table">
+          <thead><tr><th style="width: 200px;">菜单</th><th>是什么</th><th style="width: 110px;">判定</th></tr></thead>
+          <tbody>
+            <tr><td><strong>仪表盘</strong></td><td>今天出了多少图、花了多少钱的总览</td><td><span class="dk-mark dk-mark--suggest">建议</span></td></tr>
+            <tr><td><strong>用户管理</strong></td><td>开号、充值、改分组、停用。<strong>开运营账号和绑内部钥匙都在这儿</strong></td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td><strong>分组管理</strong></td><td>决定「这一组人能用什么模型、每张图多少钱」</td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td><strong>账号管理</strong></td><td>填「图找谁生成」——你的 ChatGPT 账号（OAuth 登录，不是 API 密钥）</td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td><strong>商品图设置</strong></td><td>出图比例、单价、批量上限、并发数（我们自己加的）</td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td><strong>使用记录</strong></td><td>每一次出图花了多少钱。<strong>量真实单价只能看这儿</strong></td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td><strong>系统设置</strong></td><td>站点名、注册开关、安全、备份等一大堆</td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td><strong>操作日志</strong></td><td>谁在后台改了什么</td><td><span class="dk-mark dk-mark--suggest">建议</span></td></tr>
+            <tr><td><strong>渠道管理 → 渠道定价</strong></td><td>按模型配价格</td><td><span class="dk-mark dk-mark--forbid">别碰</span></td></tr>
+            <tr><td><strong>渠道管理 → 渠道监控</strong></td><td>定时探测上游通不通。加一条能分清「上游挂了」还是「我们配错了」</td><td><span class="dk-mark dk-mark--suggest">建议</span></td></tr>
+            <tr><td><strong>IP 管理（代理）</strong></td><td>配代理服务器。<strong>只有灵感库同步一直失败时才来这儿</strong></td><td><span class="dk-mark dk-mark--suggest">建议</span></td></tr>
+            <tr><td><strong>公告</strong></td><td>给所有人发通知。「今天上游维护，出图会失败」这类</td><td><span class="dk-mark dk-mark--suggest">建议</span></td></tr>
+            <tr><td><strong>运维监控</strong></td><td>系统运行状态。关不掉，菜单会一直在，不用管</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+            <tr><td><strong>兑换码</strong></td><td><strong>生成邀请码就在这儿</strong>。开了自助注册之后，这是你控制「谁能进来」的地方</td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td><strong>订阅管理 / 优惠码 / 邀请返利 / 订单管理</strong></td><td>对外收费那一整套。功能代码都在，只是关着</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+            <tr><td><strong>安全审计 / 风控</strong></td><td>内容审核、异常拦截。默认设置下菜单不显示</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="adm-menu-ops">运营能看到的菜单</h3>
+      <p>只有四项：<strong>生成工作台、灵感库、我的图片、个人资料</strong>。</p>
+      <p>原生那十几个菜单（我的密钥、批量生图、用量、兑换码、推广返佣、可用渠道、订阅、购买、订单、模型广场）<strong>对运营全部隐藏</strong>，你用管理员账号照样看得到。</p>
+      <div class="dk-danger-note"><strong>一个漏网的地方</strong>：运营从右上角头像菜单还能点进「API 密钥」页（侧边栏藏了，顶栏没藏）。他在那儿能删掉 <span class="dk-x-code">designkit-internal</span>，删了就出不了图。<strong>告诉他别动那一页。</strong></div>
+
+      <h3 id="adm-menu-sys">系统设置里的分区（配置对照表）</h3>
+      <div class="dk-x-table-wrap">
+        <table class="dk-table">
+          <thead><tr><th style="width: 130px;">分区</th><th>里面有什么</th><th style="width: 110px;">判定</th></tr></thead>
+          <tbody>
+            <tr><td><strong>通用设置</strong></td><td>站点名称、Logo、副标题、客服联系方式</td><td><span class="dk-mark dk-mark--suggest">建议</span></td></tr>
+            <tr><td></td><td><strong>Backend 模式</strong>——绝对不要开，运营会全部登不上</td><td><span class="dk-mark dk-mark--forbid">别碰</span></td></tr>
+            <tr><td><strong>安全与认证</strong></td><td>开放注册（<strong>打开</strong>）、启用邀请码（<strong>打开</strong>）、邮箱后缀白名单、开放钉钉注册（<strong>保持关闭</strong>）</td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td></td><td>密码强度、登录失败锁定、两步验证。内部用可以先不动</td><td><span class="dk-mark dk-mark--suggest">建议</span></td></tr>
+            <tr><td></td><td><strong>URL 白名单</strong>——保持默认关闭。没有理由开</td><td><span class="dk-mark dk-mark--forbid">别碰</span></td></tr>
+            <tr><td><strong>用户默认值</strong></td><td><strong>新用户默认余额（保持 0）</strong>、默认分组。只对之后注册/新建的用户生效</td><td><span class="dk-mark dk-mark--must">必须</span></td></tr>
+            <tr><td><strong>网关服务</strong></td><td>超时、重试、并发闸。默认值够用</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+            <tr><td><strong>数据备份</strong></td><td>S3 备份配置、定时备份。没有 S3 就用第 10 步的办法代替</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+            <tr><td><strong>邮件设置</strong></td><td>SMTP、邮件模板。内部用不需要发邮件</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+            <tr><td><strong>人机验证</strong></td><td>三家三选一。内网阶段不用；<strong>放公网前必须开</strong>，否则机器人刷注册</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+            <tr><td><strong>第三方登录</strong></td><td>GitHub / Google / 钉钉 / 微信等。内部用不需要</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+            <tr><td><strong>支付设置</strong></td><td>微信 / 支付宝 / Stripe / 发票。不对外收费就不用</td><td><span class="dk-mark dk-mark--skip">用不到</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="adm-public">放到公网之前必须做的事</h2>
+      <p>要把系统放到公网给外人用的话：<strong>内网阶段很多东西是「内网够用」的状态，放到公网就是漏洞。</strong>真要放之前，按下面这张表逐条过一遍再放。</p>
+      <div class="dk-x-forbidblock">
+        <p class="dk-x-forbidblock__title">不要先放上去再补</p>
+        公网上被人扫到只要几个小时。
+      </div>
+
+      <h3>必须做的（少一条都别放）<span class="dk-mark dk-mark--must">必须</span></h3>
+      <div class="dk-x-table-wrap">
+        <table class="dk-table">
+          <thead><tr><th style="width: 190px;">事</th><th>为什么</th><th style="width: 180px;">在哪</th></tr></thead>
+          <tbody>
+            <tr><td><strong>域名 + HTTPS</strong></td><td>内网是明文访问。公网上明文传密码等于公开</td><td>买域名、配证书、加反向代理</td></tr>
+            <tr><td><strong>备案</strong></td><td>中国大陆的服务器对公众提供服务需要</td><td>服务器商那边办</td></tr>
+            <tr><td><strong>清空邮箱后缀白名单</strong></td><td>不清的话外人一律注册不了（见第 1.2 节）</td><td>系统设置 → 安全与认证</td></tr>
+            <tr><td><strong>打开人机验证</strong></td><td>不开的话机器人几分钟能刷几千个号</td><td>系统设置 → 人机验证</td></tr>
+            <tr><td><strong>打开邮箱验证</strong></td><td>不开的话随便填个不存在的邮箱就能注册</td><td>系统设置 → 安全与认证</td></tr>
+            <tr><td><strong>默认余额保持 0</strong></td><td>一旦大于 0，每个注册的人都在花你的钱，机器人刷号会直接变成账单</td><td>系统设置 → 用户默认值</td></tr>
+            <tr><td><strong>改掉管理员密码</strong></td><td>现在这个是系统自动生成的初始密码</td><td>右上角头像 → 个人资料</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>建议做的<span class="dk-mark dk-mark--suggest">建议</span></h3>
+      <div class="dk-x-table-wrap">
+        <table class="dk-table">
+          <thead><tr><th style="width: 190px;">事</th><th>为什么</th></tr></thead>
+          <tbody>
+            <tr><td><strong>限流调紧</strong></td><td>默认阈值是按内网自己人定的，公网上要防刷</td></tr>
+            <tr><td><strong>注册邮箱域名配额</strong></td><td>限制同一个邮箱域名最多注册几个号，防有人用临时邮箱批量注册</td></tr>
+            <tr><td><strong>告警通知</strong></td><td>出图失败率突然变高、余额被刷空，得有人知道</td></tr>
+            <tr><td><strong>日志留存</strong></td><td>默认日志重启就没了，出了事查不回去</td></tr>
+            <tr><td><strong>定时备份</strong></td><td>第 10 步目前要手动做，放公网后应该做成自动的</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="dk-x-warnblock">
+        <p class="dk-x-warnblock__title">一件必须知道的事：只能跑一个后端</p>
+        现在的版本<strong>只允许跑一个实例</strong>。公网流量大了想扩容，不能简单地多起几个——起第二个会把同一批任务结算两遍，<strong>用户余额凭空少一截而且不报错</strong>。真要扩容之前先通过『申请试用』页的联系方式找我们。
+      </div>
+
+      <h2 id="adm-pitfalls">附录 · 容易踩的坑（按后果排序）</h2>
+      <div class="dk-x-table-wrap">
+        <table class="dk-table">
+          <thead><tr><th style="width: 46%;">症状</th><th>真正的原因</th></tr></thead>
+          <tbody>
+            <tr><td>账号建好了，还是说「暂时没有可用的出图账号」</td><td>内部钥匙 <span class="dk-x-code">designkit-internal</span> 没绑分组（第 8.3 步）</td></tr>
+            <tr><td>能提交、一直转圈、不报错</td><td>出图队列没启动。打开 health 网址看中文原因（第 11 步）</td></tr>
+            <tr><td><strong>一直在多花钱但看不出来</strong></td><td>分组里三档单价留空，系统按它自己的默认价扣（第 3 步）</td></tr>
+            <tr><td><strong>费用算成 0 或算成文字的价钱</strong></td><td>建了渠道定价，「计费模式」那格默认是 Token（第 5 步）</td></tr>
+            <tr><td>界面说 4K、实际按 2K 出图</td><td>改了「图片最长边」但没重启（第 7 步）</td></tr>
+            <tr><td>每张图都失败，说模型不存在</td><td>出图模型名填错（第 6 步）</td></tr>
+            <tr><td>运营全体登不上</td><td>误开了 Backend 模式（第 2 步）</td></tr>
+            <tr><td>点什么都很慢但不报错</td><td>「同时出几张」设太高，把每个用户的并发上限（默认 5）占满了（第 6 步）</td></tr>
+            <tr><td>运营看到「余额不足」但不知道找谁</td><td>管理员联系方式没填（第 6 步）</td></tr>
+            <tr><td>灵感库同步一直失败</td><td>代理没配或已停用。去灵感库页面重选（第 12 步）</td></tr>
+            <tr><td><strong>之前一直好好的，突然连续几张都失败</strong></td><td>多半是这个月的出图额度用完了。这个系统看不到剩余额度（第 9.4 节）</td></tr>
+            <tr><td><strong>出图被拒，说访问被拒绝</strong></td><td>账号那一页的「仅允许 Codex 官方客户端」开了（第 4.1 节）</td></tr>
+            <tr><td><strong>额度消耗得比预期快一倍</strong></td><td>另一套系统还在用同一个 ChatGPT 账号（第 4 步·b）</td></tr>
+            <tr><td><strong>有人注册了但出不了图</strong></td><td>正常。新用户默认余额是 0，要你在用户管理里点「充值」（第 8.1 节）</td></tr>
+            <tr><td><strong>外人注册被拒</strong>（放公网后）</td><td>邮箱后缀白名单没清空（第 1.2 节）</td></tr>
+            <tr><td><strong>有人绕过邀请码注册进来了</strong></td><td>「开放钉钉注册」开着（第 1.4 节）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="dk-alert dk-alert--info">配置手册到这里是<strong>节选</strong>，完整内容（含备份/恢复/日志的完整命令清单）随部署交付。解决不了的问题，通过『申请试用』页的联系方式找我们。</div>
+    </article>
+  </section>
+
+  </main>
+
+  <!-- ═══ 页脚（同首页） ═══ -->
+  <footer class="dk-x-footer">
+    <div class="dk-x-footer__inner">
+      <div class="dk-x-footer__brand">
+        <a class="dk-x-logo" href="#">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+            <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+            <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+            <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/>
+            <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+            <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+          </svg>
+          <span class="dk-x-logo__word">Design<b>Kit</b></span>
+        </a>
+        <p class="dk-x-footer__desc">部署在你自己的服务器上的 AI 商品图工作台。上传一次商品原图，AI 配好提示词、按比例批量出图；额度、费用、数据都在你手里。</p>
+      </div>
+      <div class="dk-x-footer__links">
+        <div class="dk-x-footer__col">
+          <span class="dk-x-footer__colname">开始</span>
+          <a href="#">申请试用</a>
+          <a href="#">帮助中心</a>
+        </div>
+      </div>
+    </div>
+    <p class="dk-x-footer__legal">ICP 备案号占位（公网部署时替换）</p>
+  </footer>
+
+</div>
+</body>
+</html>

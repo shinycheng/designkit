@@ -1,0 +1,8 @@
+# 当前跟随的上游 Sub2API 版本。
+# 跟版流程：
+#   1. git fetch upstream --tags
+#   2. git merge <新tag>          （用 merge，不要 rebase）
+#   3. 改这个文件里的版本号
+#   4. 同步更新 NOTICE.md 里的「起始基线」和改动清单
+# designkit/bin/check-upstream-touch.sh 读这个值作为 diff 基准。
+v0.1.175

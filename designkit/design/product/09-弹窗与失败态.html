@@ -1,0 +1,773 @@
+<!-- @dsCard group="产品端" name="弹窗与失败态" subtitle="确认提交 · 停止排队 · 重试超时警告 · AI 四失败 · 申请额度" width="1280" -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>弹窗与失败态</title>
+<style>
+/*
+ * DesignKit Dark — 设计系统地基（v3 定稿实现）
+ * ---------------------------------------------------------------------------
+ * 用途双重：
+ *   1. 全部设计稿（Claude Design 三个项目）的共用样式，逐字内联进每张稿；
+ *   2. 实施时 tokens.css 换值与 designkit-ui.css 深色化的对照蓝本。
+ *
+ * 令牌名与 frontend/src/features/designkit/theme/tokens.css **一字不差**，
+ * 只换值（v3 3.2 对照表）；新增三个：--dk-image-canvas / --dk-accent-2 / --dk-glow。
+ * 组件类名沿用 designkit-ui.css 现有词汇（dk-button--primary-action、
+ * dk-size-option、dk-dropzone、dk-thumb…），新组件按同一命名法追加——
+ * 这样设计稿里的每个类名在代码库里都有着落，交接零翻译。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 底面 */
+  --dk-canvas: #0b0f1a;
+  --dk-surface: #131a2b;
+  --dk-surface-subtle: #101625;
+  --dk-surface-raised: #1b2337;
+  --dk-surface-hover: rgba(124, 107, 255, 0.08);
+  --dk-surface-pressed: rgba(124, 107, 255, 0.14);
+  --dk-overlay: rgba(4, 7, 14, 0.66);
+  --dk-border: #273049;
+  --dk-border-strong: #3a466b;
+
+  /* 文字 */
+  --dk-text: #f2f5fa;
+  --dk-text-secondary: #a8b3c7;
+  --dk-text-tertiary: #7a85a0;
+  --dk-text-disabled: #5a6580;
+  --dk-text-inverse: #0b0f1a;
+
+  /* 动作与强调 */
+  --dk-action: #7c6bff;
+  --dk-action-hover: #8f80ff;
+  --dk-action-pressed: #6b5af0;
+  --dk-accent: #5ea2ff;
+  --dk-accent-strong: #82b7ff;
+  --dk-accent-soft: rgba(94, 162, 255, 0.16);
+  --dk-focus: rgba(124, 107, 255, 0.45);
+
+  /* 反馈 */
+  --dk-success: #34d399;
+  --dk-success-soft: rgba(52, 211, 153, 0.14);
+  --dk-warning: #fbbf24;
+  --dk-warning-soft: rgba(251, 191, 36, 0.14);
+  --dk-danger: #f87171;
+  --dk-danger-strong: #ef6b6b;
+  --dk-danger-soft: rgba(248, 113, 113, 0.14);
+  --dk-info-soft: rgba(56, 189, 248, 0.14);
+
+  /* 新增（v3） */
+  --dk-image-canvas: #17191e;   /* 图像衬底：中性灰，无蓝紫偏色 */
+  --dk-accent-2: #2dd4bf;       /* 数据点缀青，仅数据强调 */
+  --dk-glow: rgba(124, 107, 255, 0.2); /* 氛围光：登录页/官网限定 */
+
+  /* 字体与字号（Inter 优先，v3） */
+  --dk-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "HarmonyOS Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --dk-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --dk-text-xs: 12px; --dk-text-sm: 13px; --dk-text-md: 14px;
+  --dk-text-lg: 16px; --dk-text-xl: 20px; --dk-text-2xl: 28px;
+  --dk-leading-tight: 1.3; --dk-leading: 1.55;
+
+  /* 间距 / 圆角 / 投影（深色投影 = 细内描边 + 深投影） */
+  --dk-space-1: 4px; --dk-space-2: 8px; --dk-space-3: 12px; --dk-space-4: 16px;
+  --dk-space-5: 20px; --dk-space-6: 24px; --dk-space-7: 28px; --dk-space-8: 32px;
+  --dk-space-9: 36px; --dk-space-10: 40px; --dk-space-12: 48px;
+  --dk-radius-sm: 6px; --dk-radius-md: 8px; --dk-radius-lg: 12px; --dk-radius-pill: 999px;
+  --dk-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --dk-shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --dk-shadow-overlay: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* 外壳尺寸（沿用现值；toolrail 保留令牌但外壳维持上游侧栏——拍板增补） */
+  --dk-topbar-h: 54px; --dk-toolrail-w: 68px; --dk-config-w: 400px;
+  --dk-control-h: 40px; --dk-primary-h: 44px; --dk-bottom-nav-h: 64px;
+  --dk-content-max: 1440px;
+  --dk-z-sticky: 20; --dk-z-nav: 30; --dk-z-overlay: 100; --dk-z-toast: 120; --dk-z-lightbox: 140;
+  --dk-motion-fast: 120ms; --dk-motion-normal: 180ms;
+  --dk-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── 基础 ─────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--dk-canvas);
+  color: var(--dk-text);
+  font-family: var(--dk-font-sans);
+  font-size: var(--dk-text-md);
+  line-height: var(--dk-leading);
+  letter-spacing: 0.01em; /* 中文字距克制，≤0.04em */
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(124, 107, 255, 0.35); }
+a { color: var(--dk-accent); text-decoration: none; }
+a:hover { color: var(--dk-accent-strong); }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--dk-focus); border-radius: var(--dk-radius-sm); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #273049; border-radius: 999px; border: 2px solid var(--dk-canvas); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 排版助手（与 designkit-ui.css 同名） */
+.dk-page-title { font-size: var(--dk-text-2xl); font-weight: 700; line-height: var(--dk-leading-tight); margin: 0; }
+.dk-page-desc { color: var(--dk-text-secondary); margin: 6px 0 0; }
+.dk-eyebrow { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); text-transform: uppercase; }
+.dk-panel-title { font-size: var(--dk-text-lg); font-weight: 600; margin: 0; }
+.dk-panel-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin: 2px 0 0; }
+.dk-label { display: block; font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text-secondary); margin-bottom: 6px; }
+.dk-note { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); margin: 0; }
+.dk-note--quiet { color: var(--dk-text-tertiary); }
+.dk-note--warning { color: var(--dk-warning); }
+.dk-note--danger { color: var(--dk-danger); }
+.dk-note--success { color: var(--dk-success); }
+.dk-muted { color: var(--dk-text-tertiary); }
+.dk-mono-note { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+/* 金额与数量：等宽数字、600、主文字色——关键信息绝不弱化 */
+.dk-money { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dk-text); }
+.dk-money--accent { color: var(--dk-accent-2); } /* 数据强调限定 */
+.dk-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── 面板 ─────────────────────────────────────────────────────── */
+.dk-panel {
+  background: var(--dk-surface);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-5);
+  box-shadow: var(--dk-shadow-1);
+}
+.dk-panel--subtle { background: var(--dk-surface-subtle); box-shadow: none; }
+.dk-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dk-space-3); margin-bottom: var(--dk-space-4); }
+
+/* ── 按钮（主/次/危险/安静/小号 + 花钱变体） ───────────────────── */
+.dk-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--dk-control-h); padding: 0 16px;
+  border-radius: var(--dk-radius-md); border: 1px solid transparent;
+  background: var(--dk-surface-raised); color: var(--dk-text);
+  font: 600 var(--dk-text-md)/1 var(--dk-font-sans); cursor: pointer;
+  transition: background var(--dk-motion-fast) var(--dk-ease-out),
+              border-color var(--dk-motion-fast) var(--dk-ease-out),
+              transform var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-button:hover { background: #232c44; }
+.dk-button:active { transform: translateY(1px); }
+.dk-button:disabled { color: var(--dk-text-disabled); background: var(--dk-surface-subtle); cursor: not-allowed; transform: none; }
+.dk-button--primary-action { background: var(--dk-action); color: #fff; height: var(--dk-primary-h); }
+.dk-button--primary-action:hover { background: var(--dk-action-hover); }
+.dk-button--primary-action:active { background: var(--dk-action-pressed); }
+.dk-button--primary-action:disabled { background: #3d3a66; color: rgba(255,255,255,.45); }
+.dk-button--secondary { background: transparent; border-color: var(--dk-border-strong); }
+.dk-button--secondary:hover { background: var(--dk-surface-hover); border-color: var(--dk-action); }
+.dk-button--danger { background: transparent; border-color: var(--dk-danger); color: var(--dk-danger); }
+.dk-button--danger:hover { background: var(--dk-danger-soft); }
+.dk-button--danger.is-solid { background: var(--dk-danger); color: #1a0b0b; border-color: transparent; }
+.dk-button--quiet { background: transparent; color: var(--dk-accent); padding: 0 8px; height: auto; }
+.dk-button--quiet:hover { background: transparent; color: var(--dk-accent-strong); text-decoration: underline; }
+.dk-button--sm { height: 32px; padding: 0 12px; font-size: var(--dk-text-sm); }
+.dk-button--block { width: 100%; }
+/* 花钱按钮：价格小字缀在文案后（「让 AI 推荐 · $0.09~$0.34」） */
+.dk-button__price { font-weight: 500; font-size: var(--dk-text-xs); opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+/* ── 表单 ─────────────────────────────────────────────────────── */
+.dk-input, .dk-textarea, .dk-select {
+  width: 100%; background: var(--dk-surface-subtle);
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  color: var(--dk-text); font: 400 var(--dk-text-md)/var(--dk-leading) var(--dk-font-sans);
+  padding: 9px 12px; transition: border-color var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-input { height: var(--dk-control-h); }
+.dk-input::placeholder, .dk-textarea::placeholder { color: var(--dk-text-tertiary); }
+.dk-input:hover, .dk-textarea:hover, .dk-select:hover { border-color: var(--dk-border-strong); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { outline: none; border-color: var(--dk-action); box-shadow: 0 0 0 3px var(--dk-focus); }
+.dk-input.is-error, .dk-textarea.is-error { border-color: var(--dk-danger); }
+.dk-input:disabled, .dk-textarea:disabled, .dk-select:disabled { color: var(--dk-text-disabled); background: var(--dk-surface); }
+.dk-field-error { font-size: var(--dk-text-sm); color: var(--dk-danger); margin-top: 6px; }
+.dk-char-count { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); text-align: right; }
+.dk-char-count.is-over { color: var(--dk-danger); font-weight: 600; }
+.dk-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--dk-text-tertiary) 50%), linear-gradient(135deg, var(--dk-text-tertiary) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+/* 字段两级说明：hint 灰字；danger = 警告色 4px 左边线 + soft 底 */
+.dk-field-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin-top: 6px; }
+.dk-danger-note {
+  margin-top: 8px; padding: 8px 12px; font-size: var(--dk-text-sm);
+  color: var(--dk-warning); background: var(--dk-warning-soft);
+  border-left: 4px solid var(--dk-warning); border-radius: 0 var(--dk-radius-sm) var(--dk-radius-sm) 0;
+}
+
+/* chips（分类单选） */
+.dk-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border);
+  background: var(--dk-surface); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm); cursor: pointer;
+}
+.dk-chip:hover { border-color: var(--dk-border-strong); color: var(--dk-text); }
+.dk-chip.is-selected { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+
+/* 开关 / 复选 / 单选（后台场景） */
+.dk-switch { position: relative; width: 40px; height: 22px; border-radius: 999px; background: var(--dk-border-strong); border: none; cursor: pointer; transition: background var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #e7e9f2; transition: transform var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch.is-on { background: var(--dk-action); }
+.dk-switch.is-on::after { transform: translateX(18px); }
+.dk-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); cursor: pointer; }
+.dk-check__box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--dk-border-strong); background: var(--dk-surface-subtle); display: inline-grid; place-items: center; }
+.dk-check.is-checked .dk-check__box { background: var(--dk-action); border-color: var(--dk-action); }
+.dk-check.is-checked .dk-check__box::after { content: "✓"; color: #fff; font-size: 11px; font-weight: 700; }
+
+/* ── 上传区 ───────────────────────────────────────────────────── */
+.dk-dropzone {
+  display: grid; place-items: center; gap: 6px; text-align: center;
+  padding: var(--dk-space-8) var(--dk-space-5);
+  border: 1.5px dashed var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  background: var(--dk-surface-subtle); color: var(--dk-text-secondary); cursor: pointer;
+  transition: border-color var(--dk-motion-fast) var(--dk-ease-out), background var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-dropzone:hover { border-color: var(--dk-action); }
+.dk-dropzone.is-dragover { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.06); }
+.dk-dropzone__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-dropzone__meta { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* 缩略图（商品图/结果图共用视觉；衬底一律 --dk-image-canvas） */
+.dk-thumb { position: relative; border-radius: var(--dk-radius-md); overflow: hidden; border: 1px solid var(--dk-border); background: var(--dk-image-canvas); }
+.dk-thumb.is-white { background: #ffffff; }
+.dk-thumb__media { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.dk-thumb__tag {
+  position: absolute; top: 6px; left: 6px; padding: 2px 8px;
+  border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 600;
+  background: rgba(11, 15, 26, 0.78); color: var(--dk-text-secondary); backdrop-filter: blur(4px);
+}
+.dk-thumb__tag--ok { color: var(--dk-success); }
+.dk-thumb__tag--fail { color: var(--dk-danger); }
+.dk-thumb__overlay {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 8px;
+  background: rgba(4, 7, 14, 0.55); opacity: 0; transition: opacity var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-thumb:hover .dk-thumb__overlay { opacity: 1; }
+
+/* 比例选择块：按真实宽高比绘制 */
+.dk-size-options { display: flex; flex-wrap: wrap; gap: var(--dk-space-3); }
+.dk-size-option {
+  display: grid; gap: 6px; justify-items: center; padding: 10px 12px 8px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle); cursor: pointer; position: relative;
+}
+.dk-size-option:hover { border-color: var(--dk-border-strong); }
+.dk-size-option.is-selected { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.1); box-shadow: 0 0 0 1px var(--dk-action); }
+.dk-size-option__shape { background: var(--dk-border-strong); border-radius: 3px; height: 34px; }
+.dk-size-option.is-selected .dk-size-option__shape { background: var(--dk-action); }
+.dk-size-option__label { font-size: var(--dk-text-sm); font-weight: 600; }
+.dk-size-option__ratio { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+.dk-size-option__tier { position: absolute; top: 4px; right: 6px; font-size: 10px; color: var(--dk-text-tertiary); }
+
+/* ── 状态徽章 ─────────────────────────────────────────────────── */
+.dk-badge {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px;
+  border-radius: var(--dk-radius-pill); font-size: var(--dk-text-xs); font-weight: 600;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+}
+.dk-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.dk-badge--success { background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-badge--danger { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-badge--warning { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-badge--info { background: var(--dk-accent-soft); color: var(--dk-accent-strong); }
+.dk-badge--running .dk-badge__dot { animation: dk-pulse 1.2s ease-in-out infinite; }
+@keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* 进度条 */
+.dk-progress-track { height: 6px; border-radius: 999px; background: var(--dk-surface-raised); overflow: hidden; }
+.dk-progress-bar { height: 100%; border-radius: 999px; background: var(--dk-action); transition: width var(--dk-motion-normal) var(--dk-ease-out); }
+
+/* ── 提示与警报 ───────────────────────────────────────────────── */
+.dk-alert {
+  display: grid; gap: 4px; padding: 12px 14px;
+  border-radius: var(--dk-radius-md); border: 1px solid var(--dk-border);
+  background: var(--dk-surface-subtle); font-size: var(--dk-text-sm);
+}
+.dk-alert--danger { border-color: rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-alert--warning { border-color: rgba(251, 191, 36, 0.4); background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-alert--success { border-color: rgba(52, 211, 153, 0.4); background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-alert--info { border-color: rgba(94, 162, 255, 0.4); background: var(--dk-info-soft); color: var(--dk-accent-strong); }
+.dk-alert__sub { color: var(--dk-text-secondary); font-weight: 400; }
+
+/* toast（顶部居中，180ms 滑入） */
+.dk-toast {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-radius: var(--dk-radius-md); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); box-shadow: var(--dk-shadow-2);
+  font-size: var(--dk-text-sm); font-weight: 500;
+}
+.dk-toast--success { border-color: rgba(52, 211, 153, 0.5); }
+.dk-toast--error { border-color: rgba(248, 113, 113, 0.5); }
+
+/* ── 弹窗 ─────────────────────────────────────────────────────── */
+.dk-dialog-overlay { position: fixed; inset: 0; background: var(--dk-overlay); display: grid; place-items: center; z-index: var(--dk-z-overlay); }
+.dk-dialog {
+  width: min(92vw, 440px); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-6); box-shadow: var(--dk-shadow-overlay);
+}
+.dk-dialog__title { font-size: var(--dk-text-lg); font-weight: 700; margin: 0 0 10px; }
+.dk-dialog__body { color: var(--dk-text-secondary); font-size: var(--dk-text-md); }
+.dk-dialog--danger .dk-dialog__title { color: var(--dk-danger); }
+.dk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--dk-space-3); margin-top: var(--dk-space-6); }
+
+/* ── 数据卡（本月出图 / 花费 / 余额） ─────────────────────────── */
+.dk-usage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--dk-space-3); }
+.dk-usage-cell { background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); padding: 14px 18px; }
+.dk-usage-cell__label { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-usage-cell__value { font-size: var(--dk-text-xl); margin-top: 2px; }
+
+/* ── 空状态 ───────────────────────────────────────────────────── */
+.dk-empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: var(--dk-space-10) var(--dk-space-5); color: var(--dk-text-secondary); }
+.dk-empty__icon { opacity: 0.9; }
+.dk-empty__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-empty__description { max-width: 44ch; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* ── 骨架屏（微光 2s；减少动态效果时静态） ────────────────────── */
+.dk-skeleton { position: relative; overflow: hidden; background: var(--dk-surface-raised); border-radius: var(--dk-radius-md); }
+.dk-skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%);
+  animation: dk-shimmer 2s linear infinite;
+}
+@keyframes dk-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* ── 后台表单场景（S-UP 样板的规矩） ──────────────────────────── */
+/* 信息密度高一档：13px 主档、行高收紧 */
+.dk-admin { font-size: var(--dk-text-sm); }
+.dk-table { width: 100%; border-collapse: collapse; background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; }
+.dk-table th {
+  position: sticky; top: 0; z-index: 1; text-align: left;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs); font-weight: 600; padding: 10px 14px;
+  border-bottom: 1px solid var(--dk-border-strong);
+}
+.dk-table td { padding: 10px 14px; border-bottom: 1px solid var(--dk-border); font-size: var(--dk-text-sm); }
+.dk-table tbody tr:nth-child(even) { background: var(--dk-surface-subtle); } /* 斑马纹 = 次级底 */
+.dk-table tbody tr:hover { background: var(--dk-surface-hover); }
+.dk-pager { display: flex; align-items: center; gap: 6px; }
+.dk-pager__btn { min-width: 30px; height: 30px; border-radius: var(--dk-radius-sm); border: 1px solid var(--dk-border); background: transparent; color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-pager__btn.is-current { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--dk-border); }
+.dk-tab { padding: 10px 16px; border: none; background: none; color: var(--dk-text-secondary); font: 600 var(--dk-text-md) var(--dk-font-sans); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dk-tab.is-active { color: var(--dk-text); border-bottom-color: var(--dk-action); }
+.dk-crumbs { display: flex; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-crumbs a { color: var(--dk-text-tertiary); }
+.dk-crumbs .is-current { color: var(--dk-text-secondary); }
+.dk-sidenav { width: 220px; padding: var(--dk-space-3); display: grid; gap: 2px; align-content: start; }
+.dk-sidenav__group { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-weight: 600; padding: 12px 10px 4px; letter-spacing: 0.04em; }
+.dk-sidenav__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--dk-radius-md); color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-sidenav__item:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-sidenav__item.is-active { background: var(--dk-accent-soft); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-savebar {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--dk-space-4);
+  padding: 14px var(--dk-space-5); background: rgba(19, 26, 43, 0.92); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--dk-border-strong); z-index: var(--dk-z-sticky);
+}
+.dk-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-sm); font-size: 11px; font-weight: 600; background: var(--dk-surface-raised); color: var(--dk-text-secondary); }
+
+/* 四级配置标记徽章（帮助中心/配置手册用）*/
+.dk-mark { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 700; }
+.dk-mark--must { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-mark--suggest { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-mark--skip { background: var(--dk-surface-raised); color: var(--dk-text-tertiary); }
+.dk-mark--forbid { background: rgba(248, 113, 113, 0.24); color: #ffb4b4; }
+
+/* 报错块（运营看得懂的报错） */
+.dk-errorblock { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--dk-radius-md); border: 1px solid rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); }
+.dk-errorblock__msg { color: var(--dk-danger); font-weight: 600; }
+.dk-errorblock__meta { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-errorblock__how { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+
+/* 氛围光（登录页/官网限定；正文区禁用） */
+.dk-glow-spot { position: absolute; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, var(--dk-glow), transparent 70%); pointer-events: none; }
+
+/* ── 减少动态效果 ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   页面自有样式（dk-x- 前缀）：弹窗与失败态板
+   S3 迭代片段（确认提交/停止排队/重试）+ S7·3（申请额度）
+   + AI 推荐四种失败内联提示。每个样张放在模拟遮罩舞台上，
+   标注行给出 i18n 键，交接零翻译。
+   ═══════════════════════════════════════════════════════════════ */
+
+.dk-x-board { width: 1280px; margin: 0 auto; padding: 36px 40px 56px; }
+
+/* 板头 */
+.dk-x-board-head { display: flex; align-items: center; gap: 14px; }
+.dk-x-logo {
+  flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px;
+  background: var(--dk-surface-raised); border: 1px solid var(--dk-border);
+  display: grid; place-items: center;
+}
+.dk-x-logo svg { width: 24px; height: 24px; display: block; }
+.dk-x-brand { font-size: var(--dk-text-lg); font-weight: 400; color: var(--dk-text); white-space: nowrap; }
+.dk-x-brand b { font-weight: 700; color: var(--dk-action); }
+.dk-x-board-title { margin-top: 18px; }
+
+/* 分区 */
+.dk-x-section { margin-top: 44px; }
+.dk-x-section-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.dk-x-section-num {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 10px;
+  border-radius: var(--dk-radius-pill); background: rgba(124, 107, 255, 0.14);
+  color: var(--dk-action-hover); font: 700 var(--dk-text-xs)/1 var(--dk-font-mono);
+  letter-spacing: 0.04em;
+}
+.dk-x-section-hint { margin: 0 0 16px; }
+
+/* 样张：标注行 + 舞台 */
+.dk-x-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.dk-x-spec { min-width: 0; }
+.dk-x-spec-cap { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.dk-x-spec-name { font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text-secondary); }
+.dk-x-spec-key { font-family: var(--dk-font-mono); font-size: 11px; color: var(--dk-text-tertiary); white-space: nowrap; }
+
+/* 遮罩舞台：底下垫几块假页面元素，盖 --dk-overlay，弹窗浮在其上 */
+.dk-x-stage {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg);
+  background: var(--dk-canvas);
+  display: grid; place-items: center; padding: 36px 28px;
+  min-height: 300px;
+}
+.dk-x-ghost { position: absolute; border-radius: var(--dk-radius-sm); background: var(--dk-surface-raised); }
+.dk-x-ghost--bar1 { top: 22px; left: 22px; width: 190px; height: 14px; }
+.dk-x-ghost--bar2 { top: 46px; left: 22px; width: 120px; height: 9px; opacity: 0.7; }
+.dk-x-ghost--card { top: 22px; right: 22px; width: 130px; height: 60px; opacity: 0.55; border-radius: var(--dk-radius-md); }
+.dk-x-ghost--foot { bottom: 22px; left: 22px; right: 22px; height: 40px; opacity: 0.35; border-radius: var(--dk-radius-md); }
+.dk-x-veil { position: absolute; inset: 0; background: var(--dk-overlay); }
+.dk-x-stage .dk-dialog { position: relative; z-index: 1; width: 440px; max-width: 100%; }
+
+/* 弹窗内附注块（确认提交的那句附注） */
+.dk-x-dialog-note {
+  margin-top: 14px; padding: 10px 12px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle);
+  font-size: var(--dk-text-sm); color: var(--dk-text-tertiary);
+}
+.dk-x-dialog-meta { margin-top: 10px; }
+
+/* 申请额度：回执态 */
+.dk-x-receipt { display: grid; justify-items: center; gap: 10px; text-align: center; padding: 10px 0 2px; }
+.dk-x-receipt svg { width: 48px; height: 48px; display: block; }
+.dk-x-receipt-title { margin: 0; font-size: var(--dk-text-md); font-weight: 600; color: var(--dk-text); }
+
+/* AI 四失败：左边配置区上下文 + 右边四条内联提示 */
+.dk-x-suggest-grid { display: grid; grid-template-columns: 400px 1fr; gap: 20px; align-items: start; }
+.dk-x-cfg { display: grid; gap: 14px; }
+.dk-x-fakeselect { display: flex; align-items: center; height: var(--dk-control-h); cursor: default; }
+.dk-x-alert-list { display: grid; gap: 16px; }
+.dk-x-alert-item { min-width: 0; }
+.dk-x-arrow-note { display: flex; align-items: center; gap: 8px; }
+.dk-x-arrow-note svg { flex: 0 0 16px; width: 16px; height: 16px; display: block; }
+
+/* 页脚备忘 */
+.dk-x-footnote {
+  margin-top: 52px; padding-top: 16px; border-top: 1px dashed var(--dk-border);
+  display: flex; flex-wrap: wrap; gap: 8px 24px;
+  font-size: var(--dk-text-xs); color: var(--dk-text-tertiary);
+}
+.dk-x-footnote span::before { content: "· "; color: var(--dk-action); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="dk-x-board">
+
+  <!-- ── 板头 ─────────────────────────────────────────────── -->
+  <header class="dk-x-board-head">
+    <span class="dk-x-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--dk-text)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+        <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+        <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+        <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="var(--dk-action)" stroke-width="2"/>
+        <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+        <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+      </svg>
+    </span>
+    <span class="dk-x-brand">Design<b>Kit</b></span>
+  </header>
+
+  <div class="dk-x-board-title">
+    <p class="dk-eyebrow">产品端 · 配套弹窗与失败态（S3 迭代片段 + S7·3）</p>
+    <h1 class="dk-page-title">弹窗与失败态</h1>
+    <p class="dk-page-desc">确认提交、停止排队、重试（含超时警告）、AI 推荐四种失败、申请额度。文案全部取自 designkit.ts 现有键；金额一律 $，花钱按钮旁标价；「取消」只用于关弹窗。</p>
+  </div>
+
+  <!-- ── ① 确认提交 ＆ ② 停止排队 ─────────────────────────── -->
+  <section class="dk-x-section">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">① ②</span>
+      <h2 class="dk-panel-title">提交与停止排队</h2>
+    </div>
+    <p class="dk-panel-hint dk-x-section-hint">确认提交是花钱动作：金额进正文、按钮旁再标一次价。停止排队用危险变体，把「哪些停得下、哪些停不下」一次说清。</p>
+
+    <div class="dk-x-grid">
+
+      <!-- ① 确认提交 -->
+      <figure class="dk-x-spec" style="margin:0;">
+        <figcaption class="dk-x-spec-cap">
+          <span class="dk-x-spec-name">① 确认提交（点「提交出图」后）</span>
+          <span class="dk-x-spec-key">designkit.confirm.*</span>
+        </figcaption>
+        <div class="dk-x-stage">
+          <span class="dk-x-ghost dk-x-ghost--bar1"></span>
+          <span class="dk-x-ghost dk-x-ghost--bar2"></span>
+          <span class="dk-x-ghost dk-x-ghost--card"></span>
+          <span class="dk-x-ghost dk-x-ghost--foot"></span>
+          <span class="dk-x-veil"></span>
+          <section class="dk-dialog" role="dialog" aria-modal="true" aria-label="确认提交">
+            <h3 class="dk-dialog__title">确认提交</h3>
+            <p class="dk-dialog__body">这一批共 <span class="dk-money">12 张</span>，预计花费 <span class="dk-money">$12.00</span>。提交之后就开始出图，钱会实际扣掉。</p>
+            <p class="dk-x-dialog-note">提交后可「停止排队」拦下未开始的部分；已在生成的会照常出图并扣费。</p>
+            <div class="dk-dialog-actions">
+              <button class="dk-button dk-button--secondary" type="button">再想想</button>
+              <button class="dk-button dk-button--primary-action" type="button">确认提交 <span class="dk-button__price">· $12.00</span></button>
+            </div>
+          </section>
+        </div>
+      </figure>
+
+      <!-- ② 停止排队 -->
+      <figure class="dk-x-spec" style="margin:0;">
+        <figcaption class="dk-x-spec-cap">
+          <span class="dk-x-spec-name">② 停止排队（危险变体，按钮不叫「取消」）</span>
+          <span class="dk-x-spec-key">designkit.stop.*</span>
+        </figcaption>
+        <div class="dk-x-stage">
+          <span class="dk-x-ghost dk-x-ghost--bar1"></span>
+          <span class="dk-x-ghost dk-x-ghost--bar2"></span>
+          <span class="dk-x-ghost dk-x-ghost--card"></span>
+          <span class="dk-x-ghost dk-x-ghost--foot"></span>
+          <span class="dk-x-veil"></span>
+          <section class="dk-dialog dk-dialog--danger" role="dialog" aria-modal="true" aria-label="停止排队">
+            <h3 class="dk-dialog__title">停止排队？</h3>
+            <p class="dk-dialog__body">还有 <span class="dk-money">8 张</span>没开始，停止后不再生成、也不扣费；正在生成的 <span class="dk-money">4 张</span>会跑完并正常扣费，图会保存在「我的图片」里。</p>
+            <div class="dk-dialog-actions">
+              <button class="dk-button dk-button--secondary" type="button">继续出图</button>
+              <button class="dk-button dk-button--danger is-solid" type="button">确定停止</button>
+            </div>
+          </section>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <!-- ── ③ 重试：普通版 + 超时警告版 ──────────────────────── -->
+  <section class="dk-x-section">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">③</span>
+      <h2 class="dk-panel-title">重试这一张</h2>
+    </div>
+    <p class="dk-panel-hint dk-x-section-hint">重试 = 重新出一张图 = 重新收一次钱（决策 20），单价写进正文、按钮旁再标一次。上一次是超时的话，追加警告块，让运营自己拿主意。</p>
+
+    <div class="dk-x-grid">
+
+      <!-- ③a 普通版 -->
+      <figure class="dk-x-spec" style="margin:0;">
+        <figcaption class="dk-x-spec-cap">
+          <span class="dk-x-spec-name">③a 普通失败后的重试</span>
+          <span class="dk-x-spec-key">designkit.retry.title / body</span>
+        </figcaption>
+        <div class="dk-x-stage">
+          <span class="dk-x-ghost dk-x-ghost--bar1"></span>
+          <span class="dk-x-ghost dk-x-ghost--bar2"></span>
+          <span class="dk-x-ghost dk-x-ghost--card"></span>
+          <span class="dk-x-ghost dk-x-ghost--foot"></span>
+          <span class="dk-x-veil"></span>
+          <section class="dk-dialog" role="dialog" aria-modal="true" aria-label="重试这一张">
+            <h3 class="dk-dialog__title">重试这一张？</h3>
+            <p class="dk-dialog__body">重试等于重新出一张图，会重新收一次钱（这次 <span class="dk-money">$1.00</span>）。</p>
+            <p class="dk-note dk-note--quiet dk-x-dialog-meta">第 2 次尝试 · 最多能试 3 次</p>
+            <div class="dk-dialog-actions">
+              <button class="dk-button dk-button--secondary" type="button">先不试</button>
+              <button class="dk-button dk-button--primary-action" type="button">确定重试 <span class="dk-button__price">· $1.00</span></button>
+            </div>
+          </section>
+        </div>
+      </figure>
+
+      <!-- ③b 超时警告版 -->
+      <figure class="dk-x-spec" style="margin:0;">
+        <figcaption class="dk-x-spec-cap">
+          <span class="dk-x-spec-name">③b 上一次是超时（追加警告块）</span>
+          <span class="dk-x-spec-key">designkit.retry.timeoutWarning</span>
+        </figcaption>
+        <div class="dk-x-stage">
+          <span class="dk-x-ghost dk-x-ghost--bar1"></span>
+          <span class="dk-x-ghost dk-x-ghost--bar2"></span>
+          <span class="dk-x-ghost dk-x-ghost--card"></span>
+          <span class="dk-x-ghost dk-x-ghost--foot"></span>
+          <span class="dk-x-veil"></span>
+          <section class="dk-dialog" role="dialog" aria-modal="true" aria-label="重试这一张">
+            <h3 class="dk-dialog__title">重试这一张？</h3>
+            <p class="dk-dialog__body">重试等于重新出一张图，会重新收一次钱（这次 <span class="dk-money">$1.00</span>）。</p>
+            <div class="dk-danger-note">上次是超时：图可能已生成并已扣费，只是结果没有返回。重试会再扣一次。</div>
+            <p class="dk-note dk-note--quiet dk-x-dialog-meta">第 2 次尝试 · 最多能试 3 次</p>
+            <div class="dk-dialog-actions">
+              <button class="dk-button dk-button--secondary" type="button">先不试</button>
+              <button class="dk-button dk-button--primary-action" type="button">确定重试 <span class="dk-button__price">· $1.00</span></button>
+            </div>
+          </section>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <!-- ── ④ AI 推荐四种失败（内联提示） ─────────────────────── -->
+  <section class="dk-x-section">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">④</span>
+      <h2 class="dk-panel-title">AI 推荐的四种失败（内联提示）</h2>
+    </div>
+    <p class="dk-panel-hint dk-x-section-hint">不弹窗。提示出现在右侧配置区「让 AI 推荐」按钮的正下方，每句都写清下一步怎么办。</p>
+
+    <div class="dk-x-suggest-grid">
+
+      <!-- 上下文：第二步配置区片段 -->
+      <div class="dk-panel dk-panel--subtle dk-x-cfg">
+        <div>
+          <p class="dk-panel-title" style="font-size: var(--dk-text-md);">第二步 · 选分类、写商品特点，让 AI 配提示词</p>
+          <p class="dk-panel-hint">选分类、写商品特点，AI 根据商品图从灵感库挑 5 条参考，合成一条提示词。</p>
+        </div>
+        <div>
+          <label class="dk-label">大致分类</label>
+          <span class="dk-select dk-x-fakeselect">全部分类（AI 看图判断）</span>
+        </div>
+        <div>
+          <label class="dk-label">商品特点</label>
+          <textarea class="dk-textarea" rows="3" placeholder="例如：米白色针织开衫，秋冬新品，主打柔软亲肤，想要日系温柔的感觉"></textarea>
+          <p class="dk-field-hint">写商品本身：材质、颜色、卖点、想要的风格。不用写提示词。</p>
+        </div>
+        <button class="dk-button dk-button--primary-action dk-button--block" type="button">让 AI 推荐 <span class="dk-button__price">· $0.09~$0.34</span></button>
+        <p class="dk-note dk-note--quiet dk-x-arrow-note">
+          <svg viewBox="0 0 16 16" fill="none" stroke="var(--dk-text-tertiary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v10M4 8.5 8 12.5l4-4"/></svg>
+          失败提示就出现在这个按钮下面，右边四条各对应一种情况。
+        </p>
+      </div>
+
+      <!-- 四条内联提示 -->
+      <div class="dk-x-alert-list">
+
+        <div class="dk-x-alert-item">
+          <div class="dk-x-spec-cap">
+            <span class="dk-x-spec-name">还没选商品图就点了推荐</span>
+            <span class="dk-x-spec-key">designkit.suggest.needAsset</span>
+          </div>
+          <div class="dk-alert dk-alert--info" role="status">请先在第一步选一张商品图。AI 要看着图才推荐得出来。</div>
+        </div>
+
+        <div class="dk-x-alert-item">
+          <div class="dk-x-spec-cap">
+            <span class="dk-x-spec-name">推荐失败</span>
+            <span class="dk-x-spec-key">designkit.suggest.failed</span>
+          </div>
+          <div class="dk-alert dk-alert--danger" role="alert">这次没推荐出来。等几秒再点一次「让 AI 推荐」；一直不行就去灵感库自己挑一条。</div>
+        </div>
+
+        <div class="dk-x-alert-item">
+          <div class="dk-x-spec-cap">
+            <span class="dk-x-spec-name">AI 返回了空结果</span>
+            <span class="dk-x-spec-key">designkit.suggest.empty</span>
+          </div>
+          <div class="dk-alert dk-alert--warning" role="alert">AI 这次什么都没给出来。把「商品特点」写具体一点（材质、颜色、想要的感觉）再试一次。</div>
+        </div>
+
+        <div class="dk-x-alert-item">
+          <div class="dk-x-spec-cap">
+            <span class="dk-x-spec-name">等待超时</span>
+            <span class="dk-x-spec-key">designkit.suggest.timeout</span>
+          </div>
+          <div class="dk-alert dk-alert--warning" role="alert">等太久了，AI 一直没回话。稍等一下再试一次；这一步不出图，不会扣出图的钱。</div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── ⑤ 申请额度弹窗 + 成功回执 ─────────────────────────── -->
+  <section class="dk-x-section">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">⑤</span>
+      <h2 class="dk-panel-title">申请额度</h2>
+    </div>
+    <p class="dk-panel-hint dk-x-section-hint">余额不足的出路（决策 19）：不花钱、不弹价，发出去会在管理员后台生成一条待处理记录。回执里给出管理员的直接联系方式。</p>
+
+    <div class="dk-x-grid">
+
+      <!-- ⑤a 填写态 -->
+      <figure class="dk-x-spec" style="margin:0;">
+        <figcaption class="dk-x-spec-cap">
+          <span class="dk-x-spec-name">⑤a 填写态</span>
+          <span class="dk-x-spec-key">designkit.quota.title / body / reasonPlaceholder / submit</span>
+        </figcaption>
+        <div class="dk-x-stage">
+          <span class="dk-x-ghost dk-x-ghost--bar1"></span>
+          <span class="dk-x-ghost dk-x-ghost--bar2"></span>
+          <span class="dk-x-ghost dk-x-ghost--card"></span>
+          <span class="dk-x-ghost dk-x-ghost--foot"></span>
+          <span class="dk-x-veil"></span>
+          <section class="dk-dialog" role="dialog" aria-modal="true" aria-label="申请额度">
+            <h3 class="dk-dialog__title">申请额度</h3>
+            <p class="dk-dialog__body">通知管理员给你加额度。可附一句用途，方便管理员判断加多少。</p>
+            <div class="dk-x-dialog-meta">
+              <textarea class="dk-textarea" rows="3" placeholder="例如：这周要出夏季新款的详情图，大概 200 张"></textarea>
+            </div>
+            <div class="dk-dialog-actions">
+              <button class="dk-button dk-button--secondary" type="button">取消</button>
+              <button class="dk-button dk-button--primary-action" type="button">发给管理员</button>
+            </div>
+          </section>
+        </div>
+      </figure>
+
+      <!-- ⑤b 成功回执 -->
+      <figure class="dk-x-spec" style="margin:0;">
+        <figcaption class="dk-x-spec-cap">
+          <span class="dk-x-spec-name">⑤b 成功回执</span>
+          <span class="dk-x-spec-key">designkit.quota.done / contact</span>
+        </figcaption>
+        <div class="dk-x-stage">
+          <span class="dk-x-ghost dk-x-ghost--bar1"></span>
+          <span class="dk-x-ghost dk-x-ghost--bar2"></span>
+          <span class="dk-x-ghost dk-x-ghost--card"></span>
+          <span class="dk-x-ghost dk-x-ghost--foot"></span>
+          <span class="dk-x-veil"></span>
+          <section class="dk-dialog" role="dialog" aria-modal="true" aria-label="申请已发出">
+            <div class="dk-x-receipt">
+              <svg viewBox="0 0 48 48" fill="none" stroke="var(--dk-success)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="24" cy="24" r="20"/>
+                <path d="m15.5 24.5 6 6 11-12"/>
+              </svg>
+              <p class="dk-x-receipt-title">已通知管理员，请等待处理。</p>
+              <p class="dk-note dk-note--quiet">也可以直接联系管理员：微信 monica-designkit</p>
+            </div>
+            <div class="dk-dialog-actions">
+              <button class="dk-button dk-button--secondary" type="button">关闭</button>
+            </div>
+          </section>
+        </div>
+      </figure>
+
+    </div>
+  </section>
+
+  <!-- ── 页脚备忘 ─────────────────────────────────────────── -->
+  <footer class="dk-x-footnote">
+    <span>「取消」只用于关弹窗；队列按钮叫「停止排队」（决策 21）</span>
+    <span>重试 = 重新收一次钱（决策 20），单价进正文、按钮旁标价</span>
+    <span>金额一律 $，等宽数字 600 字重，绝不弱化</span>
+    <span>文案键：designkit.confirm / stop / retry / suggest / quota（零新增）</span>
+  </footer>
+
+</div>
+</body>
+</html>

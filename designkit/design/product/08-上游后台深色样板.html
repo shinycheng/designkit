@@ -1,0 +1,1173 @@
+<!-- @dsCard group="产品端" name="上游后台深色样板" subtitle="账号管理页 · bridge.css 换肤验收标准" width="1440" -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上游后台深色样板 · DesignKit</title>
+<style>
+/*
+ * DesignKit Dark — 设计系统地基（v3 定稿实现）
+ * ---------------------------------------------------------------------------
+ * 用途双重：
+ *   1. 全部设计稿（Claude Design 三个项目）的共用样式，逐字内联进每张稿；
+ *   2. 实施时 tokens.css 换值与 designkit-ui.css 深色化的对照蓝本。
+ *
+ * 令牌名与 frontend/src/features/designkit/theme/tokens.css **一字不差**，
+ * 只换值（v3 3.2 对照表）；新增三个：--dk-image-canvas / --dk-accent-2 / --dk-glow。
+ * 组件类名沿用 designkit-ui.css 现有词汇（dk-button--primary-action、
+ * dk-size-option、dk-dropzone、dk-thumb…），新组件按同一命名法追加——
+ * 这样设计稿里的每个类名在代码库里都有着落，交接零翻译。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 底面 */
+  --dk-canvas: #0b0f1a;
+  --dk-surface: #131a2b;
+  --dk-surface-subtle: #101625;
+  --dk-surface-raised: #1b2337;
+  --dk-surface-hover: rgba(124, 107, 255, 0.08);
+  --dk-surface-pressed: rgba(124, 107, 255, 0.14);
+  --dk-overlay: rgba(4, 7, 14, 0.66);
+  --dk-border: #273049;
+  --dk-border-strong: #3a466b;
+
+  /* 文字 */
+  --dk-text: #f2f5fa;
+  --dk-text-secondary: #a8b3c7;
+  --dk-text-tertiary: #7a85a0;
+  --dk-text-disabled: #5a6580;
+  --dk-text-inverse: #0b0f1a;
+
+  /* 动作与强调 */
+  --dk-action: #7c6bff;
+  --dk-action-hover: #8f80ff;
+  --dk-action-pressed: #6b5af0;
+  --dk-accent: #5ea2ff;
+  --dk-accent-strong: #82b7ff;
+  --dk-accent-soft: rgba(94, 162, 255, 0.16);
+  --dk-focus: rgba(124, 107, 255, 0.45);
+
+  /* 反馈 */
+  --dk-success: #34d399;
+  --dk-success-soft: rgba(52, 211, 153, 0.14);
+  --dk-warning: #fbbf24;
+  --dk-warning-soft: rgba(251, 191, 36, 0.14);
+  --dk-danger: #f87171;
+  --dk-danger-strong: #ef6b6b;
+  --dk-danger-soft: rgba(248, 113, 113, 0.14);
+  --dk-info-soft: rgba(56, 189, 248, 0.14);
+
+  /* 新增（v3） */
+  --dk-image-canvas: #17191e;   /* 图像衬底：中性灰，无蓝紫偏色 */
+  --dk-accent-2: #2dd4bf;       /* 数据点缀青，仅数据强调 */
+  --dk-glow: rgba(124, 107, 255, 0.2); /* 氛围光：登录页/官网限定 */
+
+  /* 字体与字号（Inter 优先，v3） */
+  --dk-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "HarmonyOS Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --dk-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --dk-text-xs: 12px; --dk-text-sm: 13px; --dk-text-md: 14px;
+  --dk-text-lg: 16px; --dk-text-xl: 20px; --dk-text-2xl: 28px;
+  --dk-leading-tight: 1.3; --dk-leading: 1.55;
+
+  /* 间距 / 圆角 / 投影（深色投影 = 细内描边 + 深投影） */
+  --dk-space-1: 4px; --dk-space-2: 8px; --dk-space-3: 12px; --dk-space-4: 16px;
+  --dk-space-5: 20px; --dk-space-6: 24px; --dk-space-7: 28px; --dk-space-8: 32px;
+  --dk-space-9: 36px; --dk-space-10: 40px; --dk-space-12: 48px;
+  --dk-radius-sm: 6px; --dk-radius-md: 8px; --dk-radius-lg: 12px; --dk-radius-pill: 999px;
+  --dk-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --dk-shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --dk-shadow-overlay: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* 外壳尺寸（沿用现值；toolrail 保留令牌但外壳维持上游侧栏——拍板增补） */
+  --dk-topbar-h: 54px; --dk-toolrail-w: 68px; --dk-config-w: 400px;
+  --dk-control-h: 40px; --dk-primary-h: 44px; --dk-bottom-nav-h: 64px;
+  --dk-content-max: 1440px;
+  --dk-z-sticky: 20; --dk-z-nav: 30; --dk-z-overlay: 100; --dk-z-toast: 120; --dk-z-lightbox: 140;
+  --dk-motion-fast: 120ms; --dk-motion-normal: 180ms;
+  --dk-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── 基础 ─────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--dk-canvas);
+  color: var(--dk-text);
+  font-family: var(--dk-font-sans);
+  font-size: var(--dk-text-md);
+  line-height: var(--dk-leading);
+  letter-spacing: 0.01em; /* 中文字距克制，≤0.04em */
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(124, 107, 255, 0.35); }
+a { color: var(--dk-accent); text-decoration: none; }
+a:hover { color: var(--dk-accent-strong); }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--dk-focus); border-radius: var(--dk-radius-sm); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #273049; border-radius: 999px; border: 2px solid var(--dk-canvas); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 排版助手（与 designkit-ui.css 同名） */
+.dk-page-title { font-size: var(--dk-text-2xl); font-weight: 700; line-height: var(--dk-leading-tight); margin: 0; }
+.dk-page-desc { color: var(--dk-text-secondary); margin: 6px 0 0; }
+.dk-eyebrow { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); text-transform: uppercase; }
+.dk-panel-title { font-size: var(--dk-text-lg); font-weight: 600; margin: 0; }
+.dk-panel-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin: 2px 0 0; }
+.dk-label { display: block; font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text-secondary); margin-bottom: 6px; }
+.dk-note { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); margin: 0; }
+.dk-note--quiet { color: var(--dk-text-tertiary); }
+.dk-note--warning { color: var(--dk-warning); }
+.dk-note--danger { color: var(--dk-danger); }
+.dk-note--success { color: var(--dk-success); }
+.dk-muted { color: var(--dk-text-tertiary); }
+.dk-mono-note { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+/* 金额与数量：等宽数字、600、主文字色——关键信息绝不弱化 */
+.dk-money { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dk-text); }
+.dk-money--accent { color: var(--dk-accent-2); } /* 数据强调限定 */
+.dk-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── 面板 ─────────────────────────────────────────────────────── */
+.dk-panel {
+  background: var(--dk-surface);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-5);
+  box-shadow: var(--dk-shadow-1);
+}
+.dk-panel--subtle { background: var(--dk-surface-subtle); box-shadow: none; }
+.dk-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dk-space-3); margin-bottom: var(--dk-space-4); }
+
+/* ── 按钮（主/次/危险/安静/小号 + 花钱变体） ───────────────────── */
+.dk-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--dk-control-h); padding: 0 16px;
+  border-radius: var(--dk-radius-md); border: 1px solid transparent;
+  background: var(--dk-surface-raised); color: var(--dk-text);
+  font: 600 var(--dk-text-md)/1 var(--dk-font-sans); cursor: pointer;
+  transition: background var(--dk-motion-fast) var(--dk-ease-out),
+              border-color var(--dk-motion-fast) var(--dk-ease-out),
+              transform var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-button:hover { background: #232c44; }
+.dk-button:active { transform: translateY(1px); }
+.dk-button:disabled { color: var(--dk-text-disabled); background: var(--dk-surface-subtle); cursor: not-allowed; transform: none; }
+.dk-button--primary-action { background: var(--dk-action); color: #fff; height: var(--dk-primary-h); }
+.dk-button--primary-action:hover { background: var(--dk-action-hover); }
+.dk-button--primary-action:active { background: var(--dk-action-pressed); }
+.dk-button--primary-action:disabled { background: #3d3a66; color: rgba(255,255,255,.45); }
+.dk-button--secondary { background: transparent; border-color: var(--dk-border-strong); }
+.dk-button--secondary:hover { background: var(--dk-surface-hover); border-color: var(--dk-action); }
+.dk-button--danger { background: transparent; border-color: var(--dk-danger); color: var(--dk-danger); }
+.dk-button--danger:hover { background: var(--dk-danger-soft); }
+.dk-button--danger.is-solid { background: var(--dk-danger); color: #1a0b0b; border-color: transparent; }
+.dk-button--quiet { background: transparent; color: var(--dk-accent); padding: 0 8px; height: auto; }
+.dk-button--quiet:hover { background: transparent; color: var(--dk-accent-strong); text-decoration: underline; }
+.dk-button--sm { height: 32px; padding: 0 12px; font-size: var(--dk-text-sm); }
+.dk-button--block { width: 100%; }
+/* 花钱按钮：价格小字缀在文案后（「让 AI 推荐 · $0.09~$0.34」） */
+.dk-button__price { font-weight: 500; font-size: var(--dk-text-xs); opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+/* ── 表单 ─────────────────────────────────────────────────────── */
+.dk-input, .dk-textarea, .dk-select {
+  width: 100%; background: var(--dk-surface-subtle);
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  color: var(--dk-text); font: 400 var(--dk-text-md)/var(--dk-leading) var(--dk-font-sans);
+  padding: 9px 12px; transition: border-color var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-input { height: var(--dk-control-h); }
+.dk-input::placeholder, .dk-textarea::placeholder { color: var(--dk-text-tertiary); }
+.dk-input:hover, .dk-textarea:hover, .dk-select:hover { border-color: var(--dk-border-strong); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { outline: none; border-color: var(--dk-action); box-shadow: 0 0 0 3px var(--dk-focus); }
+.dk-input.is-error, .dk-textarea.is-error { border-color: var(--dk-danger); }
+.dk-input:disabled, .dk-textarea:disabled, .dk-select:disabled { color: var(--dk-text-disabled); background: var(--dk-surface); }
+.dk-field-error { font-size: var(--dk-text-sm); color: var(--dk-danger); margin-top: 6px; }
+.dk-char-count { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); text-align: right; }
+.dk-char-count.is-over { color: var(--dk-danger); font-weight: 600; }
+.dk-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--dk-text-tertiary) 50%), linear-gradient(135deg, var(--dk-text-tertiary) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+/* 字段两级说明：hint 灰字；danger = 警告色 4px 左边线 + soft 底 */
+.dk-field-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin-top: 6px; }
+.dk-danger-note {
+  margin-top: 8px; padding: 8px 12px; font-size: var(--dk-text-sm);
+  color: var(--dk-warning); background: var(--dk-warning-soft);
+  border-left: 4px solid var(--dk-warning); border-radius: 0 var(--dk-radius-sm) var(--dk-radius-sm) 0;
+}
+
+/* chips（分类单选） */
+.dk-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border);
+  background: var(--dk-surface); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm); cursor: pointer;
+}
+.dk-chip:hover { border-color: var(--dk-border-strong); color: var(--dk-text); }
+.dk-chip.is-selected { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+
+/* 开关 / 复选 / 单选（后台场景） */
+.dk-switch { position: relative; width: 40px; height: 22px; border-radius: 999px; background: var(--dk-border-strong); border: none; cursor: pointer; transition: background var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #e7e9f2; transition: transform var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch.is-on { background: var(--dk-action); }
+.dk-switch.is-on::after { transform: translateX(18px); }
+.dk-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); cursor: pointer; }
+.dk-check__box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--dk-border-strong); background: var(--dk-surface-subtle); display: inline-grid; place-items: center; }
+.dk-check.is-checked .dk-check__box { background: var(--dk-action); border-color: var(--dk-action); }
+.dk-check.is-checked .dk-check__box::after { content: "✓"; color: #fff; font-size: 11px; font-weight: 700; }
+
+/* ── 上传区 ───────────────────────────────────────────────────── */
+.dk-dropzone {
+  display: grid; place-items: center; gap: 6px; text-align: center;
+  padding: var(--dk-space-8) var(--dk-space-5);
+  border: 1.5px dashed var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  background: var(--dk-surface-subtle); color: var(--dk-text-secondary); cursor: pointer;
+  transition: border-color var(--dk-motion-fast) var(--dk-ease-out), background var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-dropzone:hover { border-color: var(--dk-action); }
+.dk-dropzone.is-dragover { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.06); }
+.dk-dropzone__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-dropzone__meta { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* 缩略图（商品图/结果图共用视觉；衬底一律 --dk-image-canvas） */
+.dk-thumb { position: relative; border-radius: var(--dk-radius-md); overflow: hidden; border: 1px solid var(--dk-border); background: var(--dk-image-canvas); }
+.dk-thumb.is-white { background: #ffffff; }
+.dk-thumb__media { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.dk-thumb__tag {
+  position: absolute; top: 6px; left: 6px; padding: 2px 8px;
+  border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 600;
+  background: rgba(11, 15, 26, 0.78); color: var(--dk-text-secondary); backdrop-filter: blur(4px);
+}
+.dk-thumb__tag--ok { color: var(--dk-success); }
+.dk-thumb__tag--fail { color: var(--dk-danger); }
+.dk-thumb__overlay {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 8px;
+  background: rgba(4, 7, 14, 0.55); opacity: 0; transition: opacity var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-thumb:hover .dk-thumb__overlay { opacity: 1; }
+
+/* 比例选择块：按真实宽高比绘制 */
+.dk-size-options { display: flex; flex-wrap: wrap; gap: var(--dk-space-3); }
+.dk-size-option {
+  display: grid; gap: 6px; justify-items: center; padding: 10px 12px 8px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle); cursor: pointer; position: relative;
+}
+.dk-size-option:hover { border-color: var(--dk-border-strong); }
+.dk-size-option.is-selected { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.1); box-shadow: 0 0 0 1px var(--dk-action); }
+.dk-size-option__shape { background: var(--dk-border-strong); border-radius: 3px; height: 34px; }
+.dk-size-option.is-selected .dk-size-option__shape { background: var(--dk-action); }
+.dk-size-option__label { font-size: var(--dk-text-sm); font-weight: 600; }
+.dk-size-option__ratio { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+.dk-size-option__tier { position: absolute; top: 4px; right: 6px; font-size: 10px; color: var(--dk-text-tertiary); }
+
+/* ── 状态徽章 ─────────────────────────────────────────────────── */
+.dk-badge {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px;
+  border-radius: var(--dk-radius-pill); font-size: var(--dk-text-xs); font-weight: 600;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+}
+.dk-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.dk-badge--success { background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-badge--danger { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-badge--warning { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-badge--info { background: var(--dk-accent-soft); color: var(--dk-accent-strong); }
+.dk-badge--running .dk-badge__dot { animation: dk-pulse 1.2s ease-in-out infinite; }
+@keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* 进度条 */
+.dk-progress-track { height: 6px; border-radius: 999px; background: var(--dk-surface-raised); overflow: hidden; }
+.dk-progress-bar { height: 100%; border-radius: 999px; background: var(--dk-action); transition: width var(--dk-motion-normal) var(--dk-ease-out); }
+
+/* ── 提示与警报 ───────────────────────────────────────────────── */
+.dk-alert {
+  display: grid; gap: 4px; padding: 12px 14px;
+  border-radius: var(--dk-radius-md); border: 1px solid var(--dk-border);
+  background: var(--dk-surface-subtle); font-size: var(--dk-text-sm);
+}
+.dk-alert--danger { border-color: rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-alert--warning { border-color: rgba(251, 191, 36, 0.4); background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-alert--success { border-color: rgba(52, 211, 153, 0.4); background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-alert--info { border-color: rgba(94, 162, 255, 0.4); background: var(--dk-info-soft); color: var(--dk-accent-strong); }
+.dk-alert__sub { color: var(--dk-text-secondary); font-weight: 400; }
+
+/* toast（顶部居中，180ms 滑入） */
+.dk-toast {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-radius: var(--dk-radius-md); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); box-shadow: var(--dk-shadow-2);
+  font-size: var(--dk-text-sm); font-weight: 500;
+}
+.dk-toast--success { border-color: rgba(52, 211, 153, 0.5); }
+.dk-toast--error { border-color: rgba(248, 113, 113, 0.5); }
+
+/* ── 弹窗 ─────────────────────────────────────────────────────── */
+.dk-dialog-overlay { position: fixed; inset: 0; background: var(--dk-overlay); display: grid; place-items: center; z-index: var(--dk-z-overlay); }
+.dk-dialog {
+  width: min(92vw, 440px); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-6); box-shadow: var(--dk-shadow-overlay);
+}
+.dk-dialog__title { font-size: var(--dk-text-lg); font-weight: 700; margin: 0 0 10px; }
+.dk-dialog__body { color: var(--dk-text-secondary); font-size: var(--dk-text-md); }
+.dk-dialog--danger .dk-dialog__title { color: var(--dk-danger); }
+.dk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--dk-space-3); margin-top: var(--dk-space-6); }
+
+/* ── 数据卡（本月出图 / 花费 / 余额） ─────────────────────────── */
+.dk-usage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--dk-space-3); }
+.dk-usage-cell { background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); padding: 14px 18px; }
+.dk-usage-cell__label { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-usage-cell__value { font-size: var(--dk-text-xl); margin-top: 2px; }
+
+/* ── 空状态 ───────────────────────────────────────────────────── */
+.dk-empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: var(--dk-space-10) var(--dk-space-5); color: var(--dk-text-secondary); }
+.dk-empty__icon { opacity: 0.9; }
+.dk-empty__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-empty__description { max-width: 44ch; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* ── 骨架屏（微光 2s；减少动态效果时静态） ────────────────────── */
+.dk-skeleton { position: relative; overflow: hidden; background: var(--dk-surface-raised); border-radius: var(--dk-radius-md); }
+.dk-skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%);
+  animation: dk-shimmer 2s linear infinite;
+}
+@keyframes dk-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* ── 后台表单场景（S-UP 样板的规矩） ──────────────────────────── */
+/* 信息密度高一档：13px 主档、行高收紧 */
+.dk-admin { font-size: var(--dk-text-sm); }
+.dk-table { width: 100%; border-collapse: collapse; background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; }
+.dk-table th {
+  position: sticky; top: 0; z-index: 1; text-align: left;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs); font-weight: 600; padding: 10px 14px;
+  border-bottom: 1px solid var(--dk-border-strong);
+}
+.dk-table td { padding: 10px 14px; border-bottom: 1px solid var(--dk-border); font-size: var(--dk-text-sm); }
+.dk-table tbody tr:nth-child(even) { background: var(--dk-surface-subtle); } /* 斑马纹 = 次级底 */
+.dk-table tbody tr:hover { background: var(--dk-surface-hover); }
+.dk-pager { display: flex; align-items: center; gap: 6px; }
+.dk-pager__btn { min-width: 30px; height: 30px; border-radius: var(--dk-radius-sm); border: 1px solid var(--dk-border); background: transparent; color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-pager__btn.is-current { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--dk-border); }
+.dk-tab { padding: 10px 16px; border: none; background: none; color: var(--dk-text-secondary); font: 600 var(--dk-text-md) var(--dk-font-sans); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dk-tab.is-active { color: var(--dk-text); border-bottom-color: var(--dk-action); }
+.dk-crumbs { display: flex; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-crumbs a { color: var(--dk-text-tertiary); }
+.dk-crumbs .is-current { color: var(--dk-text-secondary); }
+.dk-sidenav { width: 220px; padding: var(--dk-space-3); display: grid; gap: 2px; align-content: start; }
+.dk-sidenav__group { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-weight: 600; padding: 12px 10px 4px; letter-spacing: 0.04em; }
+.dk-sidenav__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--dk-radius-md); color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-sidenav__item:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-sidenav__item.is-active { background: var(--dk-accent-soft); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-savebar {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--dk-space-4);
+  padding: 14px var(--dk-space-5); background: rgba(19, 26, 43, 0.92); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--dk-border-strong); z-index: var(--dk-z-sticky);
+}
+.dk-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-sm); font-size: 11px; font-weight: 600; background: var(--dk-surface-raised); color: var(--dk-text-secondary); }
+
+/* 四级配置标记徽章（帮助中心/配置手册用）*/
+.dk-mark { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 700; }
+.dk-mark--must { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-mark--suggest { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-mark--skip { background: var(--dk-surface-raised); color: var(--dk-text-tertiary); }
+.dk-mark--forbid { background: rgba(248, 113, 113, 0.24); color: #ffb4b4; }
+
+/* 报错块（运营看得懂的报错） */
+.dk-errorblock { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--dk-radius-md); border: 1px solid rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); }
+.dk-errorblock__msg { color: var(--dk-danger); font-weight: 600; }
+.dk-errorblock__meta { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-errorblock__how { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+
+/* 氛围光（登录页/官网限定；正文区禁用） */
+.dk-glow-spot { position: absolute; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, var(--dk-glow), transparent 70%); pointer-events: none; }
+
+/* ── 减少动态效果 ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   页面自有样式（dk-x- 前缀）：上游后台深色样板 S-UP
+   以「账号管理」列表页为例，给几十个同构后台页定规矩，
+   不追求还原细节。bridge.css 换肤按本稿逐元素对照验收（v3 7.1·3）。
+   ═══════════════════════════════════════════════════════════════ */
+
+.dk-x-board { width: 1440px; margin: 0 auto; padding: 36px 40px 56px; }
+
+/* 板头 */
+.dk-x-board-head { display: flex; align-items: center; gap: 14px; }
+.dk-x-logo {
+  flex: 0 0 40px; width: 40px; height: 40px; border-radius: 10px;
+  background: var(--dk-surface-raised); border: 1px solid var(--dk-border);
+  display: grid; place-items: center;
+}
+.dk-x-logo svg { width: 24px; height: 24px; display: block; }
+.dk-x-brand { font-size: var(--dk-text-lg); font-weight: 400; color: var(--dk-text); white-space: nowrap; }
+.dk-x-brand b { font-weight: 700; color: var(--dk-action); }
+.dk-x-board-title { margin-top: 18px; }
+
+/* 分区 */
+.dk-x-section { margin-top: 44px; }
+.dk-x-section-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.dk-x-section-num {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 10px;
+  border-radius: var(--dk-radius-pill); background: rgba(124, 107, 255, 0.14);
+  color: var(--dk-action-hover); font: 700 var(--dk-text-xs)/1 var(--dk-font-mono);
+  letter-spacing: 0.04em;
+}
+.dk-x-section-hint { margin: 0 0 16px; }
+.dk-x-key { font-family: var(--dk-font-mono); font-size: 11px; color: var(--dk-text-tertiary); }
+
+/* ── ① 列表页全貌：上游同款侧栏 + 后台内容区 ─────────────────── */
+.dk-x-screen {
+  display: flex; width: 100%; height: 940px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg);
+  overflow: hidden; background: var(--dk-canvas);
+}
+
+/* 侧栏（结构参照 AppSidebar.vue：logo 区 → 管理菜单 → 我的账户 → 底部块） */
+.dk-x-sidebar { width: 256px; flex: none; display: flex; flex-direction: column; background: var(--dk-surface-subtle); border-right: 1px solid var(--dk-border); }
+.dk-x-sidebar-header { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; }
+.dk-x-mark { flex: none; display: grid; place-items: center; }
+.dk-x-wordmark { font-size: 17px; font-weight: 500; color: var(--dk-text); white-space: nowrap; }
+.dk-x-wordmark b { font-weight: 800; color: var(--dk-action); }
+.dk-x-nav { flex: 1; padding: 2px 12px 8px; display: grid; gap: 1px; align-content: start; overflow-y: auto; }
+.dk-x-side-link {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 7px 10px; border-radius: var(--dk-radius-md); border: none; background: none;
+  color: var(--dk-text-secondary); font: 400 var(--dk-text-sm)/1.3 var(--dk-font-sans);
+  cursor: pointer; text-align: left;
+}
+.dk-x-side-link svg { width: 18px; height: 18px; flex: none; }
+.dk-x-side-link:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-x-side-link.is-active { background: var(--dk-accent-soft); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-x-side-link .dk-x-chev { margin-left: auto; width: 14px; height: 14px; transition: transform var(--dk-motion-normal) var(--dk-ease-out); }
+.dk-x-side-link .dk-x-chev.is-open { transform: rotate(180deg); }
+/* 子菜单：缩进 + 左侧引导线（同上游 ml-4 border-l pl-2） */
+.dk-x-side-children { margin: 1px 0 3px 18px; padding-left: 8px; border-left: 1px solid var(--dk-border); display: grid; gap: 1px; }
+.dk-x-side-children .dk-x-side-link { padding: 5px 10px; }
+.dk-x-side-children .dk-x-side-link svg { width: 15px; height: 15px; }
+.dk-x-side-sectitle {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 10px 4px; font-size: 11px; font-weight: 600;
+  color: var(--dk-text-tertiary); letter-spacing: 0.04em; white-space: nowrap;
+}
+.dk-x-side-sectitle::after { content: ""; flex: 1; height: 1px; background: var(--dk-border); }
+.dk-x-side-note { margin: 4px 4px 0; padding: 2px 8px; font-size: 11px; color: var(--dk-text-tertiary); border: 1px dashed var(--dk-border-strong); border-radius: var(--dk-radius-sm); justify-self: start; }
+.dk-x-side-foot { border-top: 1px solid var(--dk-border); padding: 8px 12px 12px; display: grid; gap: 4px; }
+.dk-x-user { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--dk-radius-md); }
+.dk-x-user:hover { background: var(--dk-surface-hover); }
+.dk-x-avatar { width: 32px; height: 32px; border-radius: 50%; flex: none; background: var(--dk-accent-soft); color: var(--dk-accent-strong); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.dk-x-user-meta { min-width: 0; display: grid; gap: 1px; }
+.dk-x-user-email { font-size: var(--dk-text-sm); color: var(--dk-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-x-logout { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dk-text-tertiary); cursor: pointer; background: none; border: none; padding: 0; font-family: var(--dk-font-sans); }
+.dk-x-logout svg { width: 12px; height: 12px; }
+.dk-x-logout:hover { color: var(--dk-danger); }
+
+/* 内容区：后台密度一档（13px 主档、控件 34px 高） */
+.dk-x-content { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dk-x-page { flex: 1; overflow-y: auto; padding: 16px 28px 24px; }
+.dk-x-page .dk-input, .dk-x-page .dk-select { height: 34px; padding: 6px 10px; font-size: var(--dk-text-sm); }
+.dk-x-page-title { font-size: 22px; font-weight: 700; line-height: var(--dk-leading-tight); margin: 0; }
+.dk-x-pagehead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-top: 10px; }
+.dk-x-pagehead .dk-button--primary-action { height: 38px; font-size: var(--dk-text-sm); }
+.dk-x-pagehead .dk-button--primary-action svg { width: 16px; height: 16px; }
+
+/* 搜索过滤条 */
+.dk-x-filters { display: flex; align-items: center; gap: 10px; margin: 14px 0 12px; }
+.dk-x-search { position: relative; width: 280px; flex: none; }
+.dk-x-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--dk-text-tertiary); pointer-events: none; }
+.dk-x-search .dk-input { padding-left: 32px; }
+.dk-x-filters .dk-select { width: 148px; }
+.dk-x-filters-count { margin-left: auto; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* 表格细节 */
+.dk-x-cellname { display: grid; gap: 2px; }
+.dk-x-cellname strong { font-weight: 600; color: var(--dk-text); }
+.dk-x-cellsub { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-x-cellsub--danger { color: var(--dk-danger); }
+.dk-x-num { font-variant-numeric: tabular-nums; }
+.dk-x-quiet { color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+.dk-x-op { background: none; border: none; padding: 0; cursor: pointer; color: var(--dk-accent); font: 500 var(--dk-text-sm)/1 var(--dk-font-sans); }
+.dk-x-op:hover { color: var(--dk-accent-strong); text-decoration: underline; }
+.dk-x-op--danger { color: var(--dk-danger); }
+.dk-x-op--danger:hover { color: var(--dk-danger-strong); }
+.dk-x-opsep { color: var(--dk-border-strong); margin: 0 6px; }
+/* 行悬停演示态（真实交互由 tbody tr:hover 提供，这里钉一行做样张） */
+.dk-table tbody tr.is-hover { background: var(--dk-surface-hover); }
+
+/* 表格页脚：计数 + 分页器 */
+.dk-x-tablefoot { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; }
+.dk-x-tablefoot-count { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* 标注 chips */
+.dk-x-callouts { display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 14px; }
+.dk-x-callout { font-family: var(--dk-font-mono); font-size: 11px; color: var(--dk-text-tertiary); border: 1px dashed var(--dk-border-strong); border-radius: var(--dk-radius-pill); padding: 3px 10px; white-space: nowrap; }
+
+/* ── ②③ 舞台：假页面元素 + 遮罩 ──────────────────────────────── */
+.dk-x-stage {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg);
+  background: var(--dk-canvas);
+}
+.dk-x-ghost { position: absolute; border-radius: var(--dk-radius-sm); background: var(--dk-surface-raised); }
+.dk-x-veil { position: absolute; inset: 0; background: var(--dk-overlay); }
+.dk-x-veil-note {
+  position: absolute; left: 36px; top: 36px; z-index: 1;
+  font-family: var(--dk-font-mono); font-size: 11px; color: var(--dk-text-tertiary);
+  border: 1px dashed var(--dk-border-strong); border-radius: var(--dk-radius-pill); padding: 3px 10px;
+}
+
+/* 右侧滑出详情抽屉 */
+.dk-x-stage--drawer { height: 700px; }
+.dk-x-drawer {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 460px;
+  background: var(--dk-surface); border-left: 1px solid var(--dk-border-strong);
+  box-shadow: var(--dk-shadow-overlay);
+  display: flex; flex-direction: column; z-index: 1;
+}
+.dk-x-drawer-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--dk-border); }
+.dk-x-drawer-title { font-size: var(--dk-text-lg); font-weight: 700; margin: 0; }
+.dk-x-close {
+  margin-left: auto; width: 30px; height: 30px; border-radius: var(--dk-radius-sm);
+  border: none; background: none; color: var(--dk-text-tertiary);
+  display: grid; place-items: center; cursor: pointer;
+}
+.dk-x-close:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-x-close svg { width: 16px; height: 16px; }
+.dk-x-drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px; display: grid; gap: 16px; align-content: start; }
+.dk-x-drawer-body .dk-input, .dk-x-drawer-body .dk-select { height: 34px; padding: 6px 10px; font-size: var(--dk-text-sm); }
+.dk-x-drawer-body .dk-textarea { font-size: var(--dk-text-sm); }
+.dk-x-cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dk-x-switchrow { display: flex; align-items: flex-start; gap: 12px; }
+.dk-x-switchrow .dk-switch { flex: none; margin-top: 1px; }
+.dk-x-switchrow-text { display: grid; gap: 2px; }
+.dk-x-switchrow-text .dk-label { margin-bottom: 0; }
+.dk-x-drawer .dk-savebar { padding: 12px 20px; }
+.dk-x-drawer .dk-savebar .dk-button--primary-action { height: 38px; font-size: var(--dk-text-sm); }
+.dk-x-savestate { margin-left: auto; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+
+/* 危险确认弹窗舞台 */
+.dk-x-stage--dialog { min-height: 360px; display: grid; place-items: center; padding: 36px 28px; }
+.dk-x-stage--dialog .dk-dialog { position: relative; z-index: 1; width: 440px; max-width: 100%; }
+.dk-x-dialog-note {
+  margin-top: 14px; padding: 10px 12px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle);
+  font-size: var(--dk-text-sm); color: var(--dk-text-tertiary);
+}
+
+/* 空表格态 */
+.dk-x-emptywrap { border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; background: var(--dk-surface); }
+.dk-x-emptywrap .dk-table { border: none; border-radius: 0; }
+
+/* ── 页脚：换肤规矩四条 ──────────────────────────────────────── */
+.dk-x-rules { margin-top: 52px; padding-top: 20px; border-top: 1px dashed var(--dk-border); }
+.dk-x-rules-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.dk-x-rule {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px; background: var(--dk-surface-subtle);
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+}
+.dk-x-rule-num {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: var(--dk-radius-pill);
+  background: rgba(124, 107, 255, 0.14); color: var(--dk-action-hover);
+  font: 700 var(--dk-text-xs)/1 var(--dk-font-mono);
+}
+.dk-x-rule p { margin: 0; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+.dk-x-rule strong { color: var(--dk-text); font-weight: 600; }
+.dk-x-rules code {
+  font-family: var(--dk-font-mono); font-size: 11px; color: var(--dk-accent-strong);
+  background: rgba(94, 162, 255, 0.08); padding: 1px 5px; border-radius: 4px; white-space: nowrap;
+}
+.dk-x-footnote {
+  margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px 24px;
+  font-size: var(--dk-text-xs); color: var(--dk-text-tertiary);
+}
+.dk-x-footnote span::before { content: "· "; color: var(--dk-action); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="dk-x-board">
+
+  <!-- ── 板头 ─────────────────────────────────────────────── -->
+  <header class="dk-x-board-head">
+    <span class="dk-x-logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--dk-text)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+        <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+        <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+        <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="var(--dk-action)" stroke-width="2"/>
+        <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+        <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+      </svg>
+    </span>
+    <span class="dk-x-brand">Design<b>Kit</b></span>
+  </header>
+
+  <div class="dk-x-board-title">
+    <p class="dk-eyebrow">产品端 · 上游后台深色适配样板（v3 4.7 S-UP · 对应 D1）</p>
+    <h1 class="dk-page-title">上游后台深色样板</h1>
+    <p class="dk-page-desc">以「账号管理」列表页为例，给几十个同构后台页定深色规矩——不追求还原每个细节。bridge.css 从「给上游换浅色皮」改写为「按本样板换深色皮」，验收时逐元素对照本稿（v3 7.1·3）。信息密度比运营页高一档：13px 主档、控件 34px 高。</p>
+  </div>
+
+  <!-- ═══ ① 列表页全貌 ═══════════════════════════════════════ -->
+  <section class="dk-x-section">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">①</span>
+      <h2 class="dk-panel-title">列表页全貌：侧栏多级菜单 + 面包屑 + 页头操作区 + 数据表格 + 分页器</h2>
+    </div>
+    <p class="dk-panel-hint dk-x-section-hint">侧栏取自 AppSidebar.vue 的管理员菜单（真实菜单名），当前项「账号管理」高亮；「渠道管理」展开、「安全审计」折叠，各演示一态。表格列与状态文案取自 <span class="dk-x-key">admin.accounts.columns.* / admin.accounts.status.*</span>。</p>
+
+    <div class="dk-x-screen dk-admin">
+
+      <!-- 侧栏 -->
+      <aside class="dk-x-sidebar">
+        <div class="dk-x-sidebar-header">
+          <span class="dk-x-mark">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+              <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+              <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+              <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/>
+              <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+              <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+            </svg>
+          </span>
+          <span class="dk-x-wordmark">Design<b>Kit</b></span>
+          <span class="dk-tag">商品图</span>
+        </div>
+
+        <nav class="dk-x-nav">
+          <!-- 管理菜单（AppSidebar.vue adminNavItems，真实菜单名） -->
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3.75" y="3.75" width="6.75" height="6.75" rx="1.6"/><rect x="13.5" y="3.75" width="6.75" height="6.75" rx="1.6"/>
+              <rect x="3.75" y="13.5" width="6.75" height="6.75" rx="1.6"/><rect x="13.5" y="13.5" width="6.75" height="6.75" rx="1.6"/>
+            </svg>
+            <span>仪表盘</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="8" r="3.25"/><path d="M3.5 19.5a5.5 5.5 0 0 1 11 0"/>
+              <circle cx="16.75" cy="9.25" r="2.35"/><path d="M15.4 14.6a4.6 4.6 0 0 1 5.6 4.4"/>
+            </svg>
+            <span>用户管理</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3.5 7.5V6a1.8 1.8 0 0 1 1.8-1.8h4l2 2.3h7.4A1.8 1.8 0 0 1 20.5 8.3v9.4a1.8 1.8 0 0 1-1.8 1.8H5.3a1.8 1.8 0 0 1-1.8-1.8Z"/>
+            </svg>
+            <span>分组管理</span>
+          </button>
+
+          <!-- 折叠分组：渠道管理（展开态） -->
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.5 21 8.4l-9 4.9-9-4.9Z"/><path d="m3 12.4 9 4.9 9-4.9"/><path d="m3 16.4 9 4.9 9-4.9"/>
+            </svg>
+            <span>渠道管理</span>
+            <svg class="dk-x-chev is-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+          </button>
+          <div class="dk-x-side-children">
+            <button class="dk-x-side-link" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.6 3H5.25A2.25 2.25 0 0 0 3 5.25V9.6c0 .6.24 1.17.66 1.6l9.58 9.57a1.9 1.9 0 0 0 2.6.33 18 18 0 0 0 5.23-5.22 1.9 1.9 0 0 0-.33-2.61L11.16 3.66A2.25 2.25 0 0 0 9.6 3Z"/><path d="M6 6h.008v.008H6Z"/>
+              </svg>
+              <span>渠道定价</span>
+            </button>
+            <button class="dk-x-side-link" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.35 14.65a3.75 3.75 0 0 1 0-5.3m5.3 0a3.75 3.75 0 0 1 0 5.3m-7.42 2.12a6.75 6.75 0 0 1 0-9.54m9.54 0a6.75 6.75 0 0 1 0 9.54"/><circle cx="12" cy="12" r="0.4"/>
+              </svg>
+              <span>渠道监控</span>
+            </button>
+          </div>
+
+          <!-- 当前页 -->
+          <button class="dk-x-side-link is-active" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.3 2.2 3.5 5.2 3.5 8.5s-1.2 6.3-3.5 8.5c-2.3-2.2-3.5-5.2-3.5-8.5s1.2-6.3 3.5-8.5Z"/>
+            </svg>
+            <span>账号管理</span>
+          </button>
+
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.85 17.1a23.8 23.8 0 0 0 5.46-1.31A8.97 8.97 0 0 1 18 9.75V9a6 6 0 1 0-12 0v.75a8.97 8.97 0 0 1-2.31 6.04c1.73.64 3.56 1.08 5.45 1.31m5.71 0a24.3 24.3 0 0 1-5.71 0m5.71 0a3 3 0 1 1-5.71 0"/>
+            </svg>
+            <span>公告</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3.5" y="4.5" width="17" height="6" rx="1.6"/><rect x="3.5" y="13.5" width="17" height="6" rx="1.6"/>
+              <path d="M7 7.5h.01M7 16.5h.01"/>
+            </svg>
+            <span>IP管理</span>
+          </button>
+
+          <!-- 折叠分组：安全审计（收起态） -->
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.2 19.5 6v5.3c0 4.6-3.2 8.4-7.5 9.5-4.3-1.1-7.5-4.9-7.5-9.5V6Z"/><path d="m9 12 2.2 2.2L15.4 10"/>
+            </svg>
+            <span>安全审计</span>
+            <svg class="dk-x-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+          </button>
+
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v2.6a2.9 2.9 0 0 0 0 5.8v2.6a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-2.6a2.9 2.9 0 0 0 0-5.8Z"/>
+            </svg>
+            <span>兑换码</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 20V13.2M4 20h3v-6.8H4ZM10.5 20V8.6m0 11.4h3V8.6h-3ZM17 20V4.8M17 20h3V4.8h-3Z"/>
+            </svg>
+            <span>使用记录</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3.2 19.5 6v5.3c0 4.6-3.2 8.4-7.5 9.5-4.3-1.1-7.5-4.9-7.5-9.5V6Z"/><path d="M9.2 11.5h5.6M9.2 14.5h3.6"/>
+            </svg>
+            <span>操作日志</span>
+          </button>
+
+          <!-- designkit 自建：商品图设置（排在系统设置前一格） -->
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/>
+            </svg>
+            <span>商品图设置</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 4.2 13 3h-2ZM12 4.2a7.8 7.8 0 0 1 3.9 1.05l1.55-.4.98 1.7-.57 1.5a7.8 7.8 0 0 1 1.94 3.35l1.4.7v1.96l-1.4.7a7.8 7.8 0 0 1-1.94 3.35l.57 1.5-.98 1.7-1.55-.4A7.8 7.8 0 0 1 12 19.8a7.8 7.8 0 0 1-3.9-1.05l-1.55.4-.98-1.7.57-1.5a7.8 7.8 0 0 1-1.94-3.35l-1.4-.7v-1.96l1.4-.7A7.8 7.8 0 0 1 6.14 5.9l-.57-1.5.98-1.7 1.55.4A7.8 7.8 0 0 1 12 4.2Z"/>
+            </svg>
+            <span>系统设置</span>
+          </button>
+
+          <span class="dk-x-side-note">标注：支付 / 返佣 / 订阅类菜单按部署关闭，此处未列出</span>
+
+          <!-- 我的账户（管理员也看得到自建四项） -->
+          <div class="dk-x-side-sectitle">我的账户</div>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z"/>
+              <path d="M18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z"/>
+            </svg>
+            <span>生成工作台</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18"/>
+            </svg>
+            <span>灵感库</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25z"/>
+            </svg>
+            <span>我的图片</span>
+          </button>
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/>
+            </svg>
+            <span>个人资料</span>
+          </button>
+        </nav>
+
+        <!-- 底部：收起 + 用户块（同上游 Bottom Section） -->
+        <div class="dk-x-side-foot">
+          <button class="dk-x-side-link" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15L5.25 12l7.5 7.5"/>
+            </svg>
+            <span>收起</span>
+          </button>
+          <div class="dk-x-user">
+            <span class="dk-x-avatar">管</span>
+            <span class="dk-x-user-meta">
+              <span class="dk-x-user-email">admin@shop.cn</span>
+              <button class="dk-x-logout" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15"/>
+                  <path d="M18.75 15l3-3m0 0-3-3m3 3H9"/>
+                </svg>
+                <span>退出登录</span>
+              </button>
+            </span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 内容区 -->
+      <main class="dk-x-content">
+        <div class="dk-x-page">
+
+          <!-- 面包屑 -->
+          <nav class="dk-crumbs">
+            <a>管理后台</a><span>/</span><span class="is-current">账号管理</span>
+          </nav>
+
+          <!-- 页头操作区 -->
+          <div class="dk-x-pagehead">
+            <div>
+              <h1 class="dk-x-page-title">账号管理</h1>
+              <p class="dk-page-desc">管理 AI 平台账号和 Cookie</p>
+            </div>
+            <button class="dk-button dk-button--primary-action" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+              添加账号
+            </button>
+          </div>
+
+          <!-- 标签页 -->
+          <div class="dk-tabs" style="margin-top: 14px;">
+            <button class="dk-tab is-active" type="button">全部</button>
+            <button class="dk-tab" type="button">OAuth</button>
+            <button class="dk-tab" type="button">API Key</button>
+          </div>
+
+          <!-- 搜索过滤条 + 状态筛选下拉 -->
+          <div class="dk-x-filters">
+            <span class="dk-x-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.8-3.8"/></svg>
+              <input class="dk-input" type="text" placeholder="搜索账号...">
+            </span>
+            <select class="dk-select"><option>全部平台</option></select>
+            <select class="dk-select"><option>全部状态</option></select>
+            <span class="dk-x-filters-count">共 32 个账号 · 本页显示 5 个</span>
+          </div>
+
+          <!-- 数据表格：表格底=面板色 / 斑马纹=次级底 / 表头吸顶 -->
+          <table class="dk-table">
+            <thead>
+              <tr>
+                <th style="width: 27%;">名称</th>
+                <th style="width: 11%;">平台</th>
+                <th style="width: 10%;">类型</th>
+                <th style="width: 12%;">状态</th>
+                <th style="width: 9%;">并发数</th>
+                <th style="width: 14%;">最近使用</th>
+                <th style="width: 17%;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <span class="dk-x-cellname">
+                    <strong>出图主号 · ChatGPT Plus</strong>
+                    <span class="dk-x-cellsub">备注：商品图专用，别挂别的调用</span>
+                  </span>
+                </td>
+                <td>OpenAI</td>
+                <td><span class="dk-tag">OAuth</span></td>
+                <td><span class="dk-badge dk-badge--success"><span class="dk-badge__dot"></span>正常</span></td>
+                <td class="dk-x-num">3</td>
+                <td class="dk-x-quiet">3 分钟前</td>
+                <td>
+                  <button class="dk-x-op" type="button">编辑</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op" type="button">停用</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op dk-x-op--danger" type="button">删除</button>
+                </td>
+              </tr>
+              <tr class="is-hover">
+                <td>
+                  <span class="dk-x-cellname">
+                    <strong>出图备用号</strong>
+                  </span>
+                </td>
+                <td>OpenAI</td>
+                <td><span class="dk-tag">OAuth</span></td>
+                <td><span class="dk-badge dk-badge--warning"><span class="dk-badge__dot"></span>限流中</span></td>
+                <td class="dk-x-num">3</td>
+                <td class="dk-x-quiet">28 分钟前</td>
+                <td>
+                  <button class="dk-x-op" type="button">编辑</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op" type="button">停用</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op dk-x-op--danger" type="button">删除</button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span class="dk-x-cellname">
+                    <strong>Claude 备用</strong>
+                    <span class="dk-x-cellsub dk-x-cellsub--danger">令牌失效（401）——点「编辑」重新授权即可恢复</span>
+                  </span>
+                </td>
+                <td>Anthropic</td>
+                <td><span class="dk-tag">API Key</span></td>
+                <td><span class="dk-badge dk-badge--danger"><span class="dk-badge__dot"></span>错误</span></td>
+                <td class="dk-x-num">2</td>
+                <td class="dk-x-quiet">2 小时前</td>
+                <td>
+                  <button class="dk-x-op" type="button">编辑</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op" type="button">停用</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op dk-x-op--danger" type="button">删除</button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span class="dk-x-cellname">
+                    <strong>旧中转 Key（勿用）</strong>
+                  </span>
+                </td>
+                <td>OpenAI</td>
+                <td><span class="dk-tag">API Key</span></td>
+                <td><span class="dk-badge"><span class="dk-badge__dot"></span>停用</span></td>
+                <td class="dk-x-num">1</td>
+                <td class="dk-x-quiet">12 天前</td>
+                <td>
+                  <button class="dk-x-op" type="button">编辑</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op" type="button">启用</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op dk-x-op--danger" type="button">删除</button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <span class="dk-x-cellname">
+                    <strong>Gemini 试验号</strong>
+                  </span>
+                </td>
+                <td>Gemini</td>
+                <td><span class="dk-tag">OAuth</span></td>
+                <td><span class="dk-badge dk-badge--success"><span class="dk-badge__dot"></span>正常</span></td>
+                <td class="dk-x-num">2</td>
+                <td class="dk-x-quiet">昨天 14:32</td>
+                <td>
+                  <button class="dk-x-op" type="button">编辑</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op" type="button">停用</button><span class="dk-x-opsep">·</span>
+                  <button class="dk-x-op dk-x-op--danger" type="button">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 分页器 -->
+          <div class="dk-x-tablefoot">
+            <span class="dk-x-tablefoot-count">共 32 个账号 · 每页 20 条</span>
+            <nav class="dk-pager">
+              <button class="dk-pager__btn" type="button">‹</button>
+              <button class="dk-pager__btn is-current" type="button">1</button>
+              <button class="dk-pager__btn" type="button">2</button>
+              <button class="dk-pager__btn" type="button">›</button>
+            </nav>
+          </div>
+
+          <!-- 样板标注 -->
+          <div class="dk-x-callouts">
+            <span class="dk-x-callout">.dk-admin：13px 主档，控件 34px 高</span>
+            <span class="dk-x-callout">th 已带 position:sticky——列表滚动时吸顶（示意）</span>
+            <span class="dk-x-callout">斑马纹 nth-child(even) = --dk-surface-subtle</span>
+            <span class="dk-x-callout">行悬停 = --dk-surface-hover（第二行钉成演示态）</span>
+            <span class="dk-x-callout">错误行副行示范：后台也要写「怎么办」</span>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <!-- ═══ ② 右侧滑出详情抽屉 ═══════════════════════════════════ -->
+  <section class="dk-x-section">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">②</span>
+      <h2 class="dk-panel-title">右侧滑出详情抽屉：表单字段 + hint / danger 两级说明 + 吸底保存</h2>
+    </div>
+    <p class="dk-panel-hint dk-x-section-hint">hint = 灰字一句「这是干什么的」；danger = 警告色 4px 左边线 + soft 底，写清「填错会怎样」。「仅允许 Codex 官方客户端」是真实的坑：开着它，每一张出图都会被拒。<span class="dk-x-key">.dk-field-hint / .dk-danger-note / .dk-savebar</span></p>
+
+    <div class="dk-x-stage dk-x-stage--drawer dk-admin">
+      <!-- 假页面元素（被遮罩压住的列表页） -->
+      <span class="dk-x-ghost" style="top: 28px; left: 28px; width: 220px; height: 16px;"></span>
+      <span class="dk-x-ghost" style="top: 56px; left: 28px; width: 140px; height: 10px; opacity: 0.7;"></span>
+      <span class="dk-x-ghost" style="top: 96px; left: 28px; right: 500px; height: 38px; opacity: 0.6;"></span>
+      <span class="dk-x-ghost" style="top: 146px; left: 28px; right: 500px; height: 30px; opacity: 0.4;"></span>
+      <span class="dk-x-ghost" style="top: 188px; left: 28px; right: 500px; height: 30px; opacity: 0.3;"></span>
+      <span class="dk-x-ghost" style="top: 230px; left: 28px; right: 500px; height: 30px; opacity: 0.25;"></span>
+      <span class="dk-x-ghost" style="top: 272px; left: 28px; right: 500px; height: 30px; opacity: 0.2;"></span>
+      <span class="dk-x-veil"></span>
+      <span class="dk-x-veil-note">遮罩 = --dk-overlay；点遮罩 = 取消，等同右上角 ×</span>
+
+      <aside class="dk-x-drawer">
+        <header class="dk-x-drawer-head">
+          <h3 class="dk-x-drawer-title">编辑账号</h3>
+          <span class="dk-tag">OAuth</span>
+          <button class="dk-x-close" type="button" aria-label="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </header>
+
+        <div class="dk-x-drawer-body">
+          <div>
+            <label class="dk-label">账号名称</label>
+            <input class="dk-input" type="text" value="出图主号 · ChatGPT Plus">
+          </div>
+
+          <div class="dk-x-cols2">
+            <div>
+              <label class="dk-label">平台</label>
+              <select class="dk-select"><option>OpenAI</option></select>
+            </div>
+            <div>
+              <label class="dk-label">优先级</label>
+              <input class="dk-input" type="text" value="100">
+            </div>
+          </div>
+
+          <div>
+            <label class="dk-label">并发数</label>
+            <input class="dk-input" type="text" value="3">
+            <p class="dk-field-hint">同一时刻这个账号最多同时处理几条请求。批量出图排队发送，就是按这个数在放行。</p>
+          </div>
+
+          <div>
+            <label class="dk-label">Base URL</label>
+            <input class="dk-input" type="text" placeholder="留空使用官方 OpenAI API">
+            <p class="dk-field-hint">OAuth 账号不读这一格——填了也不生效，一律走官方通道。只有 API Key 账号才用它。</p>
+          </div>
+
+          <div class="dk-x-switchrow">
+            <button class="dk-switch is-on" type="button" aria-label="参与调度"></button>
+            <span class="dk-x-switchrow-text">
+              <label class="dk-label">参与调度</label>
+              <p class="dk-field-hint" style="margin-top: 0;">开启后账号参与API请求调度。</p>
+            </span>
+          </div>
+
+          <div>
+            <div class="dk-x-switchrow">
+              <button class="dk-switch" type="button" aria-label="仅允许 Codex 官方客户端"></button>
+              <span class="dk-x-switchrow-text">
+                <label class="dk-label">仅允许 Codex 官方客户端</label>
+                <p class="dk-field-hint" style="margin-top: 0;">仅对 OpenAI OAuth 生效，限制哪类客户端能用这个账号。</p>
+              </span>
+            </div>
+            <div class="dk-danger-note">出图请求不是 Codex 客户端：这一项开着，每一张图都会被拒绝，而且报错只有「访问被拒绝」一句，很难联想到是它。出图账号请保持关闭。</div>
+          </div>
+
+          <div>
+            <label class="dk-label">备注</label>
+            <textarea class="dk-textarea" rows="2" placeholder="请输入备注"></textarea>
+            <p class="dk-field-hint">备注可选。</p>
+          </div>
+        </div>
+
+        <footer class="dk-savebar">
+          <button class="dk-button dk-button--primary-action" type="button">保存</button>
+          <button class="dk-button dk-button--secondary dk-button--sm" type="button">取消</button>
+          <span class="dk-x-savestate">有改动还没保存。</span>
+        </footer>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ═══ ③ 危险确认弹窗 ═══════════════════════════════════════ -->
+  <section class="dk-x-section">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">③</span>
+      <h2 class="dk-panel-title">危险确认弹窗：删除账号</h2>
+    </div>
+    <p class="dk-panel-hint dk-x-section-hint">标题用危险色；正文说清后果，附注给出「不删也行」的出路。「取消」只用于关弹窗——这里正是弹窗，可以用。<span class="dk-x-key">admin.accounts.deleteConfirm / .dk-dialog--danger</span></p>
+
+    <div class="dk-x-stage dk-x-stage--dialog dk-admin">
+      <span class="dk-x-ghost" style="top: 22px; left: 22px; width: 190px; height: 14px;"></span>
+      <span class="dk-x-ghost" style="top: 46px; left: 22px; width: 120px; height: 9px; opacity: 0.7;"></span>
+      <span class="dk-x-ghost" style="top: 22px; right: 22px; width: 130px; height: 34px; opacity: 0.55;"></span>
+      <span class="dk-x-ghost" style="bottom: 22px; left: 22px; right: 22px; height: 40px; opacity: 0.35;"></span>
+      <span class="dk-x-veil"></span>
+
+      <div class="dk-dialog dk-dialog--danger">
+        <h3 class="dk-dialog__title">删除账号</h3>
+        <p class="dk-dialog__body">确定要删除账号 '出图主号 · ChatGPT Plus' 吗？此操作无法撤销。</p>
+        <div class="dk-x-dialog-note">删除只是把账号从系统里移除，不影响它在平台那边的状态。只是暂时不想用的话，改成「停用」就行，不必删。</div>
+        <div class="dk-dialog-actions">
+          <button class="dk-button dk-button--secondary" type="button">取消</button>
+          <button class="dk-button dk-button--danger is-solid" type="button">删除账号</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ④ 空表格态 ═══════════════════════════════════════════ -->
+  <section class="dk-x-section">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">④</span>
+      <h2 class="dk-panel-title">空表格态</h2>
+    </div>
+    <p class="dk-panel-hint dk-x-section-hint">表头保留、表体换空状态容器；文案说下一步去哪。筛选后无结果的变体只换文案：「没有找到符合条件的账号，清空筛选条件再看看。」<span class="dk-x-key">admin.accounts.noAccountsYet / .dk-empty</span></p>
+
+    <div class="dk-x-emptywrap dk-admin" style="max-width: 960px;">
+      <table class="dk-table">
+        <thead>
+          <tr>
+            <th style="width: 30%;">名称</th>
+            <th style="width: 13%;">平台</th>
+            <th style="width: 12%;">类型</th>
+            <th style="width: 14%;">状态</th>
+            <th style="width: 15%;">最近使用</th>
+            <th style="width: 16%;">操作</th>
+          </tr>
+        </thead>
+      </table>
+      <div class="dk-empty">
+        <span class="dk-empty__icon">
+          <svg width="150" height="110" viewBox="0 0 150 110" fill="none" stroke="#7a85a0" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="40" y="14" width="76" height="46" rx="6" opacity="0.35"/>
+            <rect x="30" y="30" width="76" height="46" rx="6" opacity="0.6"/>
+            <rect x="20" y="46" width="84" height="50" rx="6" stroke="#a8b3c7"/>
+            <circle cx="38" cy="66" r="7" stroke="#a8b3c7"/>
+            <path d="M52 62h34M52 72h22" stroke="#a8b3c7"/>
+            <circle cx="118" cy="82" r="11" stroke="#7C6BFF"/>
+            <path d="M118 77v10M113 82h10" stroke="#7C6BFF"/>
+          </svg>
+        </span>
+        <p class="dk-empty__title">暂无账号</p>
+        <p class="dk-empty__description">还没有接进任何出图账号。点右上角「添加账号」，照着《配置手册》的「接入出图账号」一节走，几分钟就能接好。</p>
+        <button class="dk-button dk-button--primary-action dk-button--sm" type="button" style="margin-top: 6px;">添加账号</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 页脚：换肤规矩四条 ════════════════════════════════════ -->
+  <footer class="dk-x-rules">
+    <div class="dk-x-section-head">
+      <span class="dk-x-section-num">规矩</span>
+      <h2 class="dk-panel-title">换肤规矩四条（几十个同构后台页照此执行）</h2>
+    </div>
+    <div class="dk-x-rules-grid">
+      <div class="dk-x-rule">
+        <span class="dk-x-rule-num">1</span>
+        <p><strong>表格底 = 面板色。</strong>表格容器一律 <code>--dk-surface</code> + 1px <code>--dk-border</code> 描边 + 12px 圆角；表头 <code>--dk-surface-raised</code>，不叠投影、不再外套白卡。</p>
+      </div>
+      <div class="dk-x-rule">
+        <span class="dk-x-rule-num">2</span>
+        <p><strong>斑马纹 = 次级底。</strong>偶数行 <code>--dk-surface-subtle</code>，行悬停 <code>--dk-surface-hover</code>，按下才用 <code>--dk-surface-pressed</code>——不许自造灰色。</p>
+      </div>
+      <div class="dk-x-rule">
+        <span class="dk-x-rule-num">3</span>
+        <p><strong>徽章用语义色 soft 底。</strong>正常 / 限流 / 错误 / 停用对应 <code>success</code> / <code>warning</code> / <code>danger</code> / 中性各自 14% 同色浅底，文字同语义色，不用实底色块。</p>
+      </div>
+      <div class="dk-x-rule">
+        <span class="dk-x-rule-num">4</span>
+        <p><strong>后台允许必要技术词（OAuth、Base URL…），但报错仍要写「该怎么办」。</strong>只报「访问被拒绝」不合格——像 ① 的错误行、② 的 danger 块那样，把出路写在报错旁边。</p>
+      </div>
+    </div>
+    <div class="dk-x-footnote">
+      <span>本页是 bridge.css 深色换肤的验收标准：同构后台页逐元素对照（v3 7.1·3）</span>
+      <span>信息密度比运营页高一档：.dk-admin 13px 主档、控件 34px 高、行高收紧</span>
+      <span>侧栏底 --dk-surface-subtle；选中项 --dk-accent-soft 底 + --dk-accent-strong 字</span>
+      <span>动效尊重「减少动态效果」（全局规则已内置）</span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

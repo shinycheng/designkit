@@ -1,0 +1,132 @@
+/*
+ * designkit 设计令牌（第 1 层：变量）—— DesignKit Dark
+ * ---------------------------------------------------------------------------
+ * 2026-08-15 起全站只有这一套深色主题（monica 拍板 D1/D2，
+ * 推翻 2026-08-13 的「只留白天模式」——当初那是纯偏好）。
+ * 取值来自《设计手册-v3-定稿.md》3.2 对照表：**令牌名一个没改，只换值**，
+ * 老值在对照表里留档。设计稿蓝本见 designkit/design/system/dk-dark.css
+ * （与本文件同源，改这里要同步那里）。
+ *
+ * 为什么变量名全部带 `--dk-` 前缀：
+ * 避免和上游 Sub2API 的样式撞名，撞了也一眼看得出是谁的。
+ *
+ * ⚠ 三个新增令牌（v3 登记）：
+ *   --dk-image-canvas  图像预览衬底。中性深灰、无蓝紫偏色——运营要在上面
+ *                      判断白底商品图的真实颜色，衬底带色相当于给图偏色。
+ *   --dk-accent-2      数据点缀青。只用于数据强调，别当第二主色使。
+ *   --dk-glow          氛围光。只允许出现在登录页和官网，正文区禁用。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 底面：画布、卡片、边框 */
+  --dk-canvas: #0b0f1a;
+  --dk-surface: #131a2b;
+  --dk-surface-subtle: #101625;
+  --dk-surface-raised: #1b2337;
+  --dk-surface-hover: rgba(124, 107, 255, 0.08);
+  --dk-surface-pressed: rgba(124, 107, 255, 0.14);
+  --dk-overlay: rgba(4, 7, 14, 0.66);
+  --dk-border: #273049;
+  --dk-border-strong: #3a466b;
+
+  /* 文字四级。次级/三级在面板底上过 AA 对比度。 */
+  --dk-text: #f2f5fa;
+  --dk-text-secondary: #a8b3c7;
+  --dk-text-tertiary: #7a85a0;
+  --dk-text-disabled: #5a6580;
+  --dk-text-inverse: #0b0f1a;
+
+  /* 动作色：主按钮电光紫；蓝色只做强调（链接、聚焦、选中）。 */
+  --dk-action: #7c6bff;
+  --dk-action-hover: #8f80ff;
+  --dk-action-pressed: #6b5af0;
+  --dk-accent: #5ea2ff;
+  --dk-accent-strong: #82b7ff;
+  --dk-accent-soft: rgba(94, 162, 255, 0.16);
+  --dk-focus: rgba(124, 107, 255, 0.45);
+
+  /* 反馈色：成功 / 警告 / 危险 / 信息（soft = 14% 同色浅底） */
+  --dk-success: #34d399;
+  --dk-success-soft: rgba(52, 211, 153, 0.14);
+  --dk-warning: #fbbf24;
+  --dk-warning-soft: rgba(251, 191, 36, 0.14);
+  --dk-danger: #f87171;
+  --dk-danger-strong: #ef6b6b;
+  --dk-danger-soft: rgba(248, 113, 113, 0.14);
+  --dk-info-soft: rgba(56, 189, 248, 0.14);
+
+  /* 新增（v3 3.2） */
+  --dk-image-canvas: #17191e;
+  --dk-accent-2: #2dd4bf;
+  --dk-glow: rgba(124, 107, 255, 0.2);
+
+  /* 字体与字号（v3：Inter 优先，中文回退国产无衬线） */
+  --dk-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "HarmonyOS Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --dk-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --dk-text-xs: 12px;
+  --dk-text-sm: 13px;
+  --dk-text-md: 14px;
+  --dk-text-lg: 16px;
+  --dk-text-xl: 20px;
+  --dk-text-2xl: 28px;
+  --dk-leading-tight: 1.3;
+  --dk-leading: 1.55;
+
+  /* 4px 一档的间距刻度 */
+  --dk-space-1: 4px;
+  --dk-space-2: 8px;
+  --dk-space-3: 12px;
+  --dk-space-4: 16px;
+  --dk-space-5: 20px;
+  --dk-space-6: 24px;
+  --dk-space-7: 28px;
+  --dk-space-8: 32px;
+  --dk-space-9: 36px;
+  --dk-space-10: 40px;
+  --dk-space-12: 48px;
+
+  /* 圆角与投影。深色投影 = 细内描边（勾轮廓）+ 深投影（分层次）。 */
+  --dk-radius-sm: 6px;
+  --dk-radius-md: 8px;
+  --dk-radius-lg: 12px;
+  --dk-radius-pill: 999px;
+  --dk-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --dk-shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --dk-shadow-overlay: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* 应用外壳的尺寸（外壳维持上游同款侧栏——拍板增补；toolrail 令牌保留不删，
+     免得哪天有残留引用直接算出 0px） */
+  --dk-topbar-h: 54px;
+  --dk-toolrail-w: 68px;
+  --dk-config-w: 400px;
+  --dk-control-h: 40px;
+  --dk-primary-h: 44px;
+  --dk-bottom-nav-h: 64px;
+  --dk-content-max: 1440px;
+  --dk-safe-top: env(safe-area-inset-top, 0px);
+  --dk-safe-right: env(safe-area-inset-right, 0px);
+  --dk-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --dk-safe-left: env(safe-area-inset-left, 0px);
+
+  /* 只登记系统级的层级 */
+  --dk-z-sticky: 20;
+  --dk-z-nav: 30;
+  --dk-z-overlay: 100;
+  --dk-z-toast: 120;
+  --dk-z-lightbox: 140;
+
+  /* 动效 */
+  --dk-motion-fast: 120ms;
+  --dk-motion-normal: 180ms;
+  --dk-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* 中等宽度屏幕上，工作台右侧配置区收窄一点，给画布让位 */
+@media (min-width: 960px) and (max-width: 1199px) {
+  :root {
+    --dk-config-w: 360px;
+  }
+}

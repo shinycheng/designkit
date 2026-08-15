@@ -1,0 +1,979 @@
+<!-- @dsCard group="品牌" name="官网抽象插画组" subtitle="Hero 主视觉 · 流程三枚 · 部署三枚 · 能力六枚 · 抽象平台徽标八枚" width="1280" -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DesignKit 官网抽象插画组</title>
+<style>
+/*
+ * DesignKit Dark — 设计系统地基（v3 定稿实现）
+ * ---------------------------------------------------------------------------
+ * 用途双重：
+ *   1. 全部设计稿（Claude Design 三个项目）的共用样式，逐字内联进每张稿；
+ *   2. 实施时 tokens.css 换值与 designkit-ui.css 深色化的对照蓝本。
+ *
+ * 令牌名与 frontend/src/features/designkit/theme/tokens.css **一字不差**，
+ * 只换值（v3 3.2 对照表）；新增三个：--dk-image-canvas / --dk-accent-2 / --dk-glow。
+ * 组件类名沿用 designkit-ui.css 现有词汇（dk-button--primary-action、
+ * dk-size-option、dk-dropzone、dk-thumb…），新组件按同一命名法追加——
+ * 这样设计稿里的每个类名在代码库里都有着落，交接零翻译。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 底面 */
+  --dk-canvas: #0b0f1a;
+  --dk-surface: #131a2b;
+  --dk-surface-subtle: #101625;
+  --dk-surface-raised: #1b2337;
+  --dk-surface-hover: rgba(124, 107, 255, 0.08);
+  --dk-surface-pressed: rgba(124, 107, 255, 0.14);
+  --dk-overlay: rgba(4, 7, 14, 0.66);
+  --dk-border: #273049;
+  --dk-border-strong: #3a466b;
+
+  /* 文字 */
+  --dk-text: #f2f5fa;
+  --dk-text-secondary: #a8b3c7;
+  --dk-text-tertiary: #7a85a0;
+  --dk-text-disabled: #5a6580;
+  --dk-text-inverse: #0b0f1a;
+
+  /* 动作与强调 */
+  --dk-action: #7c6bff;
+  --dk-action-hover: #8f80ff;
+  --dk-action-pressed: #6b5af0;
+  --dk-accent: #5ea2ff;
+  --dk-accent-strong: #82b7ff;
+  --dk-accent-soft: rgba(94, 162, 255, 0.16);
+  --dk-focus: rgba(124, 107, 255, 0.45);
+
+  /* 反馈 */
+  --dk-success: #34d399;
+  --dk-success-soft: rgba(52, 211, 153, 0.14);
+  --dk-warning: #fbbf24;
+  --dk-warning-soft: rgba(251, 191, 36, 0.14);
+  --dk-danger: #f87171;
+  --dk-danger-strong: #ef6b6b;
+  --dk-danger-soft: rgba(248, 113, 113, 0.14);
+  --dk-info-soft: rgba(56, 189, 248, 0.14);
+
+  /* 新增（v3） */
+  --dk-image-canvas: #17191e;   /* 图像衬底：中性灰，无蓝紫偏色 */
+  --dk-accent-2: #2dd4bf;       /* 数据点缀青，仅数据强调 */
+  --dk-glow: rgba(124, 107, 255, 0.2); /* 氛围光：登录页/官网限定 */
+
+  /* 字体与字号（Inter 优先，v3） */
+  --dk-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "HarmonyOS Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --dk-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --dk-text-xs: 12px; --dk-text-sm: 13px; --dk-text-md: 14px;
+  --dk-text-lg: 16px; --dk-text-xl: 20px; --dk-text-2xl: 28px;
+  --dk-leading-tight: 1.3; --dk-leading: 1.55;
+
+  /* 间距 / 圆角 / 投影（深色投影 = 细内描边 + 深投影） */
+  --dk-space-1: 4px; --dk-space-2: 8px; --dk-space-3: 12px; --dk-space-4: 16px;
+  --dk-space-5: 20px; --dk-space-6: 24px; --dk-space-7: 28px; --dk-space-8: 32px;
+  --dk-space-9: 36px; --dk-space-10: 40px; --dk-space-12: 48px;
+  --dk-radius-sm: 6px; --dk-radius-md: 8px; --dk-radius-lg: 12px; --dk-radius-pill: 999px;
+  --dk-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --dk-shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --dk-shadow-overlay: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* 外壳尺寸（沿用现值；toolrail 保留令牌但外壳维持上游侧栏——拍板增补） */
+  --dk-topbar-h: 54px; --dk-toolrail-w: 68px; --dk-config-w: 400px;
+  --dk-control-h: 40px; --dk-primary-h: 44px; --dk-bottom-nav-h: 64px;
+  --dk-content-max: 1440px;
+  --dk-z-sticky: 20; --dk-z-nav: 30; --dk-z-overlay: 100; --dk-z-toast: 120; --dk-z-lightbox: 140;
+  --dk-motion-fast: 120ms; --dk-motion-normal: 180ms;
+  --dk-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── 基础 ─────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--dk-canvas);
+  color: var(--dk-text);
+  font-family: var(--dk-font-sans);
+  font-size: var(--dk-text-md);
+  line-height: var(--dk-leading);
+  letter-spacing: 0.01em; /* 中文字距克制，≤0.04em */
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(124, 107, 255, 0.35); }
+a { color: var(--dk-accent); text-decoration: none; }
+a:hover { color: var(--dk-accent-strong); }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--dk-focus); border-radius: var(--dk-radius-sm); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #273049; border-radius: 999px; border: 2px solid var(--dk-canvas); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 排版助手（与 designkit-ui.css 同名） */
+.dk-page-title { font-size: var(--dk-text-2xl); font-weight: 700; line-height: var(--dk-leading-tight); margin: 0; }
+.dk-page-desc { color: var(--dk-text-secondary); margin: 6px 0 0; }
+.dk-eyebrow { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); text-transform: uppercase; }
+.dk-panel-title { font-size: var(--dk-text-lg); font-weight: 600; margin: 0; }
+.dk-panel-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin: 2px 0 0; }
+.dk-label { display: block; font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text-secondary); margin-bottom: 6px; }
+.dk-note { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); margin: 0; }
+.dk-note--quiet { color: var(--dk-text-tertiary); }
+.dk-note--warning { color: var(--dk-warning); }
+.dk-note--danger { color: var(--dk-danger); }
+.dk-note--success { color: var(--dk-success); }
+.dk-muted { color: var(--dk-text-tertiary); }
+.dk-mono-note { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+/* 金额与数量：等宽数字、600、主文字色——关键信息绝不弱化 */
+.dk-money { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dk-text); }
+.dk-money--accent { color: var(--dk-accent-2); } /* 数据强调限定 */
+.dk-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── 面板 ─────────────────────────────────────────────────────── */
+.dk-panel {
+  background: var(--dk-surface);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-5);
+  box-shadow: var(--dk-shadow-1);
+}
+.dk-panel--subtle { background: var(--dk-surface-subtle); box-shadow: none; }
+.dk-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dk-space-3); margin-bottom: var(--dk-space-4); }
+
+/* ── 按钮（主/次/危险/安静/小号 + 花钱变体） ───────────────────── */
+.dk-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--dk-control-h); padding: 0 16px;
+  border-radius: var(--dk-radius-md); border: 1px solid transparent;
+  background: var(--dk-surface-raised); color: var(--dk-text);
+  font: 600 var(--dk-text-md)/1 var(--dk-font-sans); cursor: pointer;
+  transition: background var(--dk-motion-fast) var(--dk-ease-out),
+              border-color var(--dk-motion-fast) var(--dk-ease-out),
+              transform var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-button:hover { background: #232c44; }
+.dk-button:active { transform: translateY(1px); }
+.dk-button:disabled { color: var(--dk-text-disabled); background: var(--dk-surface-subtle); cursor: not-allowed; transform: none; }
+.dk-button--primary-action { background: var(--dk-action); color: #fff; height: var(--dk-primary-h); }
+.dk-button--primary-action:hover { background: var(--dk-action-hover); }
+.dk-button--primary-action:active { background: var(--dk-action-pressed); }
+.dk-button--primary-action:disabled { background: #3d3a66; color: rgba(255,255,255,.45); }
+.dk-button--secondary { background: transparent; border-color: var(--dk-border-strong); }
+.dk-button--secondary:hover { background: var(--dk-surface-hover); border-color: var(--dk-action); }
+.dk-button--danger { background: transparent; border-color: var(--dk-danger); color: var(--dk-danger); }
+.dk-button--danger:hover { background: var(--dk-danger-soft); }
+.dk-button--danger.is-solid { background: var(--dk-danger); color: #1a0b0b; border-color: transparent; }
+.dk-button--quiet { background: transparent; color: var(--dk-accent); padding: 0 8px; height: auto; }
+.dk-button--quiet:hover { background: transparent; color: var(--dk-accent-strong); text-decoration: underline; }
+.dk-button--sm { height: 32px; padding: 0 12px; font-size: var(--dk-text-sm); }
+.dk-button--block { width: 100%; }
+/* 花钱按钮：价格小字缀在文案后（「让 AI 推荐 · $0.09~$0.34」） */
+.dk-button__price { font-weight: 500; font-size: var(--dk-text-xs); opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+/* ── 表单 ─────────────────────────────────────────────────────── */
+.dk-input, .dk-textarea, .dk-select {
+  width: 100%; background: var(--dk-surface-subtle);
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  color: var(--dk-text); font: 400 var(--dk-text-md)/var(--dk-leading) var(--dk-font-sans);
+  padding: 9px 12px; transition: border-color var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-input { height: var(--dk-control-h); }
+.dk-input::placeholder, .dk-textarea::placeholder { color: var(--dk-text-tertiary); }
+.dk-input:hover, .dk-textarea:hover, .dk-select:hover { border-color: var(--dk-border-strong); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { outline: none; border-color: var(--dk-action); box-shadow: 0 0 0 3px var(--dk-focus); }
+.dk-input.is-error, .dk-textarea.is-error { border-color: var(--dk-danger); }
+.dk-input:disabled, .dk-textarea:disabled, .dk-select:disabled { color: var(--dk-text-disabled); background: var(--dk-surface); }
+.dk-field-error { font-size: var(--dk-text-sm); color: var(--dk-danger); margin-top: 6px; }
+.dk-char-count { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); text-align: right; }
+.dk-char-count.is-over { color: var(--dk-danger); font-weight: 600; }
+.dk-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--dk-text-tertiary) 50%), linear-gradient(135deg, var(--dk-text-tertiary) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+/* 字段两级说明：hint 灰字；danger = 警告色 4px 左边线 + soft 底 */
+.dk-field-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin-top: 6px; }
+.dk-danger-note {
+  margin-top: 8px; padding: 8px 12px; font-size: var(--dk-text-sm);
+  color: var(--dk-warning); background: var(--dk-warning-soft);
+  border-left: 4px solid var(--dk-warning); border-radius: 0 var(--dk-radius-sm) var(--dk-radius-sm) 0;
+}
+
+/* chips（分类单选） */
+.dk-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border);
+  background: var(--dk-surface); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm); cursor: pointer;
+}
+.dk-chip:hover { border-color: var(--dk-border-strong); color: var(--dk-text); }
+.dk-chip.is-selected { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+
+/* 开关 / 复选 / 单选（后台场景） */
+.dk-switch { position: relative; width: 40px; height: 22px; border-radius: 999px; background: var(--dk-border-strong); border: none; cursor: pointer; transition: background var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #e7e9f2; transition: transform var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch.is-on { background: var(--dk-action); }
+.dk-switch.is-on::after { transform: translateX(18px); }
+.dk-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); cursor: pointer; }
+.dk-check__box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--dk-border-strong); background: var(--dk-surface-subtle); display: inline-grid; place-items: center; }
+.dk-check.is-checked .dk-check__box { background: var(--dk-action); border-color: var(--dk-action); }
+.dk-check.is-checked .dk-check__box::after { content: "✓"; color: #fff; font-size: 11px; font-weight: 700; }
+
+/* ── 上传区 ───────────────────────────────────────────────────── */
+.dk-dropzone {
+  display: grid; place-items: center; gap: 6px; text-align: center;
+  padding: var(--dk-space-8) var(--dk-space-5);
+  border: 1.5px dashed var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  background: var(--dk-surface-subtle); color: var(--dk-text-secondary); cursor: pointer;
+  transition: border-color var(--dk-motion-fast) var(--dk-ease-out), background var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-dropzone:hover { border-color: var(--dk-action); }
+.dk-dropzone.is-dragover { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.06); }
+.dk-dropzone__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-dropzone__meta { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* 缩略图（商品图/结果图共用视觉；衬底一律 --dk-image-canvas） */
+.dk-thumb { position: relative; border-radius: var(--dk-radius-md); overflow: hidden; border: 1px solid var(--dk-border); background: var(--dk-image-canvas); }
+.dk-thumb.is-white { background: #ffffff; }
+.dk-thumb__media { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.dk-thumb__tag {
+  position: absolute; top: 6px; left: 6px; padding: 2px 8px;
+  border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 600;
+  background: rgba(11, 15, 26, 0.78); color: var(--dk-text-secondary); backdrop-filter: blur(4px);
+}
+.dk-thumb__tag--ok { color: var(--dk-success); }
+.dk-thumb__tag--fail { color: var(--dk-danger); }
+.dk-thumb__overlay {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 8px;
+  background: rgba(4, 7, 14, 0.55); opacity: 0; transition: opacity var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-thumb:hover .dk-thumb__overlay { opacity: 1; }
+
+/* 比例选择块：按真实宽高比绘制 */
+.dk-size-options { display: flex; flex-wrap: wrap; gap: var(--dk-space-3); }
+.dk-size-option {
+  display: grid; gap: 6px; justify-items: center; padding: 10px 12px 8px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle); cursor: pointer; position: relative;
+}
+.dk-size-option:hover { border-color: var(--dk-border-strong); }
+.dk-size-option.is-selected { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.1); box-shadow: 0 0 0 1px var(--dk-action); }
+.dk-size-option__shape { background: var(--dk-border-strong); border-radius: 3px; height: 34px; }
+.dk-size-option.is-selected .dk-size-option__shape { background: var(--dk-action); }
+.dk-size-option__label { font-size: var(--dk-text-sm); font-weight: 600; }
+.dk-size-option__ratio { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+.dk-size-option__tier { position: absolute; top: 4px; right: 6px; font-size: 10px; color: var(--dk-text-tertiary); }
+
+/* ── 状态徽章 ─────────────────────────────────────────────────── */
+.dk-badge {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px;
+  border-radius: var(--dk-radius-pill); font-size: var(--dk-text-xs); font-weight: 600;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+}
+.dk-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.dk-badge--success { background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-badge--danger { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-badge--warning { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-badge--info { background: var(--dk-accent-soft); color: var(--dk-accent-strong); }
+.dk-badge--running .dk-badge__dot { animation: dk-pulse 1.2s ease-in-out infinite; }
+@keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* 进度条 */
+.dk-progress-track { height: 6px; border-radius: 999px; background: var(--dk-surface-raised); overflow: hidden; }
+.dk-progress-bar { height: 100%; border-radius: 999px; background: var(--dk-action); transition: width var(--dk-motion-normal) var(--dk-ease-out); }
+
+/* ── 提示与警报 ───────────────────────────────────────────────── */
+.dk-alert {
+  display: grid; gap: 4px; padding: 12px 14px;
+  border-radius: var(--dk-radius-md); border: 1px solid var(--dk-border);
+  background: var(--dk-surface-subtle); font-size: var(--dk-text-sm);
+}
+.dk-alert--danger { border-color: rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-alert--warning { border-color: rgba(251, 191, 36, 0.4); background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-alert--success { border-color: rgba(52, 211, 153, 0.4); background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-alert--info { border-color: rgba(94, 162, 255, 0.4); background: var(--dk-info-soft); color: var(--dk-accent-strong); }
+.dk-alert__sub { color: var(--dk-text-secondary); font-weight: 400; }
+
+/* toast（顶部居中，180ms 滑入） */
+.dk-toast {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-radius: var(--dk-radius-md); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); box-shadow: var(--dk-shadow-2);
+  font-size: var(--dk-text-sm); font-weight: 500;
+}
+.dk-toast--success { border-color: rgba(52, 211, 153, 0.5); }
+.dk-toast--error { border-color: rgba(248, 113, 113, 0.5); }
+
+/* ── 弹窗 ─────────────────────────────────────────────────────── */
+.dk-dialog-overlay { position: fixed; inset: 0; background: var(--dk-overlay); display: grid; place-items: center; z-index: var(--dk-z-overlay); }
+.dk-dialog {
+  width: min(92vw, 440px); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-6); box-shadow: var(--dk-shadow-overlay);
+}
+.dk-dialog__title { font-size: var(--dk-text-lg); font-weight: 700; margin: 0 0 10px; }
+.dk-dialog__body { color: var(--dk-text-secondary); font-size: var(--dk-text-md); }
+.dk-dialog--danger .dk-dialog__title { color: var(--dk-danger); }
+.dk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--dk-space-3); margin-top: var(--dk-space-6); }
+
+/* ── 数据卡（本月出图 / 花费 / 余额） ─────────────────────────── */
+.dk-usage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--dk-space-3); }
+.dk-usage-cell { background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); padding: 14px 18px; }
+.dk-usage-cell__label { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-usage-cell__value { font-size: var(--dk-text-xl); margin-top: 2px; }
+
+/* ── 空状态 ───────────────────────────────────────────────────── */
+.dk-empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: var(--dk-space-10) var(--dk-space-5); color: var(--dk-text-secondary); }
+.dk-empty__icon { opacity: 0.9; }
+.dk-empty__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-empty__description { max-width: 44ch; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* ── 骨架屏（微光 2s；减少动态效果时静态） ────────────────────── */
+.dk-skeleton { position: relative; overflow: hidden; background: var(--dk-surface-raised); border-radius: var(--dk-radius-md); }
+.dk-skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%);
+  animation: dk-shimmer 2s linear infinite;
+}
+@keyframes dk-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* ── 后台表单场景（S-UP 样板的规矩） ──────────────────────────── */
+/* 信息密度高一档：13px 主档、行高收紧 */
+.dk-admin { font-size: var(--dk-text-sm); }
+.dk-table { width: 100%; border-collapse: collapse; background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; }
+.dk-table th {
+  position: sticky; top: 0; z-index: 1; text-align: left;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs); font-weight: 600; padding: 10px 14px;
+  border-bottom: 1px solid var(--dk-border-strong);
+}
+.dk-table td { padding: 10px 14px; border-bottom: 1px solid var(--dk-border); font-size: var(--dk-text-sm); }
+.dk-table tbody tr:nth-child(even) { background: var(--dk-surface-subtle); } /* 斑马纹 = 次级底 */
+.dk-table tbody tr:hover { background: var(--dk-surface-hover); }
+.dk-pager { display: flex; align-items: center; gap: 6px; }
+.dk-pager__btn { min-width: 30px; height: 30px; border-radius: var(--dk-radius-sm); border: 1px solid var(--dk-border); background: transparent; color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-pager__btn.is-current { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--dk-border); }
+.dk-tab { padding: 10px 16px; border: none; background: none; color: var(--dk-text-secondary); font: 600 var(--dk-text-md) var(--dk-font-sans); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dk-tab.is-active { color: var(--dk-text); border-bottom-color: var(--dk-action); }
+.dk-crumbs { display: flex; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-crumbs a { color: var(--dk-text-tertiary); }
+.dk-crumbs .is-current { color: var(--dk-text-secondary); }
+.dk-sidenav { width: 220px; padding: var(--dk-space-3); display: grid; gap: 2px; align-content: start; }
+.dk-sidenav__group { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-weight: 600; padding: 12px 10px 4px; letter-spacing: 0.04em; }
+.dk-sidenav__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--dk-radius-md); color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-sidenav__item:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-sidenav__item.is-active { background: var(--dk-accent-soft); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-savebar {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--dk-space-4);
+  padding: 14px var(--dk-space-5); background: rgba(19, 26, 43, 0.92); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--dk-border-strong); z-index: var(--dk-z-sticky);
+}
+.dk-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-sm); font-size: 11px; font-weight: 600; background: var(--dk-surface-raised); color: var(--dk-text-secondary); }
+
+/* 四级配置标记徽章（帮助中心/配置手册用）*/
+.dk-mark { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 700; }
+.dk-mark--must { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-mark--suggest { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-mark--skip { background: var(--dk-surface-raised); color: var(--dk-text-tertiary); }
+.dk-mark--forbid { background: rgba(248, 113, 113, 0.24); color: #ffb4b4; }
+
+/* 报错块（运营看得懂的报错） */
+.dk-errorblock { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--dk-radius-md); border: 1px solid rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); }
+.dk-errorblock__msg { color: var(--dk-danger); font-weight: 600; }
+.dk-errorblock__meta { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-errorblock__how { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+
+/* 氛围光（登录页/官网限定；正文区禁用） */
+.dk-glow-spot { position: absolute; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, var(--dk-glow), transparent 70%); pointer-events: none; }
+
+/* ── 减少动态效果 ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ═══ 本页自有样式（dk-x- 前缀） ═══════════════════════════════ */
+.dk-x-wrap { max-width: 1232px; margin: 0 auto; padding: 40px 24px 64px; }
+.dk-x-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+.dk-x-brand svg { width: 28px; height: 28px; }
+.dk-x-wordmark { font-size: 18px; }
+.dk-x-wordmark b { color: var(--dk-action); font-weight: 700; }
+.dk-x-mark { stroke: var(--dk-text); }
+.dk-x-mark .dk-x-mark-pp { stroke: var(--dk-action); }
+.dk-x-head { display: grid; gap: 10px; margin-bottom: 14px; }
+.dk-x-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dk-x-legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 6px 0 30px; }
+.dk-x-legend-item { display: inline-flex; align-items: center; gap: 7px; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-x-sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid var(--dk-border); }
+.dk-x-sections { display: grid; gap: 20px; }
+.dk-x-card { display: grid; gap: 16px; align-content: start; }
+.dk-x-cardhead { display: flex; align-items: baseline; gap: 10px; }
+.dk-x-num {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center; align-self: center;
+  background: var(--dk-surface-pressed); color: var(--dk-action-hover);
+  font-size: var(--dk-text-xs); font-weight: 700;
+}
+.dk-x-scene { margin-left: auto; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); text-align: right; }
+.dk-x-stage {
+  background: var(--dk-canvas); border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md); display: grid; place-items: center; padding: 18px;
+}
+.dk-x-rules { display: grid; gap: 10px; align-content: start; }
+.dk-x-rules ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.dk-x-rules li { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+.dk-x-rules li strong { color: var(--dk-text); }
+
+/* Hero 两版并排 */
+.dk-x-hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 1100px) { .dk-x-hero-grid { grid-template-columns: 1fr; } }
+.dk-x-hero-col { display: grid; gap: 12px; align-content: start; }
+.dk-x-hero-stage { position: relative; overflow: hidden; min-height: 300px; }
+.dk-x-hero-stage svg { position: relative; max-width: 100%; height: auto; }
+.dk-x-hero-glow { left: 50%; top: 42%; transform: translate(-50%, -50%); }
+.dk-x-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dk-x-caption p { margin: 0; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-x-caption strong { color: var(--dk-text-secondary); }
+
+/* 小图形网格 */
+.dk-x-items { display: grid; gap: 16px; }
+.dk-x-items--3 { grid-template-columns: repeat(3, 1fr); }
+.dk-x-items--6 { grid-template-columns: repeat(6, 1fr); }
+.dk-x-items--8 { grid-template-columns: repeat(8, 1fr); }
+@media (max-width: 1100px) {
+  .dk-x-items--3 { grid-template-columns: 1fr; }
+  .dk-x-items--6 { grid-template-columns: repeat(3, 1fr); }
+  .dk-x-items--8 { grid-template-columns: repeat(4, 1fr); }
+}
+.dk-x-item { display: grid; gap: 10px; justify-items: center; text-align: center; align-content: start; }
+.dk-x-item .dk-x-stage { width: 100%; min-height: 112px; }
+.dk-x-item-label { font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text); margin: 0; }
+.dk-x-item-note { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); margin: 0; }
+
+/* 插画线条：全部走令牌，SVG 里不写任何色值 */
+.dk-x-illus { display: block; }
+.dk-x-ln  { stroke: var(--dk-text-secondary); }   /* 主线：亮灰 */
+.dk-x-ln2 { stroke: var(--dk-text-tertiary); }    /* 辅线：暗灰 */
+.dk-x-pp  { stroke: var(--dk-action); }           /* 紫点缀 */
+.dk-x-tl  { stroke: var(--dk-accent-2); }         /* 青点缀（小） */
+.dk-x-fpp { fill: var(--dk-action); stroke: none; }
+.dk-x-ftl { fill: var(--dk-accent-2); stroke: none; }
+.dk-x-fln2 { fill: var(--dk-text-tertiary); stroke: none; }
+.dk-x-fcanvas { fill: var(--dk-canvas); }
+.dk-x-fimg { fill: var(--dk-image-canvas); }      /* 图像衬底 */
+.dk-x-badgebase { fill: var(--dk-surface-raised); stroke: var(--dk-border-strong); }
+.dk-x-brace { font: 600 34px var(--dk-font-mono); fill: var(--dk-action); stroke: none; }
+.dk-x-t  { font: 500 13px var(--dk-font-sans); fill: var(--dk-text-secondary); stroke: none; }
+.dk-x-t2 { font: 400 12px var(--dk-font-sans); fill: var(--dk-text-tertiary); stroke: none; font-variant-numeric: tabular-nums; }
+
+/* Hero 可动版：CSS stroke-dashoffset 描绘，一次性播放不循环。
+   基础态 = 完成态（dashoffset 0），动画只补 from——
+   「减少动态效果」把 animation 关掉后，画面直接是完成态，不会缺线。 */
+.dk-x-anim .dk-x-draw {
+  stroke-dasharray: 102; stroke-dashoffset: 0;
+  animation: dk-x-drawline 0.6s var(--dk-ease-out) both;
+}
+.dk-x-anim .dk-x-fade { animation: dk-x-fadein 0.4s var(--dk-ease-out) both; }
+@keyframes dk-x-drawline { from { stroke-dashoffset: 102; } }
+@keyframes dk-x-fadein { from { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="dk-x-wrap">
+
+  <header>
+    <div class="dk-x-brand">
+      <svg class="dk-x-mark" viewBox="0 0 24 24" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+        <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+        <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+        <path class="dk-x-mark-pp" d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke-width="2"/>
+        <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+        <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+      </svg>
+      <span class="dk-x-wordmark">Design<b>Kit</b></span>
+    </div>
+
+    <div class="dk-x-head">
+      <p class="dk-eyebrow">品牌 · 视觉资产 6.4</p>
+      <h1 class="dk-page-title">官网抽象插画组</h1>
+      <p class="dk-page-desc">
+        官网全部素材走这一套抽象语言，与空状态插画同语言：灰线画轮廓、紫做点缀、青只点一小处，深底可用。
+        整站零截图、零真实商标、零真实商品照；商品一律画成细线条抽象轮廓，衬底一律图像衬底。
+      </p>
+      <div class="dk-x-chips">
+        <span class="dk-tag">线宽 1.75px · 圆头端点</span>
+        <span class="dk-tag">白灰线 + 紫点缀 + 少量青</span>
+        <span class="dk-tag">零截图 · 零真实商标 · 无面部</span>
+        <span class="dk-tag">只有 Hero 有动效 · 一次性播放</span>
+      </div>
+    </div>
+
+    <div class="dk-x-legend">
+      <span class="dk-x-legend-item"><span class="dk-x-sw" style="background: var(--dk-text-secondary);"></span>主线 --dk-text-secondary</span>
+      <span class="dk-x-legend-item"><span class="dk-x-sw" style="background: var(--dk-text-tertiary);"></span>辅线 --dk-text-tertiary</span>
+      <span class="dk-x-legend-item"><span class="dk-x-sw" style="background: var(--dk-action);"></span>紫点缀 --dk-action</span>
+      <span class="dk-x-legend-item"><span class="dk-x-sw" style="background: var(--dk-accent-2);"></span>青点缀 --dk-accent-2</span>
+      <span class="dk-x-legend-item"><span class="dk-x-sw" style="background: var(--dk-image-canvas);"></span>图像衬底 --dk-image-canvas</span>
+      <span class="dk-x-legend-item"><span class="dk-x-sw" style="background: radial-gradient(circle, var(--dk-glow), transparent 75%);"></span>氛围光 --dk-glow（官网/登录限定）</span>
+    </div>
+  </header>
+
+  <main class="dk-x-sections">
+
+    <!-- ① Hero 主视觉 -->
+    <section class="dk-panel dk-x-card">
+      <div class="dk-x-cardhead">
+        <span class="dk-x-num">1</span>
+        <h2 class="dk-panel-title">Hero 主视觉（560×360）</h2>
+        <span class="dk-x-scene">官网首页 · 首屏右侧<br>og 分享图右半用同一构图</span>
+      </div>
+      <p class="dk-panel-hint">
+        大取景框 = 工作台；框内左侧「商品图」方块，一条流程线穿过花括号 { }（AI 配提示词），
+        散出 1:1 / 3:4 / 16:9 三个比例块落在右侧；下方小盾牌 +「你的服务器」点出私有部署。
+      </p>
+      <div class="dk-x-hero-grid">
+
+        <!-- 可动版 -->
+        <div class="dk-x-hero-col">
+          <div class="dk-x-stage dk-x-hero-stage">
+            <span class="dk-glow-spot dk-x-hero-glow"></span>
+            <svg id="dk-x-hero-anim" class="dk-x-illus dk-x-anim" width="560" height="360" viewBox="0 0 560 360" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="取景框里的商品图经过花括号，散出三个比例块；下方小盾牌写着你的服务器">
+              <!-- 取景框四角（工作台） -->
+              <path class="dk-x-ln dk-x-draw" pathLength="100" d="M40 78 V56 a10 10 0 0 1 10 -10 H72"/>
+              <path class="dk-x-ln dk-x-draw" pathLength="100" style="animation-delay:.06s" d="M340 46 h22 a10 10 0 0 1 10 10 v22"/>
+              <path class="dk-x-ln dk-x-draw" pathLength="100" style="animation-delay:.12s" d="M40 238 v16 a10 10 0 0 0 10 10 h22"/>
+              <path class="dk-x-pp dk-x-draw" pathLength="100" stroke-width="2" style="animation-delay:.24s" d="M372 238 v16 a10 10 0 0 1 -10 10 h-22"/>
+              <!-- 商品图方块（图像衬底 + 抽象瓶） -->
+              <rect class="dk-x-ln dk-x-fimg dk-x-fade" style="animation-delay:.3s" x="76" y="110" width="96" height="96" rx="10"/>
+              <path class="dk-x-ln dk-x-draw" pathLength="100" style="animation-delay:.5s" d="M118 124 h12"/>
+              <path class="dk-x-ln dk-x-draw" pathLength="100" style="animation-delay:.55s" d="M119 124 v8 c0 5 -9 7 -9 15 v27 a6 6 0 0 0 6 6 h16 a6 6 0 0 0 6 -6 v-27 c0 -8 -9 -10 -9 -15 v-8"/>
+              <path class="dk-x-ln2 dk-x-draw" pathLength="100" style="animation-delay:.65s" d="M115 162 h18"/>
+              <text class="dk-x-t2 dk-x-fade" style="animation-delay:.7s" x="124" y="224" text-anchor="middle">商品图</text>
+              <!-- 流程线 → 花括号 -->
+              <path class="dk-x-ln2 dk-x-draw" pathLength="100" style="animation-delay:.85s" d="M178 158 H220"/>
+              <text class="dk-x-brace dk-x-fade" style="animation-delay:1s" x="234" y="170" text-anchor="middle">{</text>
+              <text class="dk-x-brace dk-x-fade" style="animation-delay:1s" x="266" y="170" text-anchor="middle">}</text>
+              <path class="dk-x-tl dk-x-draw" pathLength="100" style="animation-delay:1.15s" d="M252 112 v12 M246 118 h12"/>
+              <circle class="dk-x-ftl dk-x-fade" style="animation-delay:1.2s" cx="270" cy="104" r="2"/>
+              <!-- 散出三条线 → 三个比例块 -->
+              <path class="dk-x-ln2 dk-x-draw" pathLength="100" style="animation-delay:1.3s" d="M280 148 C 318 132, 342 100, 392 94"/>
+              <path class="dk-x-ln2 dk-x-draw" pathLength="100" style="animation-delay:1.4s" d="M280 158 C 316 160, 344 170, 400 178"/>
+              <path class="dk-x-ln2 dk-x-draw" pathLength="100" style="animation-delay:1.5s" d="M280 168 C 318 186, 342 232, 392 276"/>
+              <rect class="dk-x-ln dk-x-fimg dk-x-fade" style="animation-delay:1.6s" x="398" y="58" width="72" height="72" rx="8"/>
+              <text class="dk-x-t2 dk-x-fade" style="animation-delay:1.7s" x="434" y="98" text-anchor="middle">1:1</text>
+              <rect class="dk-x-ln dk-x-fimg dk-x-fade" style="animation-delay:1.7s" x="407" y="144" width="57" height="76" rx="8"/>
+              <text class="dk-x-t2 dk-x-fade" style="animation-delay:1.8s" x="435.5" y="186" text-anchor="middle">3:4</text>
+              <rect class="dk-x-ln dk-x-fimg dk-x-fade" style="animation-delay:1.8s" x="398" y="248" width="112" height="63" rx="8"/>
+              <text class="dk-x-t2 dk-x-fade" style="animation-delay:1.9s" x="454" y="283" text-anchor="middle">16:9</text>
+              <!-- 小盾牌 + 你的服务器 -->
+              <path class="dk-x-ln2 dk-x-draw" pathLength="100" stroke-dasharray="3 5" style="animation-delay:2s" d="M236 274 v14"/>
+              <path class="dk-x-ln dk-x-draw" pathLength="100" style="animation-delay:2.05s" d="M236 296 l13 5 v11 c0 10 -5.5 16.5 -13 19.5 c-7.5 -3 -13 -9.5 -13 -19.5 v-11 Z"/>
+              <path class="dk-x-pp dk-x-draw" pathLength="100" stroke-width="2" style="animation-delay:2.2s" d="M229 313 l5 5 l9 -9"/>
+              <text class="dk-x-t dk-x-fade" style="animation-delay:2.3s" x="260" y="320">你的服务器</text>
+            </svg>
+          </div>
+          <div class="dk-x-caption">
+            <p><strong>可动版</strong> · 线条约 2.7 秒一次描绘完成，不循环；开了「减少动态效果」时不播动画，直接显示完成态。</p>
+            <button id="dk-x-replay" class="dk-button dk-button--sm dk-button--secondary" type="button">再播一次</button>
+          </div>
+        </div>
+
+        <!-- 静态版 -->
+        <div class="dk-x-hero-col">
+          <div class="dk-x-stage dk-x-hero-stage">
+            <span class="dk-glow-spot dk-x-hero-glow"></span>
+            <svg class="dk-x-illus" width="560" height="360" viewBox="0 0 560 360" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="同一构图的静态版">
+              <path class="dk-x-ln" d="M40 78 V56 a10 10 0 0 1 10 -10 H72"/>
+              <path class="dk-x-ln" d="M340 46 h22 a10 10 0 0 1 10 10 v22"/>
+              <path class="dk-x-ln" d="M40 238 v16 a10 10 0 0 0 10 10 h22"/>
+              <path class="dk-x-pp" stroke-width="2" d="M372 238 v16 a10 10 0 0 1 -10 10 h-22"/>
+              <rect class="dk-x-ln dk-x-fimg" x="76" y="110" width="96" height="96" rx="10"/>
+              <path class="dk-x-ln" d="M118 124 h12"/>
+              <path class="dk-x-ln" d="M119 124 v8 c0 5 -9 7 -9 15 v27 a6 6 0 0 0 6 6 h16 a6 6 0 0 0 6 -6 v-27 c0 -8 -9 -10 -9 -15 v-8"/>
+              <path class="dk-x-ln2" d="M115 162 h18"/>
+              <text class="dk-x-t2" x="124" y="224" text-anchor="middle">商品图</text>
+              <path class="dk-x-ln2" d="M178 158 H220"/>
+              <text class="dk-x-brace" x="234" y="170" text-anchor="middle">{</text>
+              <text class="dk-x-brace" x="266" y="170" text-anchor="middle">}</text>
+              <path class="dk-x-tl" d="M252 112 v12 M246 118 h12"/>
+              <circle class="dk-x-ftl" cx="270" cy="104" r="2"/>
+              <path class="dk-x-ln2" d="M280 148 C 318 132, 342 100, 392 94"/>
+              <path class="dk-x-ln2" d="M280 158 C 316 160, 344 170, 400 178"/>
+              <path class="dk-x-ln2" d="M280 168 C 318 186, 342 232, 392 276"/>
+              <rect class="dk-x-ln dk-x-fimg" x="398" y="58" width="72" height="72" rx="8"/>
+              <text class="dk-x-t2" x="434" y="98" text-anchor="middle">1:1</text>
+              <rect class="dk-x-ln dk-x-fimg" x="407" y="144" width="57" height="76" rx="8"/>
+              <text class="dk-x-t2" x="435.5" y="186" text-anchor="middle">3:4</text>
+              <rect class="dk-x-ln dk-x-fimg" x="398" y="248" width="112" height="63" rx="8"/>
+              <text class="dk-x-t2" x="454" y="283" text-anchor="middle">16:9</text>
+              <path class="dk-x-ln2" stroke-dasharray="3 5" d="M236 274 v14"/>
+              <path class="dk-x-ln" d="M236 296 l13 5 v11 c0 10 -5.5 16.5 -13 19.5 c-7.5 -3 -13 -9.5 -13 -19.5 v-11 Z"/>
+              <path class="dk-x-pp" stroke-width="2" d="M229 313 l5 5 l9 -9"/>
+              <text class="dk-x-t" x="260" y="320">你的服务器</text>
+            </svg>
+          </div>
+          <div class="dk-x-caption">
+            <p><strong>静态版</strong> · og 分享图、不支持动效的场景、以及动效加载前的首帧，都用这一张。</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ② 三步流程 -->
+    <section class="dk-panel dk-x-card">
+      <div class="dk-x-cardhead">
+        <span class="dk-x-num">2</span>
+        <h2 class="dk-panel-title">三步流程小图形（80×80）</h2>
+        <span class="dk-x-scene">官网首页 · 三步流程三卡</span>
+      </div>
+      <div class="dk-x-items dk-x-items--3">
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="80" height="80" viewBox="0 0 80 80" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="托盘上方一张图片和向上的箭头">
+              <rect class="dk-x-ln" x="27" y="14" width="26" height="21" rx="3"/>
+              <circle class="dk-x-ln2" cx="34" cy="21" r="2"/>
+              <path class="dk-x-ln2" d="M30 31 l6 -6 4 4 6 -7"/>
+              <path class="dk-x-pp" d="M40 60 V42 M34 48 l6 -6 6 6"/>
+              <path class="dk-x-ln" d="M18 56 v8 a7 7 0 0 0 7 7 h30 a7 7 0 0 0 7 -7 v-8"/>
+              <circle class="dk-x-ftl" cx="60" cy="18" r="2"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">传商品图</p>
+          <p class="dk-x-item-note">手机拍的 HEIC 也能直接传</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="80" height="80" viewBox="0 0 80 80" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="图片旁一个花括号和小闪光">
+              <rect class="dk-x-ln" x="12" y="24" width="26" height="22" rx="3"/>
+              <circle class="dk-x-ln2" cx="19" cy="31" r="2"/>
+              <path class="dk-x-ln2" d="M15 41 l5.5 -5.5 3.5 3.5 6 -6.5"/>
+              <path class="dk-x-ln2" d="M42 35 h6"/>
+              <path class="dk-x-pp" d="M58 20 c-4.5 0 -4.5 4 -4.5 7 v3.5 c0 3 -3 4.5 -3 4.5 s3 1.5 3 4.5 V43 c0 3 0 7 4.5 7"/>
+              <path class="dk-x-tl" d="M66 16 v9 M61.5 20.5 h9"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">AI 配提示词</p>
+          <p class="dk-x-item-note">1.5 万条灵感库挑着配</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="80" height="80" viewBox="0 0 80 80" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="三个不同比例的方块像扇子一样展开">
+              <g transform="rotate(18 22 62)">
+                <rect class="dk-x-ln2" x="22" y="28" width="40" height="22.5" rx="3"/>
+              </g>
+              <g transform="rotate(6 22 62)">
+                <rect class="dk-x-ln2" x="22" y="24" width="27" height="36" rx="3"/>
+              </g>
+              <g transform="rotate(-8 22 62)">
+                <rect class="dk-x-ln dk-x-fcanvas" x="20" y="26" width="30" height="30" rx="3"/>
+                <path class="dk-x-pp" stroke-width="2" d="M20 48 v5 a3 3 0 0 0 3 3 h5"/>
+              </g>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">选比例出图</p>
+          <p class="dk-x-item-note">补白边到目标比例，不裁产品</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ③ 部署区 -->
+    <section class="dk-panel dk-x-card">
+      <div class="dk-x-cardhead">
+        <span class="dk-x-num">3</span>
+        <h2 class="dk-panel-title">部署区三枚（96×96）</h2>
+        <span class="dk-x-scene">官网首页 · 部署区三卡</span>
+      </div>
+      <div class="dk-x-items dk-x-items--3">
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="96" height="96" viewBox="0 0 96 96" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="方块垒成的塔">
+              <rect class="dk-x-ln" x="16" y="56" width="20" height="16" rx="3"/>
+              <rect class="dk-x-ln" x="40" y="56" width="20" height="16" rx="3"/>
+              <rect class="dk-x-ln" x="64" y="56" width="20" height="16" rx="3"/>
+              <rect class="dk-x-ln" x="28" y="38" width="20" height="16" rx="3"/>
+              <rect class="dk-x-ln" x="52" y="38" width="20" height="16" rx="3"/>
+              <rect class="dk-x-pp" x="40" y="20" width="20" height="16" rx="3"/>
+              <path class="dk-x-ln2" d="M26 60 v8 M50 60 v8 M74 60 v8 M38 42 v8 M62 42 v8"/>
+              <path class="dk-x-ln2" stroke-dasharray="2 7" d="M12 80 H84"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">Docker 一键部署</p>
+          <p class="dk-x-item-note">服务器或群晖 NAS 都行</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="96" height="96" viewBox="0 0 96 96" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="账号卡片和一把钥匙">
+              <rect class="dk-x-ln" x="14" y="18" width="42" height="52" rx="6"/>
+              <circle class="dk-x-ln" cx="35" cy="37" r="8"/>
+              <path class="dk-x-ln" d="M23 60 c2.5 -9 7.5 -13 12 -13 s9.5 4 12 13"/>
+              <circle class="dk-x-pp" cx="66" cy="62" r="8"/>
+              <path class="dk-x-pp" d="M72 56 L85 43 M81 47 l5 5 M77 51 l4 4"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">出图通道用你自己的账号</p>
+          <p class="dk-x-item-note">额度和钱都在你手里</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="96" height="96" viewBox="0 0 96 96" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="两个无面部的抽象人形，中间一条虚线分开">
+              <circle class="dk-x-ln" cx="31" cy="32" r="8.5"/>
+              <path class="dk-x-ln" d="M17 60 c3 -11 8.5 -15 14 -15 s11 4 14 15"/>
+              <circle class="dk-x-ln" cx="65" cy="32" r="8.5"/>
+              <path class="dk-x-ln" d="M51 60 c3 -11 8.5 -15 14 -15 s11 4 14 15"/>
+              <path class="dk-x-ln2" stroke-dasharray="4 6" d="M48 16 V64"/>
+              <path class="dk-x-pp" d="M23 70 h16 M23 76 h16"/>
+              <circle class="dk-x-fpp" cx="29" cy="70" r="2"/>
+              <circle class="dk-x-fpp" cx="34" cy="76" r="2"/>
+              <rect class="dk-x-ln2" x="57" y="66" width="16" height="12" rx="2"/>
+              <circle class="dk-x-fln2" cx="61" cy="69.5" r="1.3"/>
+              <path class="dk-x-ln2" d="M58.5 75 l3.5 -3.5 2.5 2.5 3.5 -4"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">运营与管理员分权</p>
+          <p class="dk-x-item-note">管理员管额度，运营只管出图</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ④ 能力网格 -->
+    <section class="dk-panel dk-x-card">
+      <div class="dk-x-cardhead">
+        <span class="dk-x-num">4</span>
+        <h2 class="dk-panel-title">能力网格六枚（48×48，小图标级）</h2>
+        <span class="dk-x-scene">官网首页 · 能力网格六项</span>
+      </div>
+      <div class="dk-x-items dk-x-items--6">
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="服务器和盾牌">
+              <rect class="dk-x-ln" x="7" y="9" width="21" height="30" rx="3"/>
+              <path class="dk-x-ln2" d="M7 19 h21 M7 29 h21"/>
+              <circle class="dk-x-fln2" cx="11.5" cy="14" r="1.2"/>
+              <circle class="dk-x-fln2" cx="11.5" cy="24" r="1.2"/>
+              <circle class="dk-x-fln2" cx="11.5" cy="34" r="1.2"/>
+              <path class="dk-x-ln dk-x-fcanvas" d="M37 21 l8 3 v7.5 c0 6 -3.5 9.5 -8 11.5 c-4.5 -2 -8 -5.5 -8 -11.5 V24 Z"/>
+              <path class="dk-x-pp" d="M33.5 31.5 l2.8 2.8 4.5 -4.8"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">私有部署</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="摊开的册子">
+              <path class="dk-x-ln" d="M24 37 C 20 34.5, 14 34, 10 35.5 V14 C 14 12.5, 20 13, 24 15.5 C 28 13, 34 12.5, 38 14 V35.5 C 34 34, 28 34.5, 24 37 Z"/>
+              <path class="dk-x-ln" d="M24 15.5 V37"/>
+              <path class="dk-x-ln2" d="M14 20 c3 -1 6 -0.8 8 0.2 M14 26 c3 -1 6 -0.8 8 0.2"/>
+              <path class="dk-x-ln2" d="M26 20.2 c2 -1 5 -1.2 8 -0.2 M26 26.2 c2 -1 5 -1.2 8 -0.2"/>
+              <path class="dk-x-pp" d="M31 13.6 v6.5 l2.5 -2.4 2.5 2.4 v-7.3"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">1.5 万条灵感库</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="一只眼睛和一对花括号">
+              <path class="dk-x-ln" d="M5 24 C 10 17, 24 17, 29 24 C 24 31, 10 31, 5 24 Z"/>
+              <circle class="dk-x-ln" cx="17" cy="24" r="4"/>
+              <path class="dk-x-pp" d="M37 13.5 c-2.6 0 -2.6 2.6 -2.6 4.4 v2.2 c0 1.8 -1.8 2.7 -1.8 2.7 s1.8 0.9 1.8 2.7 v2.2 c0 1.8 0 4.4 2.6 4.4"/>
+              <path class="dk-x-pp" d="M41 13.5 c2.6 0 2.6 2.6 2.6 4.4 v2.2 c0 1.8 1.8 2.7 1.8 2.7 s-1.8 0.9 -1.8 2.7 v2.2 c0 1.8 0 4.4 -2.6 4.4"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">AI 看图配词</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="画框和小锁">
+              <rect class="dk-x-ln" x="6" y="8" width="26" height="26" rx="3"/>
+              <rect class="dk-x-ln2" x="11" y="13" width="16" height="16" rx="1.5" stroke-dasharray="3 3.5"/>
+              <path class="dk-x-ln" d="M31.5 27 v-3.5 a4 4 0 0 1 8 0 V27"/>
+              <rect class="dk-x-ln dk-x-fcanvas" x="29" y="27" width="13" height="11" rx="2.5"/>
+              <circle class="dk-x-fpp" cx="35.5" cy="32.5" r="1.4"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">比例护栏</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="美元硬币和计量条">
+              <circle class="dk-x-ln" cx="16" cy="24" r="11"/>
+              <text class="dk-x-t" x="16" y="28.5" text-anchor="middle" font-weight="700">$</text>
+              <path class="dk-x-ln2" d="M33 34 v-5 M38 34 v-9"/>
+              <path class="dk-x-pp" d="M43 34 v-13"/>
+              <path class="dk-x-ln2" d="M31 38 h14"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">额度费用管控</p>
+          <p class="dk-x-item-note">每张 $1，可后期改价</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="图片外环绕循环箭头">
+              <rect class="dk-x-ln" x="17" y="17" width="14" height="14" rx="2.5"/>
+              <circle class="dk-x-fln2" cx="21" cy="21" r="1.2"/>
+              <path class="dk-x-ln2" d="M19 28 l3 -3 2 2 3 -3.5"/>
+              <path class="dk-x-ln" d="M30 11 a10 10 0 0 1 10 10"/>
+              <path class="dk-x-pp" d="M40 21 l-4 -2.4 M40 21 l2.6 -3.8"/>
+              <path class="dk-x-ln" d="M18 37 a10 10 0 0 1 -10 -10"/>
+              <path class="dk-x-ln" d="M8 27 l4 2.4 M8 27 l-2.6 3.8"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">出好接着改</p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ⑤ 抽象平台徽标 -->
+    <section class="dk-panel dk-x-card">
+      <div class="dk-x-cardhead">
+        <span class="dk-x-num">5</span>
+        <h2 class="dk-panel-title">抽象平台徽标八枚（72×72，圆形徽标底）</h2>
+        <span class="dk-x-scene">官网装饰带 · 不指代任何真实平台</span>
+      </div>
+      <div class="dk-x-items dk-x-items--8">
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="提袋徽标">
+              <circle class="dk-x-badgebase" cx="36" cy="36" r="30"/>
+              <path class="dk-x-ln" d="M25 30 h22 l2.5 19 a3.5 3.5 0 0 1 -3.5 4 H26 a3.5 3.5 0 0 1 -3.5 -4 Z"/>
+              <path class="dk-x-ln" d="M30 30 v-4 a6 6 0 0 1 12 0 v4"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">提袋</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="店面徽标">
+              <circle class="dk-x-badgebase" cx="36" cy="36" r="30"/>
+              <path class="dk-x-ln" d="M23 30 l3.5 -7.5 h19 l3.5 7.5"/>
+              <path class="dk-x-ln" d="M23 30 c0 2.8 2 4.6 4.3 4.6 s4.3 -1.8 4.3 -4.6 c0 2.8 2 4.6 4.4 4.6 s4.3 -1.8 4.3 -4.6 c0 2.8 2 4.6 4.4 4.6 s4.3 -1.8 4.3 -4.6"/>
+              <path class="dk-x-ln" d="M26 38 v12 h20 V38"/>
+              <rect class="dk-x-ln2" x="33" y="43" width="7" height="7"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">店面</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="购物车徽标">
+              <circle class="dk-x-badgebase" cx="36" cy="36" r="30"/>
+              <path class="dk-x-ln" d="M22 26 h4.5 l4 15.5 h13.5 l3.8 -11 H29"/>
+              <circle class="dk-x-ln" cx="33" cy="47.5" r="2.4"/>
+              <circle class="dk-x-ln" cx="42" cy="47.5" r="2.4"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">购物车</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="地球徽标">
+              <circle class="dk-x-badgebase" cx="36" cy="36" r="30"/>
+              <circle class="dk-x-ln" cx="36" cy="36" r="13.5"/>
+              <path class="dk-x-ln2" d="M22.5 36 h27"/>
+              <path class="dk-x-ln2" d="M36 22.5 c5.5 4.5 5.5 22.5 0 27"/>
+              <path class="dk-x-ln2" d="M36 22.5 c-5.5 4.5 -5.5 22.5 0 27"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">地球</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="包裹徽标">
+              <circle class="dk-x-badgebase" cx="36" cy="36" r="30"/>
+              <path class="dk-x-ln" d="M24 30.5 l12 -6 12 6 V44 l-12 6 -12 -6 Z"/>
+              <path class="dk-x-ln2" d="M24 30.5 l12 6 12 -6 M36 36.5 V50"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">包裹</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="标签徽标">
+              <circle class="dk-x-badgebase" cx="36" cy="36" r="30"/>
+              <path class="dk-x-ln" d="M39 24.5 h6.5 a2.5 2.5 0 0 1 2.5 2.5 v6.5 L35.5 46 a3 3 0 0 1 -4.3 0 l-7.2 -7.2 a3 3 0 0 1 0 -4.3 Z"/>
+              <circle class="dk-x-ln" cx="42.5" cy="29.5" r="2"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">标签</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="柜台徽标">
+              <circle class="dk-x-badgebase" cx="36" cy="36" r="30"/>
+              <path class="dk-x-ln" d="M23 36 h26"/>
+              <path class="dk-x-ln" d="M26.5 36 v11.5 M45.5 36 v11.5"/>
+              <path class="dk-x-ln2" d="M26.5 47.5 h19"/>
+              <path class="dk-x-ln" d="M30.5 31.5 a5.5 5.5 0 0 1 11 0"/>
+              <path class="dk-x-ln" d="M36 24.5 v1.8"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">柜台</p>
+        </div>
+
+        <div class="dk-x-item">
+          <div class="dk-x-stage">
+            <svg class="dk-x-illus" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="信封徽标">
+              <circle class="dk-x-badgebase" cx="36" cy="36" r="30"/>
+              <rect class="dk-x-ln" x="24" y="28.5" width="24" height="16.5" rx="2.5"/>
+              <path class="dk-x-ln" d="M24.8 30.5 L36 39 l11.2 -8.5"/>
+            </svg>
+          </div>
+          <p class="dk-x-item-label">信封</p>
+        </div>
+
+      </div>
+      <p class="dk-panel-hint">
+        通用商业符号，故意不像任何一家：不用真实商标的配色、字形和轮廓，也不把某几枚摆成能认出某平台的组合。
+        八枚全部灰线、无点缀，保持「背景装饰」的克制身份。
+      </p>
+    </section>
+
+    <!-- 落位与规矩 -->
+    <section class="dk-panel dk-panel--subtle dk-x-rules">
+      <h2 class="dk-panel-title">落位与规矩</h2>
+      <ul>
+        <li><strong>落位：</strong>Hero 放官网首页首屏（og 分享图右半同构图）；三步流程、部署、能力各归各的区块；平台徽标做区块间装饰带，登录页的静态排列版也可复用。</li>
+        <li><strong>尺寸：</strong>Hero 560×360、流程 80、部署 96、能力 48、徽标 72，全部只做等比缩放，不改画布比例。产品端界面图标另按 20/16px 图标体系走，别拿这组顶替。</li>
+        <li><strong>颜色：</strong>只许令牌——两档灰画轮廓、紫做点缀、青只点一小处；图像内容（商品图方块、比例块）衬底一律 --dk-image-canvas。不加渐变、不发明新颜色。</li>
+        <li><strong>氛围光：</strong>--dk-glow 只许官网和登录页用（本组 Hero 背后那一团就是）；产品正文区禁用。</li>
+        <li><strong>动效：</strong>整组只有 Hero 可动版有动效——CSS stroke-dashoffset 描绘（pathLength 归一到 100），一次性播放不循环；基础态就是完成态，「减少动态效果」时不播动画、画面完整，不许覆盖全局那条规则。</li>
+        <li><strong>红线：</strong>零截图、零真实商标、零真实商品照；人形只许轮廓、不许画面部；商品一律细线条抽象轮廓（瓶、杯、衣物）。</li>
+      </ul>
+    </section>
+
+  </main>
+</div>
+<script>
+(function () {
+  var btn = document.getElementById('dk-x-replay');
+  var svg = document.getElementById('dk-x-hero-anim');
+  if (!btn || !svg) return;
+  btn.addEventListener('click', function () {
+    svg.classList.remove('dk-x-anim');
+    void svg.getBoundingClientRect(); /* 强制回流，重启一次性动画 */
+    svg.classList.add('dk-x-anim');
+  });
+})();
+</script>
+</body>
+</html>
