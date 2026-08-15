@@ -40,7 +40,7 @@ upstream repository does not ship it.
 | 2026-08-13 | 生成工作台、灵感库（从 YouMind 开源库同步约 1.5 万条提示词）、批量出图、对外接口骨架；界面改为 designkit 外观并只保留白天模式；去掉上游的「部署与运营合规确认」关卡与新手引导 |
 | 2026-08-14 | AI 挑提示词（读商品图 → 分类内粗筛 → 细选 5 条 → 合成 1 条）；「用这张继续生成」；出图比例改由提示词控制；内部 API Key 自动绑定分组；兑换码批量删除；登录页恢复平台标识旋转球 |
 | 2026-08-15 | 全站深色单主题「DesignKit Dark」（含上游后台，调色板源头换肤）；品牌资产（logo 四方向/图标/插画）与产品端全套设计稿；官网三页（首页/申请试用/帮助中心，静态自包含 HTML，见 `designkit/website/`） |
-| 2026-08-15 | 界面文案全量重写（「产品话」口径）；GitHub 独立化：README 换为本项目内容，删除上游品牌与文档文件 48 个（README_CN/JA、DEV_GUIDE、CLA、docs/ 除 legal、assets/、release.yml、cla.yml、GoReleaser 配置），界面站点名兜底与品牌字样改为 DesignKit，git 历史重置为单提交（见下） |
+| 2026-08-15 | 界面文案全量重写（「产品话」口径）；GitHub 独立化：README 换为本项目内容，删除上游品牌与文档文件 48 个（README_CN/JA、DEV_GUIDE、CLA、docs/ 除 legal、assets/、release.yml、cla.yml、GoReleaser 配置），界面站点名兜底与品牌字样改为 DesignKit，git 历史重置为单提交（见下）；应项目所有者要求（仅自用，不对外商业化分发），不再转录上游 README 的各项声明，仅保留本文件的来源声明、修改记录与许可证文件 |
 
 ### 本项目引入的第三方代码与素材
 
@@ -108,32 +108,9 @@ only to indicate supported channels; no affiliation or endorsement is implied.
 > 保留这份清单的目的因此变成**如实披露**，而不是「白名单管控」。
 > 跑 `bash designkit/bin/check-upstream-touch.sh` 可以随时重新清点。
 
-## 上游的免责声明
-
-上游 README 已于 2026-08-15 替换为本项目的 README，其中的重要提醒
-（免责声明等四条）原文移入下一节保留；许可证文件（`LICENSE`、`COPYING`）
-与源码中的版权声明未作删改。
-The upstream README was replaced on 2026-08-15; its disclaimers are preserved
-verbatim in the next section. License files and in-source copyright notices
-remain unmodified.
-
 ## git 历史说明
 
 本仓库的 git 历史于 2026-08-15 重置为单提交序列（以独立项目形态呈现）。
 基于的上游版本与全部修改内容以本文件披露为准；LGPL 许可证不要求保留
 版本控制历史，其要求的许可证文本、版权声明与修改声明均已保留。
 上游提交历史的完整备份由项目所有者另行保存。
-
-## 上游项目的原始声明（原文保留）
-
-以下是上游项目 Sub2API 在其 README 中的重要提醒，按许可证与致谢惯例原文保留。
-这些是上游作者就 Sub2API 本身所作的声明：
-
-> - **服务条款风险**：使用本项目可能违反 Anthropic 等上游服务商的服务条款。请在使用前仔细阅读相关服务商的用户协议，由此产生的一切风险由用户自行承担。
-> - **合规使用**：请在符合您所在国家或地区法律法规的前提下使用本项目，严禁将其用于任何违法违规用途。
-> - **免责声明**：本项目仅供技术学习与研究使用，作者不对因使用本项目导致的账户封禁、服务中断、数据丢失或其他任何直接或间接损失承担责任。
-> - **无商业授权**：本项目从未授权任何个人或组织基于本项目开展任何形式的商业化运营。任何以本项目名义或基于本项目从事的商业行为均与本项目及其开发者无关，由此产生的一切纠纷、损失和法律责任由行为主体自行承担。
-
-DesignKit 与上游项目相互独立：DesignKit 的商业行为由 DesignKit 所有者自行负责，
-与 Sub2API 及其开发者无关；LGPL-3.0 许可证赋予的使用、修改、分发权利不受上述
-声明影响。

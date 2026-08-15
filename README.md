@@ -31,8 +31,6 @@ Go 后端 + Vue 3 前端 + PostgreSQL + Redis + Python 图像预处理服务，D
 
 版本号使用 `dk-` 前缀（例如 `dk-1.0`）。
 
-## 许可证与致谢
+## 许可证
 
-本项目采用 **LGPL-3.0-or-later** 许可证，见 [LICENSE](LICENSE)。
-
-DesignKit 基于开源项目 [Sub2API](https://github.com/Wei-Shaw/sub2api)（LGPL-3.0）重构而来，在其网关与账号体系之上构建了商品图生成的全部业务功能。来源声明、修改清单与上游项目的原始免责声明见 [NOTICE.md](NOTICE.md)。
+LGPL-3.0-or-later，见 [LICENSE](LICENSE)。基于 Sub2API 重构，来源与修改声明见 [NOTICE.md](NOTICE.md)。
