@@ -118,8 +118,14 @@ type Module struct {
 	gateway dkdomain.GatewayInvoker
 
 	// chat 对话调用器（进程内重入 h.OpenAIGateway.ChatCompletions()）。
-	// 只给「AI 挑提示词」用；出图**不走它**。
+	// 给「AI 挑提示词」和「AI 对话」两个功能用；出图**不走它**。
 	chat dkservice.ChatInvoker
+
+	// chatRepo 「AI 对话」的会话与消息持久层（决策 38）。
+	chatRepo *dkrepository.ChatRepo
+
+	// conversation 「AI 对话」页的业务编排。允许为 nil：缺席时只关对话端点。
+	conversation *dkservice.ConversationService
 
 	// suggest 「AI 挑提示词」：读商品图 → 分类里挑 5 条 → 合成 1 条。
 	//
@@ -221,6 +227,7 @@ func NewModule(
 	db := pool.DB()
 	m.repo = dkrepository.NewRepository(db)
 	m.healthRepo = dkrepository.NewHealthRepository(db)
+	m.chatRepo = dkrepository.NewChatRepo(db)
 	m.health = dkservice.NewHealthService(moduleHealthRepo{m: m}).
 		WithModuleStatus(m.healthModuleStatus)
 
@@ -321,6 +328,33 @@ func NewModule(
 			m.degrade("AI 挑提示词没建起来：%v", suggestErr)
 		} else {
 			m.suggest = suggest
+		}
+	}
+
+	// ---- 7.5 「AI 对话」页（决策 38）----
+	switch {
+	case m.chatRepo == nil:
+		m.degrade("拿不到数据库，AI 对话不可用")
+	case m.assets == nil:
+		m.degrade("没有商品图读取能力，AI 对话不可用（发图提问要读图）")
+	case m.chat == nil:
+		m.degrade("没有对话调用器，AI 对话不可用")
+	default:
+		convDeps := dkservice.ConversationDeps{
+			Store:  m.chatRepo,
+			Assets: m.assets,
+			Chat:   m.chat,
+		}
+		// ⚠ typed-nil：m.keys 是 *InternalKeyService，为 nil 时直接赋给
+		// 接口字段会让 service 里的判空失效（跟 JobServiceDeps.Keys 同一个坑）。
+		if m.keys != nil {
+			convDeps.Keys = m.keys
+		}
+		conv, convErr := dkservice.NewConversationService(convDeps)
+		if convErr != nil {
+			m.degrade("AI 对话没建起来：%v", convErr)
+		} else {
+			m.conversation = conv
 		}
 	}
 
@@ -489,6 +523,10 @@ func (m *Module) buildServices() dkhandler.Services {
 		// 运营点了拿到 500，而不是我们设计好的「裸 404 → 显示还没准备好」。
 		if m.suggest != nil {
 			svcs.Suggest = suggestServiceAdapter{svc: m.suggest}
+		}
+		// ⚠ 同样的 typed-nil 坑：conversation 为 nil 时不能装。
+		if m.conversation != nil {
+			svcs.Chat = chatConversationAdapter{svc: m.conversation}
 		}
 		svcs.PromptSync = promptSyncAdapter{
 			repo:    m.repo,
@@ -883,6 +921,43 @@ func (r moduleHealthRepo) Ping(ctx context.Context) error {
 		return dkservice.ErrDatabaseUnavailable
 	}
 	return r.m.healthRepo.Ping(ctx)
+}
+
+// chatConversationAdapter 把 service.ConversationService 适配成 handler.ChatConversationService。
+// 搬字段的理由同 suggestServiceAdapter（下）。
+type chatConversationAdapter struct {
+	svc *dkservice.ConversationService
+}
+
+var _ dkhandler.ChatConversationService = chatConversationAdapter{}
+
+func (a chatConversationAdapter) Send(ctx context.Context, in dkhandler.ChatSendInput) (*dkhandler.ChatSendResult, error) {
+	result, err := a.svc.Send(ctx, dkservice.SendInput{
+		UserID:     in.UserID,
+		SessionUID: in.SessionUID,
+		Text:       in.Text,
+		AssetUIDs:  in.AssetUIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &dkhandler.ChatSendResult{
+		Session:          result.Session,
+		UserMessage:      result.UserMessage,
+		AssistantMessage: result.AssistantMessage,
+	}, nil
+}
+
+func (a chatConversationAdapter) ListSessions(ctx context.Context, userID int64) ([]*dkdomain.ChatSession, error) {
+	return a.svc.ListSessions(ctx, userID)
+}
+
+func (a chatConversationAdapter) GetSession(ctx context.Context, userID int64, uid string) (*dkdomain.ChatSession, []*dkdomain.ChatMessage, error) {
+	return a.svc.GetSession(ctx, userID, uid)
+}
+
+func (a chatConversationAdapter) DeleteSession(ctx context.Context, userID int64, uid string) error {
+	return a.svc.DeleteSession(ctx, userID, uid)
 }
 
 // suggestServiceAdapter 把 service.PromptSuggestService 适配成 handler.SuggestService。

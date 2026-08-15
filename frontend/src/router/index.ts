@@ -464,6 +464,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    // AI 对话：跟对话模型聊商品图，可随消息带图。排在灵感库和我的图片之间（菜单同序）。
+    path: '/chat',
+    name: 'DesignkitChat',
+    component: () => import('@/features/designkit/views/DesignkitChatView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'AI Chat',
+      titleKey: 'designkit.chat.title'
+    }
+  },
+  {
     path: '/gallery',
     name: 'DesignkitGallery',
     component: () => import('@/features/designkit/views/DesignkitGalleryView.vue'),

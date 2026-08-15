@@ -67,6 +67,43 @@ type Services struct {
 	// **同样刻意不算进 Ready()**：它只依赖数据库。缺席时「商品图设置」那一页不可用，
 	// 出图照常按数据库里已有的配置跑 —— 为一个设置页把出图端点整组下线完全不成比例。
 	Settings SettingsService
+
+	// Chat 「AI 对话」页（决策 38：会话保存 / 能发图 / 所有运营可用）。
+	//
+	// **同样刻意不算进 Ready()**：缺席时只关掉对话那四个端点，
+	// 前端对话页显示「还没准备好」，出图和灵感库照常。
+	Chat ChatConversationService
+}
+
+// ChatSendInput 发一条对话消息。
+type ChatSendInput struct {
+	// UserID 谁在聊。
+	UserID int64
+	// SessionUID 目标会话；空串 = 新建。
+	SessionUID string
+	// Text 正文。
+	Text string
+	// AssetUIDs 附带的商品图，最多 3 张（上限在 service 层守）。
+	AssetUIDs []string
+}
+
+// ChatSendResult 一次发送的产出。
+type ChatSendResult struct {
+	Session          *dkdomain.ChatSession
+	UserMessage      *dkdomain.ChatMessage
+	AssistantMessage *dkdomain.ChatMessage
+}
+
+// ChatConversationService 是「AI 对话」这一组能力。
+type ChatConversationService interface {
+	// Send 发一条消息并等 AI 回复。这一步**花钱**（按 token 计费）。
+	Send(ctx context.Context, in ChatSendInput) (*ChatSendResult, error)
+	// ListSessions 会话列表（最近的在前）。
+	ListSessions(ctx context.Context, userID int64) ([]*dkdomain.ChatSession, error)
+	// GetSession 一个会话和它的全部消息（按发生顺序）。
+	GetSession(ctx context.Context, userID int64, uid string) (*dkdomain.ChatSession, []*dkdomain.ChatMessage, error)
+	// DeleteSession 删除会话。
+	DeleteSession(ctx context.Context, userID int64, uid string) error
 }
 
 // Ready 判断四个**出图必需**的服务是不是都就绪了。

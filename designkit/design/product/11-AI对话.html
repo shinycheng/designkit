@@ -1,0 +1,832 @@
+<!-- @dsCard group="产品端" name="11 AI对话" subtitle="会话列表 · 消息流 · 图片消息 · 输入条附件chip · 状态小样" width="1440" -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AI 对话 · DesignKit 产品端</title>
+<style>
+/*
+ * DesignKit Dark — 设计系统地基（v3 定稿实现）
+ * ---------------------------------------------------------------------------
+ * 用途双重：
+ *   1. 全部设计稿（Claude Design 三个项目）的共用样式，逐字内联进每张稿；
+ *   2. 实施时 tokens.css 换值与 designkit-ui.css 深色化的对照蓝本。
+ *
+ * 令牌名与 frontend/src/features/designkit/theme/tokens.css **一字不差**，
+ * 只换值（v3 3.2 对照表）；新增三个：--dk-image-canvas / --dk-accent-2 / --dk-glow。
+ * 组件类名沿用 designkit-ui.css 现有词汇（dk-button--primary-action、
+ * dk-size-option、dk-dropzone、dk-thumb…），新组件按同一命名法追加——
+ * 这样设计稿里的每个类名在代码库里都有着落，交接零翻译。
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* 底面 */
+  --dk-canvas: #0b0f1a;
+  --dk-surface: #131a2b;
+  --dk-surface-subtle: #101625;
+  --dk-surface-raised: #1b2337;
+  --dk-surface-hover: rgba(124, 107, 255, 0.08);
+  --dk-surface-pressed: rgba(124, 107, 255, 0.14);
+  --dk-overlay: rgba(4, 7, 14, 0.66);
+  --dk-border: #273049;
+  --dk-border-strong: #3a466b;
+
+  /* 文字 */
+  --dk-text: #f2f5fa;
+  --dk-text-secondary: #a8b3c7;
+  --dk-text-tertiary: #7a85a0;
+  --dk-text-disabled: #5a6580;
+  --dk-text-inverse: #0b0f1a;
+
+  /* 动作与强调 */
+  --dk-action: #7c6bff;
+  --dk-action-hover: #8f80ff;
+  --dk-action-pressed: #6b5af0;
+  --dk-accent: #5ea2ff;
+  --dk-accent-strong: #82b7ff;
+  --dk-accent-soft: rgba(94, 162, 255, 0.16);
+  --dk-focus: rgba(124, 107, 255, 0.45);
+
+  /* 反馈 */
+  --dk-success: #34d399;
+  --dk-success-soft: rgba(52, 211, 153, 0.14);
+  --dk-warning: #fbbf24;
+  --dk-warning-soft: rgba(251, 191, 36, 0.14);
+  --dk-danger: #f87171;
+  --dk-danger-strong: #ef6b6b;
+  --dk-danger-soft: rgba(248, 113, 113, 0.14);
+  --dk-info-soft: rgba(56, 189, 248, 0.14);
+
+  /* 新增（v3） */
+  --dk-image-canvas: #17191e;   /* 图像衬底：中性灰，无蓝紫偏色 */
+  --dk-accent-2: #2dd4bf;       /* 数据点缀青，仅数据强调 */
+  --dk-glow: rgba(124, 107, 255, 0.2); /* 氛围光：登录页/官网限定 */
+
+  /* 字体与字号（Inter 优先，v3） */
+  --dk-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "HarmonyOS Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --dk-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --dk-text-xs: 12px; --dk-text-sm: 13px; --dk-text-md: 14px;
+  --dk-text-lg: 16px; --dk-text-xl: 20px; --dk-text-2xl: 28px;
+  --dk-leading-tight: 1.3; --dk-leading: 1.55;
+
+  /* 间距 / 圆角 / 投影（深色投影 = 细内描边 + 深投影） */
+  --dk-space-1: 4px; --dk-space-2: 8px; --dk-space-3: 12px; --dk-space-4: 16px;
+  --dk-space-5: 20px; --dk-space-6: 24px; --dk-space-7: 28px; --dk-space-8: 32px;
+  --dk-space-9: 36px; --dk-space-10: 40px; --dk-space-12: 48px;
+  --dk-radius-sm: 6px; --dk-radius-md: 8px; --dk-radius-lg: 12px; --dk-radius-pill: 999px;
+  --dk-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --dk-shadow-2: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --dk-shadow-overlay: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* 外壳尺寸（沿用现值；toolrail 保留令牌但外壳维持上游侧栏——拍板增补） */
+  --dk-topbar-h: 54px; --dk-toolrail-w: 68px; --dk-config-w: 400px;
+  --dk-control-h: 40px; --dk-primary-h: 44px; --dk-bottom-nav-h: 64px;
+  --dk-content-max: 1440px;
+  --dk-z-sticky: 20; --dk-z-nav: 30; --dk-z-overlay: 100; --dk-z-toast: 120; --dk-z-lightbox: 140;
+  --dk-motion-fast: 120ms; --dk-motion-normal: 180ms;
+  --dk-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── 基础 ─────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--dk-canvas);
+  color: var(--dk-text);
+  font-family: var(--dk-font-sans);
+  font-size: var(--dk-text-md);
+  line-height: var(--dk-leading);
+  letter-spacing: 0.01em; /* 中文字距克制，≤0.04em */
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(124, 107, 255, 0.35); }
+a { color: var(--dk-accent); text-decoration: none; }
+a:hover { color: var(--dk-accent-strong); }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--dk-focus); border-radius: var(--dk-radius-sm); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #273049; border-radius: 999px; border: 2px solid var(--dk-canvas); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 排版助手（与 designkit-ui.css 同名） */
+.dk-page-title { font-size: var(--dk-text-2xl); font-weight: 700; line-height: var(--dk-leading-tight); margin: 0; }
+.dk-page-desc { color: var(--dk-text-secondary); margin: 6px 0 0; }
+.dk-eyebrow { font-size: var(--dk-text-xs); font-weight: 600; letter-spacing: 0.08em; color: var(--dk-text-tertiary); text-transform: uppercase; }
+.dk-panel-title { font-size: var(--dk-text-lg); font-weight: 600; margin: 0; }
+.dk-panel-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin: 2px 0 0; }
+.dk-label { display: block; font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text-secondary); margin-bottom: 6px; }
+.dk-note { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); margin: 0; }
+.dk-note--quiet { color: var(--dk-text-tertiary); }
+.dk-note--warning { color: var(--dk-warning); }
+.dk-note--danger { color: var(--dk-danger); }
+.dk-note--success { color: var(--dk-success); }
+.dk-muted { color: var(--dk-text-tertiary); }
+.dk-mono-note { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+/* 金额与数量：等宽数字、600、主文字色——关键信息绝不弱化 */
+.dk-money { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--dk-text); }
+.dk-money--accent { color: var(--dk-accent-2); } /* 数据强调限定 */
+.dk-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ── 面板 ─────────────────────────────────────────────────────── */
+.dk-panel {
+  background: var(--dk-surface);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-5);
+  box-shadow: var(--dk-shadow-1);
+}
+.dk-panel--subtle { background: var(--dk-surface-subtle); box-shadow: none; }
+.dk-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dk-space-3); margin-bottom: var(--dk-space-4); }
+
+/* ── 按钮（主/次/危险/安静/小号 + 花钱变体） ───────────────────── */
+.dk-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: var(--dk-control-h); padding: 0 16px;
+  border-radius: var(--dk-radius-md); border: 1px solid transparent;
+  background: var(--dk-surface-raised); color: var(--dk-text);
+  font: 600 var(--dk-text-md)/1 var(--dk-font-sans); cursor: pointer;
+  transition: background var(--dk-motion-fast) var(--dk-ease-out),
+              border-color var(--dk-motion-fast) var(--dk-ease-out),
+              transform var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-button:hover { background: #232c44; }
+.dk-button:active { transform: translateY(1px); }
+.dk-button:disabled { color: var(--dk-text-disabled); background: var(--dk-surface-subtle); cursor: not-allowed; transform: none; }
+.dk-button--primary-action { background: var(--dk-action); color: #fff; height: var(--dk-primary-h); }
+.dk-button--primary-action:hover { background: var(--dk-action-hover); }
+.dk-button--primary-action:active { background: var(--dk-action-pressed); }
+.dk-button--primary-action:disabled { background: #3d3a66; color: rgba(255,255,255,.45); }
+.dk-button--secondary { background: transparent; border-color: var(--dk-border-strong); }
+.dk-button--secondary:hover { background: var(--dk-surface-hover); border-color: var(--dk-action); }
+.dk-button--danger { background: transparent; border-color: var(--dk-danger); color: var(--dk-danger); }
+.dk-button--danger:hover { background: var(--dk-danger-soft); }
+.dk-button--danger.is-solid { background: var(--dk-danger); color: #1a0b0b; border-color: transparent; }
+.dk-button--quiet { background: transparent; color: var(--dk-accent); padding: 0 8px; height: auto; }
+.dk-button--quiet:hover { background: transparent; color: var(--dk-accent-strong); text-decoration: underline; }
+.dk-button--sm { height: 32px; padding: 0 12px; font-size: var(--dk-text-sm); }
+.dk-button--block { width: 100%; }
+/* 花钱按钮：价格小字缀在文案后（「让 AI 推荐 · $0.09~$0.34」） */
+.dk-button__price { font-weight: 500; font-size: var(--dk-text-xs); opacity: 0.85; font-variant-numeric: tabular-nums; }
+
+/* ── 表单 ─────────────────────────────────────────────────────── */
+.dk-input, .dk-textarea, .dk-select {
+  width: 100%; background: var(--dk-surface-subtle);
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  color: var(--dk-text); font: 400 var(--dk-text-md)/var(--dk-leading) var(--dk-font-sans);
+  padding: 9px 12px; transition: border-color var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-input { height: var(--dk-control-h); }
+.dk-input::placeholder, .dk-textarea::placeholder { color: var(--dk-text-tertiary); }
+.dk-input:hover, .dk-textarea:hover, .dk-select:hover { border-color: var(--dk-border-strong); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { outline: none; border-color: var(--dk-action); box-shadow: 0 0 0 3px var(--dk-focus); }
+.dk-input.is-error, .dk-textarea.is-error { border-color: var(--dk-danger); }
+.dk-input:disabled, .dk-textarea:disabled, .dk-select:disabled { color: var(--dk-text-disabled); background: var(--dk-surface); }
+.dk-field-error { font-size: var(--dk-text-sm); color: var(--dk-danger); margin-top: 6px; }
+.dk-char-count { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); text-align: right; }
+.dk-char-count.is-over { color: var(--dk-danger); font-weight: 600; }
+.dk-select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--dk-text-tertiary) 50%), linear-gradient(135deg, var(--dk-text-tertiary) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
+/* 字段两级说明：hint 灰字；danger = 警告色 4px 左边线 + soft 底 */
+.dk-field-hint { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); margin-top: 6px; }
+.dk-danger-note {
+  margin-top: 8px; padding: 8px 12px; font-size: var(--dk-text-sm);
+  color: var(--dk-warning); background: var(--dk-warning-soft);
+  border-left: 4px solid var(--dk-warning); border-radius: 0 var(--dk-radius-sm) var(--dk-radius-sm) 0;
+}
+
+/* chips（分类单选） */
+.dk-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border);
+  background: var(--dk-surface); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-sm); cursor: pointer;
+}
+.dk-chip:hover { border-color: var(--dk-border-strong); color: var(--dk-text); }
+.dk-chip.is-selected { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+
+/* 开关 / 复选 / 单选（后台场景） */
+.dk-switch { position: relative; width: 40px; height: 22px; border-radius: 999px; background: var(--dk-border-strong); border: none; cursor: pointer; transition: background var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #e7e9f2; transition: transform var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-switch.is-on { background: var(--dk-action); }
+.dk-switch.is-on::after { transform: translateX(18px); }
+.dk-check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); cursor: pointer; }
+.dk-check__box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--dk-border-strong); background: var(--dk-surface-subtle); display: inline-grid; place-items: center; }
+.dk-check.is-checked .dk-check__box { background: var(--dk-action); border-color: var(--dk-action); }
+.dk-check.is-checked .dk-check__box::after { content: "✓"; color: #fff; font-size: 11px; font-weight: 700; }
+
+/* ── 上传区 ───────────────────────────────────────────────────── */
+.dk-dropzone {
+  display: grid; place-items: center; gap: 6px; text-align: center;
+  padding: var(--dk-space-8) var(--dk-space-5);
+  border: 1.5px dashed var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  background: var(--dk-surface-subtle); color: var(--dk-text-secondary); cursor: pointer;
+  transition: border-color var(--dk-motion-fast) var(--dk-ease-out), background var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-dropzone:hover { border-color: var(--dk-action); }
+.dk-dropzone.is-dragover { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.06); }
+.dk-dropzone__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-dropzone__meta { font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* 缩略图（商品图/结果图共用视觉；衬底一律 --dk-image-canvas） */
+.dk-thumb { position: relative; border-radius: var(--dk-radius-md); overflow: hidden; border: 1px solid var(--dk-border); background: var(--dk-image-canvas); }
+.dk-thumb.is-white { background: #ffffff; }
+.dk-thumb__media { display: block; width: 100%; aspect-ratio: 1; object-fit: contain; }
+.dk-thumb__tag {
+  position: absolute; top: 6px; left: 6px; padding: 2px 8px;
+  border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 600;
+  background: rgba(11, 15, 26, 0.78); color: var(--dk-text-secondary); backdrop-filter: blur(4px);
+}
+.dk-thumb__tag--ok { color: var(--dk-success); }
+.dk-thumb__tag--fail { color: var(--dk-danger); }
+.dk-thumb__overlay {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 8px;
+  background: rgba(4, 7, 14, 0.55); opacity: 0; transition: opacity var(--dk-motion-fast) var(--dk-ease-out);
+}
+.dk-thumb:hover .dk-thumb__overlay { opacity: 1; }
+
+/* 比例选择块：按真实宽高比绘制 */
+.dk-size-options { display: flex; flex-wrap: wrap; gap: var(--dk-space-3); }
+.dk-size-option {
+  display: grid; gap: 6px; justify-items: center; padding: 10px 12px 8px;
+  border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md);
+  background: var(--dk-surface-subtle); cursor: pointer; position: relative;
+}
+.dk-size-option:hover { border-color: var(--dk-border-strong); }
+.dk-size-option.is-selected { border-color: var(--dk-action); background: rgba(124, 107, 255, 0.1); box-shadow: 0 0 0 1px var(--dk-action); }
+.dk-size-option__shape { background: var(--dk-border-strong); border-radius: 3px; height: 34px; }
+.dk-size-option.is-selected .dk-size-option__shape { background: var(--dk-action); }
+.dk-size-option__label { font-size: var(--dk-text-sm); font-weight: 600; }
+.dk-size-option__ratio { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+.dk-size-option__tier { position: absolute; top: 4px; right: 6px; font-size: 10px; color: var(--dk-text-tertiary); }
+
+/* ── 状态徽章 ─────────────────────────────────────────────────── */
+.dk-badge {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px;
+  border-radius: var(--dk-radius-pill); font-size: var(--dk-text-xs); font-weight: 600;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+}
+.dk-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.dk-badge--success { background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-badge--danger { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-badge--warning { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-badge--info { background: var(--dk-accent-soft); color: var(--dk-accent-strong); }
+.dk-badge--running .dk-badge__dot { animation: dk-pulse 1.2s ease-in-out infinite; }
+@keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* 进度条 */
+.dk-progress-track { height: 6px; border-radius: 999px; background: var(--dk-surface-raised); overflow: hidden; }
+.dk-progress-bar { height: 100%; border-radius: 999px; background: var(--dk-action); transition: width var(--dk-motion-normal) var(--dk-ease-out); }
+
+/* ── 提示与警报 ───────────────────────────────────────────────── */
+.dk-alert {
+  display: grid; gap: 4px; padding: 12px 14px;
+  border-radius: var(--dk-radius-md); border: 1px solid var(--dk-border);
+  background: var(--dk-surface-subtle); font-size: var(--dk-text-sm);
+}
+.dk-alert--danger { border-color: rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-alert--warning { border-color: rgba(251, 191, 36, 0.4); background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-alert--success { border-color: rgba(52, 211, 153, 0.4); background: var(--dk-success-soft); color: var(--dk-success); }
+.dk-alert--info { border-color: rgba(94, 162, 255, 0.4); background: var(--dk-info-soft); color: var(--dk-accent-strong); }
+.dk-alert__sub { color: var(--dk-text-secondary); font-weight: 400; }
+
+/* toast（顶部居中，180ms 滑入） */
+.dk-toast {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-radius: var(--dk-radius-md); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); box-shadow: var(--dk-shadow-2);
+  font-size: var(--dk-text-sm); font-weight: 500;
+}
+.dk-toast--success { border-color: rgba(52, 211, 153, 0.5); }
+.dk-toast--error { border-color: rgba(248, 113, 113, 0.5); }
+
+/* ── 弹窗 ─────────────────────────────────────────────────────── */
+.dk-dialog-overlay { position: fixed; inset: 0; background: var(--dk-overlay); display: grid; place-items: center; z-index: var(--dk-z-overlay); }
+.dk-dialog {
+  width: min(92vw, 440px); background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-lg);
+  padding: var(--dk-space-6); box-shadow: var(--dk-shadow-overlay);
+}
+.dk-dialog__title { font-size: var(--dk-text-lg); font-weight: 700; margin: 0 0 10px; }
+.dk-dialog__body { color: var(--dk-text-secondary); font-size: var(--dk-text-md); }
+.dk-dialog--danger .dk-dialog__title { color: var(--dk-danger); }
+.dk-dialog-actions { display: flex; justify-content: flex-end; gap: var(--dk-space-3); margin-top: var(--dk-space-6); }
+
+/* ── 数据卡（本月出图 / 花费 / 余额） ─────────────────────────── */
+.dk-usage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--dk-space-3); }
+.dk-usage-cell { background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); padding: 14px 18px; }
+.dk-usage-cell__label { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-usage-cell__value { font-size: var(--dk-text-xl); margin-top: 2px; }
+
+/* ── 空状态 ───────────────────────────────────────────────────── */
+.dk-empty { display: grid; justify-items: center; gap: 8px; text-align: center; padding: var(--dk-space-10) var(--dk-space-5); color: var(--dk-text-secondary); }
+.dk-empty__icon { opacity: 0.9; }
+.dk-empty__title { font-size: var(--dk-text-lg); font-weight: 600; color: var(--dk-text); }
+.dk-empty__description { max-width: 44ch; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+
+/* ── 骨架屏（微光 2s；减少动态效果时静态） ────────────────────── */
+.dk-skeleton { position: relative; overflow: hidden; background: var(--dk-surface-raised); border-radius: var(--dk-radius-md); }
+.dk-skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%);
+  animation: dk-shimmer 2s linear infinite;
+}
+@keyframes dk-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* ── 后台表单场景（S-UP 样板的规矩） ──────────────────────────── */
+/* 信息密度高一档：13px 主档、行高收紧 */
+.dk-admin { font-size: var(--dk-text-sm); }
+.dk-table { width: 100%; border-collapse: collapse; background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; }
+.dk-table th {
+  position: sticky; top: 0; z-index: 1; text-align: left;
+  background: var(--dk-surface-raised); color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs); font-weight: 600; padding: 10px 14px;
+  border-bottom: 1px solid var(--dk-border-strong);
+}
+.dk-table td { padding: 10px 14px; border-bottom: 1px solid var(--dk-border); font-size: var(--dk-text-sm); }
+.dk-table tbody tr:nth-child(even) { background: var(--dk-surface-subtle); } /* 斑马纹 = 次级底 */
+.dk-table tbody tr:hover { background: var(--dk-surface-hover); }
+.dk-pager { display: flex; align-items: center; gap: 6px; }
+.dk-pager__btn { min-width: 30px; height: 30px; border-radius: var(--dk-radius-sm); border: 1px solid var(--dk-border); background: transparent; color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-pager__btn.is-current { background: var(--dk-accent-soft); border-color: var(--dk-accent); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--dk-border); }
+.dk-tab { padding: 10px 16px; border: none; background: none; color: var(--dk-text-secondary); font: 600 var(--dk-text-md) var(--dk-font-sans); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dk-tab.is-active { color: var(--dk-text); border-bottom-color: var(--dk-action); }
+.dk-crumbs { display: flex; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-tertiary); }
+.dk-crumbs a { color: var(--dk-text-tertiary); }
+.dk-crumbs .is-current { color: var(--dk-text-secondary); }
+.dk-sidenav { width: 220px; padding: var(--dk-space-3); display: grid; gap: 2px; align-content: start; }
+.dk-sidenav__group { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-weight: 600; padding: 12px 10px 4px; letter-spacing: 0.04em; }
+.dk-sidenav__item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--dk-radius-md); color: var(--dk-text-secondary); font-size: var(--dk-text-sm); cursor: pointer; }
+.dk-sidenav__item:hover { background: var(--dk-surface-hover); color: var(--dk-text); }
+.dk-sidenav__item.is-active { background: var(--dk-accent-soft); color: var(--dk-accent-strong); font-weight: 600; }
+.dk-savebar {
+  position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--dk-space-4);
+  padding: 14px var(--dk-space-5); background: rgba(19, 26, 43, 0.92); backdrop-filter: blur(8px);
+  border-top: 1px solid var(--dk-border-strong); z-index: var(--dk-z-sticky);
+}
+.dk-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-sm); font-size: 11px; font-weight: 600; background: var(--dk-surface-raised); color: var(--dk-text-secondary); }
+
+/* 四级配置标记徽章（帮助中心/配置手册用）*/
+.dk-mark { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); font-size: 11px; font-weight: 700; }
+.dk-mark--must { background: var(--dk-danger-soft); color: var(--dk-danger); }
+.dk-mark--suggest { background: var(--dk-warning-soft); color: var(--dk-warning); }
+.dk-mark--skip { background: var(--dk-surface-raised); color: var(--dk-text-tertiary); }
+.dk-mark--forbid { background: rgba(248, 113, 113, 0.24); color: #ffb4b4; }
+
+/* 报错块（运营看得懂的报错） */
+.dk-errorblock { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--dk-radius-md); border: 1px solid rgba(248, 113, 113, 0.4); background: var(--dk-danger-soft); }
+.dk-errorblock__msg { color: var(--dk-danger); font-weight: 600; }
+.dk-errorblock__meta { font-family: var(--dk-font-mono); font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); }
+.dk-errorblock__how { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+
+/* 氛围光（登录页/官网限定；正文区禁用） */
+.dk-glow-spot { position: absolute; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, var(--dk-glow), transparent 70%); pointer-events: none; }
+
+/* ── 减少动态效果 ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   页面自有样式（dk-x- 前缀）—— AI 对话
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 画稿骨架：1440 定宽，一列多个演示区 */
+.dk-x-stage { width: 1440px; margin: 0 auto; padding: 28px 0 72px; display: grid; gap: 16px; }
+
+/* 设计稿标注（给评审看的说明，不是产品文案） */
+.dk-x-annot { display: flex; align-items: center; gap: 10px; margin-top: 20px; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); letter-spacing: 0.02em; }
+.dk-x-annot::after { content: ""; flex: 1; height: 1px; background: var(--dk-border); }
+.dk-x-annot__tag { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border-strong); background: var(--dk-surface-raised); color: var(--dk-accent-strong); font-weight: 700; }
+
+/* 应用外壳：上游同款文字侧栏（拍板增补 #1），深色皮 */
+.dk-x-frame { display: flex; align-items: stretch; background: var(--dk-canvas); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; box-shadow: var(--dk-shadow-1); }
+.dk-x-sidebar { width: 256px; flex: none; display: flex; flex-direction: column; background: var(--dk-surface-subtle); border-right: 1px solid var(--dk-border); }
+.dk-x-sidebar-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; }
+.dk-x-logo { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--dk-surface-raised); border: 1px solid var(--dk-border); }
+.dk-x-logo svg { width: 22px; height: 22px; display: block; }
+.dk-x-wordmark { font-size: 17px; font-weight: 400; color: var(--dk-text); letter-spacing: 0.01em; }
+.dk-x-wordmark b { font-weight: 800; color: var(--dk-action); }
+.dk-x-sidebar .dk-sidenav { width: auto; padding: 6px 12px; }
+.dk-x-sidebar .dk-sidenav__item { height: 40px; font-size: var(--dk-text-md); }
+.dk-x-navicon { width: 20px; height: 20px; flex: none; }
+.dk-x-sidebar-foot { margin-top: auto; border-top: 1px solid var(--dk-border); padding: 12px; }
+.dk-x-sidebar-foot .dk-sidenav__item { width: 100%; background: none; border: none; text-align: left; font-family: var(--dk-font-sans); }
+.dk-x-main { flex: 1; min-width: 0; padding: 32px 40px 40px; }
+.dk-x-ticon { width: 16px; height: 16px; flex: none; }
+
+/* ── 对话主体：左 260px 会话列表 + 右消息流 ───────────────────── */
+.dk-x-chat { display: flex; height: 820px; margin-top: 16px; border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); background: var(--dk-surface); overflow: hidden; box-shadow: var(--dk-shadow-1); }
+
+/* 会话列表 */
+.dk-x-sessions { width: 260px; flex: none; display: flex; flex-direction: column; background: var(--dk-surface-subtle); border-right: 1px solid var(--dk-border); }
+.dk-x-sessions-head { padding: 14px 14px 8px; display: grid; gap: 12px; }
+.dk-x-sessions-head .dk-label { margin-bottom: 0; }
+.dk-x-session-list { flex: 1; overflow-y: auto; padding: 2px 8px 12px; display: grid; gap: 2px; align-content: start; }
+.dk-x-session { position: relative; display: grid; gap: 1px; padding: 8px 32px 8px 12px; border-radius: var(--dk-radius-md); cursor: pointer; }
+.dk-x-session:hover, .dk-x-session.is-hover { background: var(--dk-surface-hover); }
+.dk-x-session.is-active { background: var(--dk-accent-soft); }
+.dk-x-session__title { font-size: var(--dk-text-sm); font-weight: 500; color: var(--dk-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-x-session.is-active .dk-x-session__title { color: var(--dk-accent-strong); font-weight: 600; }
+.dk-x-session__title.is-untitled { color: var(--dk-text-tertiary); font-weight: 400; }
+.dk-x-session__time { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+.dk-x-session__del { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: 24px; height: 24px; display: none; place-items: center; border: none; border-radius: var(--dk-radius-sm); background: transparent; color: var(--dk-text-tertiary); cursor: pointer; }
+.dk-x-session:hover .dk-x-session__del, .dk-x-session.is-hover .dk-x-session__del { display: grid; }
+.dk-x-session__del:hover { color: var(--dk-danger); background: var(--dk-danger-soft); }
+
+/* 对话区 */
+.dk-x-chatpane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--dk-canvas); }
+.dk-x-chathead { display: flex; align-items: center; gap: 10px; padding: 13px 20px; border-bottom: 1px solid var(--dk-border); background: var(--dk-surface); }
+.dk-x-chathead__title { margin: 0; font-size: var(--dk-text-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dk-x-msgs { flex: 1; overflow-y: auto; padding: 20px 24px 16px; display: grid; gap: 14px; align-content: start; }
+.dk-x-daysep { justify-self: center; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); padding: 2px 10px; border-radius: var(--dk-radius-pill); background: var(--dk-surface-subtle); border: 1px solid var(--dk-border); }
+.dk-x-msg { display: grid; gap: 6px; max-width: 72%; }
+.dk-x-msg--user { justify-self: end; justify-items: end; }
+.dk-x-msg--ai { justify-self: start; justify-items: start; }
+.dk-x-bubble { padding: 10px 14px; border-radius: var(--dk-radius-lg); font-size: var(--dk-text-md); line-height: var(--dk-leading); }
+.dk-x-msg--user .dk-x-bubble { background: var(--dk-action); color: #fff; border-bottom-right-radius: var(--dk-radius-sm); }
+.dk-x-msg--ai .dk-x-bubble { background: var(--dk-surface-raised); border: 1px solid var(--dk-border); color: var(--dk-text); border-bottom-left-radius: var(--dk-radius-sm); }
+.dk-x-bubble p { margin: 0; }
+.dk-x-bubble p + p { margin-top: 8px; }
+.dk-x-bubble ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px; }
+.dk-x-bubble li { margin: 0; }
+.dk-x-titleline { font-weight: 600; }
+.dk-x-msg__time { font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* 图片消息（占位：CSS 渐变色块 + 文字，不放真图） */
+.dk-x-msgimg { width: 220px; aspect-ratio: 1; border-radius: var(--dk-radius-md); border: 1px solid rgba(255, 255, 255, 0.18); overflow: hidden; display: grid; place-items: center; align-content: center; gap: 6px; background: linear-gradient(150deg, #3a2f1d 0%, #8a6a33 48%, #d9b25c 100%); }
+.dk-x-msgimg__art { width: 96px; height: 96px; color: rgba(255, 255, 255, 0.88); }
+.dk-x-msgimg__label { font-size: var(--dk-text-xs); color: rgba(255, 255, 255, 0.92); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45); }
+
+/* AI 回复中：三点脉冲（复用 dk-pulse） */
+.dk-x-typing { display: inline-flex; align-items: center; gap: 10px; color: var(--dk-text-secondary); font-size: var(--dk-text-sm); }
+.dk-x-typing__dots { display: inline-flex; gap: 4px; }
+.dk-x-typing__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dk-action); animation: dk-pulse 1.2s ease-in-out infinite; }
+.dk-x-typing__dot:nth-child(2) { animation-delay: 0.2s; }
+.dk-x-typing__dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* 输入条 + 附件 chip */
+.dk-x-inputbar { border-top: 1px solid var(--dk-border); background: var(--dk-surface); padding: 10px 16px 14px; display: grid; gap: 8px; }
+.dk-x-attachrow { display: flex; align-items: center; gap: 10px; }
+.dk-x-attachchip { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 4px 6px 4px 4px; border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-md); background: var(--dk-surface-raised); font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+.dk-x-attachchip__thumb { width: 28px; height: 28px; flex: none; border-radius: var(--dk-radius-sm); background: linear-gradient(150deg, #3a2f1d 0%, #8a6a33 48%, #d9b25c 100%); }
+.dk-x-attachchip__remove { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border: none; border-radius: var(--dk-radius-sm); background: transparent; color: var(--dk-text-tertiary); cursor: pointer; }
+.dk-x-attachchip__remove:hover { color: var(--dk-danger); background: var(--dk-danger-soft); }
+.dk-x-inputrow { display: flex; align-items: flex-end; gap: 10px; }
+.dk-x-attachbtn { width: var(--dk-primary-h); height: var(--dk-primary-h); flex: none; display: grid; place-items: center; border: 1px solid var(--dk-border-strong); border-radius: var(--dk-radius-md); background: transparent; color: var(--dk-text-secondary); cursor: pointer; transition: border-color var(--dk-motion-fast) var(--dk-ease-out), color var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-x-attachbtn:hover { border-color: var(--dk-action); color: var(--dk-text); }
+.dk-x-attachbtn svg { width: 20px; height: 20px; }
+.dk-x-inputrow .dk-textarea { flex: 1; min-width: 0; min-height: var(--dk-primary-h); max-height: 160px; resize: none; }
+
+/* 状态小样 */
+.dk-x-states { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.dk-x-states .dk-panel { display: grid; gap: 12px; align-content: start; }
+.dk-x-state-demo { display: grid; gap: 8px; justify-items: start; }
+.dk-x-empty-art { width: 180px; height: 144px; color: var(--dk-text-tertiary); }
+.dk-x-dialogstage { display: grid; place-items: center; padding: 48px 40px; background: var(--dk-canvas); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); }
+</style>
+</head>
+<body>
+
+<!-- 线条插画（inline symbol，全稿复用；细线 1.75px，白灰 + 少量紫） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- 香水瓶（图片消息占位里的商品剪影） -->
+    <symbol id="px-perfume" viewBox="0 0 120 120">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M46 56a14 14 0 0 1 8-6h12a14 14 0 0 1 8 6v28a8 8 0 0 1-8 8H54a8 8 0 0 1-8-8z"/>
+        <path d="M55 50v-8h10v8"/>
+        <rect x="52" y="28" width="16" height="12" rx="3"/>
+        <path d="M50 84h20" opacity="0.55"/>
+        <path d="M50 70h20" opacity="0.7"/>
+      </g>
+    </symbol>
+    <!-- 空态插画：空对话——一只气泡里一颗四角星 -->
+    <symbol id="px-empty-chat" viewBox="0 0 200 160">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M56 38h88a12 12 0 0 1 12 12v42a12 12 0 0 1-12 12H98l-22 20v-20H56a12 12 0 0 1-12-12V50a12 12 0 0 1 12-12z"/>
+        <path d="M64 62h56M64 78h38" opacity="0.5"/>
+        <path d="M26 134h148" opacity="0.4"/>
+      </g>
+      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M138 62l2.6 6.4 6.4 2.6-6.4 2.6-2.6 6.4-2.6-6.4-6.4-2.6 6.4-2.6z"/>
+      </g>
+    </symbol>
+    <!-- 空态插画：没有对话记录——空的列表卡片 -->
+    <symbol id="px-empty-sessions" viewBox="0 0 200 160">
+      <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="52" y="34" width="96" height="26" rx="6"/>
+        <rect x="52" y="68" width="96" height="26" rx="6" opacity="0.65"/>
+        <rect x="52" y="102" width="96" height="26" rx="6" opacity="0.35"/>
+        <path d="M62 47h44M62 81h32" opacity="0.5"/>
+        <path d="M28 140h144" opacity="0.4"/>
+      </g>
+      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M136 43h4M136 51h4" transform="translate(-6 0)"/>
+        <circle cx="134" cy="47" r="4.5"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="dk-x-stage">
+
+  <!-- ═══ 应用外壳：侧栏 + AI 对话主内容 ═══ -->
+  <div class="dk-x-frame">
+
+    <!-- 侧栏：上游 AppSidebar 同款结构，深色化；「AI 对话」高亮 -->
+    <aside class="dk-x-sidebar">
+      <div class="dk-x-sidebar-head">
+        <span class="dk-x-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+            <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+            <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+            <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/>
+            <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+            <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+          </svg>
+        </span>
+        <span class="dk-x-wordmark">Design<b>Kit</b></span>
+      </div>
+      <nav class="dk-sidenav">
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M10.8 6.5 8.6 10h2.8l-2.2 3.5"/></svg>
+          生成工作台
+        </a>
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 8.2a3.5 3.5 0 1 1 7 0c0 1.6-1 2.4-1.6 3.4-.3.5-.4 1-.4 1.6H8.5c0-.6-.1-1.1-.4-1.6C7.5 10.6 6.5 9.8 6.5 8.2z"/><path d="M8.5 15.7h3M9.2 17.7h1.6"/></svg>
+          灵感库
+        </a>
+        <a class="dk-sidenav__item is-active" aria-current="page">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h10A2.5 2.5 0 0 1 17.5 7v5a2.5 2.5 0 0 1-2.5 2.5h-4.6L7 17.2v-2.7H5A2.5 2.5 0 0 1 2.5 12V7A2.5 2.5 0 0 1 5 4.5z"/><path d="M6.5 8.4h7M6.5 11h4.6"/></svg>
+          AI 对话
+        </a>
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="11" rx="2"/><circle cx="7.1" cy="8.1" r="1.1"/><path d="M3.6 13.4 7.8 9.8l3 2.6 2.3-1.9 3.2 2.7"/></svg>
+          我的图片
+        </a>
+      </nav>
+      <div class="dk-x-sidebar-foot">
+        <button type="button" class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 5-4.5 5 4.5 5M15.5 5 11 10l4.5 5"/></svg>
+          收起
+        </button>
+      </div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="dk-x-main">
+      <header>
+        <p class="dk-eyebrow">商品图</p>
+        <h1 class="dk-page-title">AI 对话</h1>
+      </header>
+
+      <div class="dk-x-annot"><span class="dk-x-annot__tag">第一屏</span>左 260px 对话记录（顶部「新对话」，第 3 条 hover 态常显——悬停出删除钮，点删除弹二次确认，见后）+ 右消息流与输入条；对话走 gpt-5.6-sol，计费编号前缀 dks:（决策 27）</div>
+
+      <!-- ═══ 对话主体 ═══ -->
+      <div class="dk-x-chat">
+
+        <!-- 会话列表 -->
+        <aside class="dk-x-sessions">
+          <div class="dk-x-sessions-head">
+            <button type="button" class="dk-button dk-button--secondary dk-button--block">
+              <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M10 4.5v11M4.5 10h11"/></svg>
+              新对话
+            </button>
+            <span class="dk-label">对话记录</span>
+          </div>
+          <nav class="dk-x-session-list">
+
+            <!-- 当前会话 -->
+            <a class="dk-x-session is-active" aria-current="true">
+              <span class="dk-x-session__title">主图诊断 · 香水</span>
+              <span class="dk-x-session__time">10:26</span>
+              <button type="button" class="dk-x-session__del" aria-label="删除这组对话" title="删除这组对话">
+                <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.8 9.5h6.4L14 6"/></svg>
+              </button>
+            </a>
+
+            <a class="dk-x-session">
+              <span class="dk-x-session__title">连衣裙详情页标题</span>
+              <span class="dk-x-session__time">昨天</span>
+              <button type="button" class="dk-x-session__del" aria-label="删除这组对话" title="删除这组对话">
+                <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.8 9.5h6.4L14 6"/></svg>
+              </button>
+            </a>
+
+            <!-- hover 态常显：出删除钮 -->
+            <a class="dk-x-session is-hover">
+              <span class="dk-x-session__title">保温杯卖点提炼</span>
+              <span class="dk-x-session__time">8月12日</span>
+              <button type="button" class="dk-x-session__del" aria-label="删除这组对话" title="删除这组对话">
+                <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.8 9.5h6.4L14 6"/></svg>
+              </button>
+            </a>
+
+            <!-- 没起过标题的会话：用兜底名，弱一档 -->
+            <a class="dk-x-session">
+              <span class="dk-x-session__title is-untitled">新对话</span>
+              <span class="dk-x-session__time">8月10日</span>
+              <button type="button" class="dk-x-session__del" aria-label="删除这组对话" title="删除这组对话">
+                <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6h11M8 6V4.5h4V6M6 6l.8 9.5h6.4L14 6"/></svg>
+              </button>
+            </a>
+
+          </nav>
+        </aside>
+
+        <!-- 对话区 -->
+        <section class="dk-x-chatpane">
+          <header class="dk-x-chathead">
+            <h2 class="dk-x-chathead__title">主图诊断 · 香水</h2>
+          </header>
+
+          <div class="dk-x-msgs">
+            <span class="dk-x-daysep">今天</span>
+
+            <!-- 轮 1：运营发商品图 + 提问 -->
+            <div class="dk-x-msg dk-x-msg--user">
+              <div class="dk-x-msgimg" role="img" aria-label="商品图占位：香水主图.jpg">
+                <svg class="dk-x-msgimg__art" aria-hidden="true"><use href="#px-perfume"/></svg>
+                <span class="dk-x-msgimg__label">香水主图.jpg · 800×800</span>
+              </div>
+              <div class="dk-x-bubble"><p>这张主图有什么问题</p></div>
+              <span class="dk-x-msg__time">10:24</span>
+            </div>
+
+            <!-- 轮 1：AI 回复（3 条要点） -->
+            <div class="dk-x-msg dk-x-msg--ai">
+              <div class="dk-x-bubble">
+                <p>当电商主图看，这张有三个问题：</p>
+                <ol>
+                  <li><strong>背景杂物多。</strong>右上角的绿植和桌布纹理抢视觉，主图建议换成纯白或浅灰背景。</li>
+                  <li><strong>商品占比小。</strong>瓶身只占画面约一半，平台主图一般让商品占到 70% 以上。</li>
+                  <li><strong>光线偏暗、色温偏黄。</strong>瓶身反光发闷，补一档曝光，把白平衡拉回中性。</li>
+                </ol>
+                <p>可以在生成工作台用「电商主图」分类的提示词重出一张，对比看效果。</p>
+              </div>
+              <span class="dk-x-msg__time">10:24</span>
+            </div>
+
+            <!-- 轮 2：追问标题 -->
+            <div class="dk-x-msg dk-x-msg--user">
+              <div class="dk-x-bubble"><p>帮我写一个 30 字以内的商品标题</p></div>
+              <span class="dk-x-msg__time">10:26</span>
+            </div>
+
+            <!-- 轮 2：AI 回复 -->
+            <div class="dk-x-msg dk-x-msg--ai">
+              <div class="dk-x-bubble">
+                <p>按 30 字以内给一版：</p>
+                <p class="dk-x-titleline">琥珀木质调香水 30ml 法式淡香持久留香 送礼礼盒装</p>
+                <p>共 26 字。要突出别的卖点（价格、人群、场景），说明方向再出一版。</p>
+              </div>
+              <span class="dk-x-msg__time">10:26</span>
+            </div>
+
+          </div>
+
+          <!-- 输入条：附件 chip 行 + 输入行 -->
+          <div class="dk-x-inputbar">
+            <div class="dk-x-attachrow">
+              <span class="dk-x-attachchip">
+                <span class="dk-x-attachchip__thumb" aria-hidden="true"></span>
+                香水主图.jpg
+                <button type="button" class="dk-x-attachchip__remove" aria-label="移除">
+                  <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="m5.5 5.5 9 9M14.5 5.5l-9 9"/></svg>
+                </button>
+              </span>
+              <span class="dk-note dk-note--quiet">已附 1 张图</span>
+            </div>
+            <div class="dk-x-inputrow">
+              <button type="button" class="dk-x-attachbtn" aria-label="发图片" title="发图片">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 11.3l-8.9 8.9a5.6 5.6 0 0 1-7.9-7.9l8.9-8.9a3.7 3.7 0 0 1 5.3 5.3l-8.9 8.9a1.9 1.9 0 0 1-2.6-2.6l8.2-8.2"/></svg>
+              </button>
+              <textarea class="dk-textarea" rows="1" placeholder="输入问题，回车发送，Shift+回车换行"></textarea>
+              <button type="button" class="dk-button dk-button--primary-action">发送</button>
+            </div>
+          </div>
+
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══ 删除二次确认 ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">弹窗</span>点会话上的删除钮弹出；「取消」/「删除」用通用键（common.cancel / common.delete），正文一句话</div>
+  <div class="dk-x-dialogstage">
+    <div class="dk-dialog dk-dialog--danger" role="alertdialog">
+      <h3 class="dk-dialog__title">删除这组对话</h3>
+      <p class="dk-dialog__body">删除后找不回来。</p>
+      <div class="dk-dialog-actions">
+        <button type="button" class="dk-button dk-button--secondary">取消</button>
+        <button type="button" class="dk-button dk-button--danger is-solid">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 状态小样 ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">状态小样</span>六种状态各一小样：空对话 / 没有记录 / AI 回复中 / 发送失败（重发） / 附件拦截（超限、超大，toast 呈现） / 记录加载失败</div>
+  <div class="dk-x-states">
+
+    <!-- 空对话（右侧消息区，刚点开新对话时） -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">空对话</p>
+      <div class="dk-empty" style="padding: 20px 8px">
+        <svg class="dk-x-empty-art dk-empty__icon" aria-hidden="true"><use href="#px-empty-chat"/></svg>
+        <p class="dk-empty__description">问点什么，或发一张商品图。</p>
+      </div>
+    </section>
+
+    <!-- 会话列表空态 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">没有记录</p>
+      <div class="dk-empty" style="padding: 20px 8px">
+        <svg class="dk-x-empty-art dk-empty__icon" aria-hidden="true"><use href="#px-empty-sessions"/></svg>
+        <p class="dk-empty__description">还没有对话记录。</p>
+        <button type="button" class="dk-button dk-button--secondary dk-button--sm">新对话</button>
+      </div>
+    </section>
+
+    <!-- AI 回复中 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">AI 回复中</p>
+      <div class="dk-x-state-demo">
+        <div class="dk-x-msg dk-x-msg--ai" style="max-width: 100%">
+          <div class="dk-x-bubble">
+            <span class="dk-x-typing">
+              <span class="dk-x-typing__dots" aria-hidden="true"><span class="dk-x-typing__dot"></span><span class="dk-x-typing__dot"></span><span class="dk-x-typing__dot"></span></span>
+              AI 回复中…
+            </span>
+          </div>
+        </div>
+        <p class="dk-note dk-note--quiet">回复中「发送」置灰；流式逐字上屏，不是等完整段。</p>
+      </div>
+    </section>
+
+    <!-- 发送失败 + 重发 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">发送失败</p>
+      <div class="dk-x-state-demo" style="justify-items: end">
+        <div class="dk-x-msg dk-x-msg--user" style="max-width: 100%">
+          <div class="dk-x-bubble"><p>再帮我配一段详情页开头</p></div>
+        </div>
+        <p class="dk-note dk-note--danger">这条没发出去，点「重发」。</p>
+        <button type="button" class="dk-button dk-button--quiet dk-button--sm">重发</button>
+      </div>
+    </section>
+
+    <!-- 附件拦截（toast） -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">附件拦截</p>
+      <div class="dk-x-state-demo">
+        <div class="dk-toast dk-toast--error">一次最多 3 张图。</div>
+        <div class="dk-toast dk-toast--error">图片超过 2MB，压缩后再发。</div>
+        <p class="dk-note dk-note--quiet">选图那一刻就拦，不占附件位、不发请求。</p>
+      </div>
+    </section>
+
+    <!-- 记录加载失败 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">加载失败</p>
+      <div class="dk-x-state-demo">
+        <div class="dk-alert dk-alert--danger" style="justify-self: stretch">记录加载失败，刷新页面重试。</div>
+        <button type="button" class="dk-button dk-button--secondary dk-button--sm">刷新</button>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ═══ 移动端说明 ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">移动端</span>窄屏时会话列表收进抽屉：左上角按钮呼出，消息流和输入条占满整宽；输入条吸底，附件 chip 行样式不变</div>
+
+</div>
+
+<!--
+  界面文案键值对照（实施用；zh 为准，en 直译，键一个不能少）
+
+  designkit.nav.chat            zh: 'AI 对话'                                  en: 'AI Chat'
+
+  designkit.chat.title          zh: 'AI 对话'                                  en: 'AI Chat'
+  designkit.chat.empty          zh: '问点什么，或发一张商品图。'                 en: 'Ask something, or send a product photo.'
+  designkit.chat.newSession     zh: '新对话'                                   en: 'New chat'
+  designkit.chat.sessions       zh: '对话记录'                                 en: 'Chat history'
+  designkit.chat.deleteSession  zh: '删除这组对话'                             en: 'Delete this chat'
+  designkit.chat.deleteConfirm  zh: '删除后找不回来。'                          en: 'Deleted chats cannot be recovered.'
+  designkit.chat.inputPlaceholder zh: '输入问题，回车发送，Shift+回车换行'       en: 'Type a question. Enter to send, Shift+Enter for a new line'
+  designkit.chat.send           zh: '发送'                                     en: 'Send'
+  designkit.chat.replying       zh: 'AI 回复中…'                               en: 'AI is replying…'
+  designkit.chat.attach         zh: '发图片'                                   en: 'Send image'
+  designkit.chat.attachLimit    zh: '一次最多 {max} 张图。'                     en: 'Up to {max} images at a time.'
+  designkit.chat.attachTooLarge zh: '图片超过 2MB，压缩后再发。'                en: 'Image exceeds 2MB. Compress it and send again.'
+  designkit.chat.failed         zh: '这条没发出去，点「重发」。'                 en: 'This message was not sent. Click "Resend".'
+  designkit.chat.resend         zh: '重发'                                     en: 'Resend'
+  designkit.chat.untitled       zh: '新对话'                                   en: 'New chat'
+  designkit.chat.loadFailed     zh: '记录加载失败，刷新页面重试。'               en: 'Failed to load history. Refresh the page and try again.'
+  designkit.chat.emptySessions  zh: '还没有对话记录。'                          en: 'No chats yet.'
+-->
+
+</body>
+</html>

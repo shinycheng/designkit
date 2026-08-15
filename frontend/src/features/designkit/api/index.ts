@@ -35,6 +35,12 @@ import {
   suggestPrompt,
   updatePromptSyncSettings,
 } from './inspiration'
+import {
+  deleteChatSession,
+  getChatSession,
+  listChatSessions,
+  sendChatMessage,
+} from './chat'
 import type {
   CreateJobInput,
   DesignkitApiError,
@@ -566,6 +572,8 @@ export * from './types'
 export * from './money'
 export * from './errors'
 export * from './inspiration'
+// AI 对话。
+export * from './chat'
 // 「商品图设置」（仅管理员）。放在这里一起导出，页面只 import 一处。
 export * from './settings'
 
@@ -595,6 +603,12 @@ export const designkitAPI = {
   getPromptSyncStatus,
   getPromptSyncSettings,
   updatePromptSyncSettings,
+  // AI 对话。**发消息会等几十秒**（后端要问一趟对话模型），
+  // 调用方要给「AI 回复中…」的状态并禁掉输入。
+  sendChatMessage,
+  listChatSessions,
+  getChatSession,
+  deleteChatSession,
 }
 
 export default designkitAPI

@@ -100,6 +100,14 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 			"和「申请额度」按钮不可用，出图和查询照常")
 	}
 
+	// 「AI 对话」同样可缺席：只关它自己那四个端点（决策 38）。
+	var chat *ChatHandler
+	if opts.Services.Chat != nil {
+		chat = NewChatHandler(opts.Services.Chat)
+	} else {
+		slog.Warn("designkit 对话服务未就绪：「AI 对话」页不可用，出图和灵感库照常")
+	}
+
 	// ---- 浏览器（运营）----
 	//
 	// 面板限流**不会**自动继承（上游的 /api/v1 组是裸的，各模块自己 Use 才生效），
@@ -115,6 +123,10 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 		mountCommonRoutes(web, assets, catalog, jobs, images, prompts)
 		mountMeRoutes(web, me)
 		mountBillableRoutes(web, jobs)
+		// 对话：读写都挂浏览器组。发送那条也花钱，但浏览器侧的余额判定
+		// 在上游计费链里做，这里不再单独分组。
+		mountChatReadRoutes(web, chat)
+		mountChatSendRoute(web, chat)
 		// 灵感库同步**只挂浏览器组**，见 mountPromptAdminRoutes 的注释。
 		mountPromptAdminRoutes(web, prompts, opts.Services.PromptSync)
 		// designkit 设置同理：只挂浏览器组、只放管理员。
@@ -132,6 +144,7 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 		erpRead.Use(RequireAuthenticated())
 		mountCommonRoutes(erpRead, assets, catalog, jobs, images, prompts)
 		mountMeRoutes(erpRead, me)
+		mountChatReadRoutes(erpRead, chat)
 
 		// 真正花钱的那两个：走上游 apiKeyAuth，该拦的额度就得拦。
 		//
@@ -144,7 +157,28 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 		}
 		erpWrite.Use(RequireAuthenticated())
 		mountBillableRoutes(erpWrite, jobs)
+		// 对话发送对 ERP 也开放（决策 4：界面上每一步都有接口）。
+		// 跟提交批次同组：走上游 apiKeyAuth，该拦的额度就得拦。
+		mountChatSendRoute(erpWrite, chat)
 	}
+}
+
+// mountChatReadRoutes 对话的三个只读端点。
+func mountChatReadRoutes(g *gin.RouterGroup, chat *ChatHandler) {
+	if g == nil || chat == nil {
+		return
+	}
+	g.GET("/chat/sessions", chat.ListSessions)
+	g.GET("/chat/sessions/:uid", chat.GetSession)
+	g.DELETE("/chat/sessions/:uid", chat.DeleteSession)
+}
+
+// mountChatSendRoute 对话的发送端点（花钱的那一个）。
+func mountChatSendRoute(g *gin.RouterGroup, chat *ChatHandler) {
+	if g == nil || chat == nil {
+		return
+	}
+	g.POST("/chat/messages", chat.Send)
 }
 
 // mountCommonRoutes 挂**不花钱**的那些端点（见 mountBillableRoutes 是哪两个花钱）。

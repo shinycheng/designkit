@@ -75,13 +75,19 @@ const (
 	// 域名部分随便写，反正这个请求永远不会真的出网——它直接进 ChatCompletions()。
 	chatCompletionsURL = "http://designkit.internal/v1/chat/completions"
 
-	// chatBillingRequestIDPrefix 对话的计费 id 前缀。
+	// chatBillingRequestIDPrefix 「AI 挑提示词」的计费 id 前缀。
 	//
 	// 跟出图的 dki: 分开，是为了「我的消费」那几个统计能把两者拆开看：
 	// 出图按 client:dki:% 筛，对话按 client:dks:% 筛。
 	// 混在一起的话，运营看到的「本月花费」里会掺进推荐的零头，
 	// 而「本月出图 N 张」又不含它们，两个数对不上还查不出原因。
 	chatBillingRequestIDPrefix = "dks:"
+
+	// conversationBillingRequestIDPrefix 「AI 对话」页的计费 id 前缀。
+	//
+	// 跟推荐的 dks: 再分开一层：对话是运营主动聊、按 token 计费的持续消费，
+	// 推荐是出图流程里的固定三趟。以后统计要拆「对话花了多少」，按 client:dkc:% 筛。
+	conversationBillingRequestIDPrefix = "dkc:"
 
 	// chatDefaultTimeout 单趟对话的超时。
 	//
@@ -110,6 +116,15 @@ type ChatImage struct {
 	ContentType string
 }
 
+// ChatTurn 历史对话里的一轮（只有文字——历史里的图**不重发**，
+// 一张图每轮都重发的话，一场 20 轮的对话要把同一张图付 20 次 token 钱）。
+type ChatTurn struct {
+	// Role 只认 "user" / "assistant"，其余值按 "user" 处理。
+	Role string
+	// Text 该轮的文字。空串的轮次会被跳过。
+	Text string
+}
+
 // ChatRequest 一趟对话。
 type ChatRequest struct {
 	// UserID 归属人。用来校验 APIKey 是不是他的——不校验就是把钱记到别人头上。
@@ -121,6 +136,8 @@ type ChatRequest struct {
 	Model string
 	// System 系统提示词，可空。
 	System string
+	// History 之前的轮次（按时间先后），不含本轮 UserText。可空。
+	History []ChatTurn
 	// UserText 用户消息正文。
 	UserText string
 	// Images 要让模型看的图，可空。
@@ -165,6 +182,20 @@ func BuildChatBillingRequestID(scope string, step int) string {
 		step = 99
 	}
 	return fmt.Sprintf("%s%s:%02d", chatBillingRequestIDPrefix, scope, step)
+}
+
+// BuildConversationBillingRequestID 拼「AI 对话」页一次发送的计费 id。
+//
+// 格式 `dkc:<scope>`。scope **每次发送都必须现生成一个 ULID**——
+// 复用任何稳定值（会话 uid、消息内容摘要…）都会踩上游幂等表：
+// 第二次起静默不计费，功能看着完全正常，只有账目对不上（CLAUDE.md 决策 27）。
+// 长度 4+26=30，加 "client:"（7）= 37，安全落在 64 以内。
+func BuildConversationBillingRequestID(scope string) string {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		scope = newAssetULID()
+	}
+	return conversationBillingRequestIDPrefix + scope
 }
 
 // GatewayChatInvoker 是 ChatInvoker 的真实实现：进程内重入上游 ChatCompletions()。
@@ -337,11 +368,29 @@ func buildChatCompletionsBody(req ChatRequest) ([]byte, error) {
 		model = DefaultChatModel
 	}
 
-	messages := make([]chatMessage, 0, 2)
+	messages := make([]chatMessage, 0, len(req.History)+2)
 	if system := strings.TrimSpace(req.System); system != "" {
 		messages = append(messages, chatMessage{
 			Role:    "system",
 			Content: []chatContentPart{{Type: "text", Text: system}},
+		})
+	}
+
+	// 历史轮次：只有文字（理由见 ChatTurn 的注释）。
+	// role 白名单收口——历史来自数据库，理论上只有 user/assistant，
+	// 但万一混进别的值，发给上游会被整单拒掉，不如这里就地归位。
+	for _, turn := range req.History {
+		text := strings.TrimSpace(turn.Text)
+		if text == "" {
+			continue
+		}
+		role := turn.Role
+		if role != "assistant" {
+			role = "user"
+		}
+		messages = append(messages, chatMessage{
+			Role:    role,
+			Content: []chatContentPart{{Type: "text", Text: text}},
 		})
 	}
 

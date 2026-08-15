@@ -192,10 +192,12 @@ import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 // designkit: 自建菜单项 + 「上游菜单对普通用户隐藏」的名单（细节见该文件注释）
 import {
+  DESIGNKIT_CHAT_PATH,
   DESIGNKIT_GALLERY_PATH,
   DESIGNKIT_INSPIRATION_PATH,
   DESIGNKIT_SETTINGS_PATH,
   DESIGNKIT_WORKBENCH_PATH,
+  DesignkitChatIcon,
   DesignkitGalleryIcon,
   DesignkitInspirationIcon,
   DesignkitSettingsIcon,
@@ -675,10 +677,11 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon })
   }
-  // designkit: 自建的三个页面排在最前（运营的日常入口），管理员在「我的账户」区也能看到
+  // designkit: 自建的四个页面排在最前（运营的日常入口），管理员在「我的账户」区也能看到
   items.push(
     { path: DESIGNKIT_WORKBENCH_PATH, label: t('designkit.nav.workbench'), icon: DesignkitWorkbenchIcon },
     { path: DESIGNKIT_INSPIRATION_PATH, label: t('designkit.nav.inspiration'), icon: DesignkitInspirationIcon },
+    { path: DESIGNKIT_CHAT_PATH, label: t('designkit.nav.chat'), icon: DesignkitChatIcon },
     { path: DESIGNKIT_GALLERY_PATH, label: t('designkit.nav.gallery'), icon: DesignkitGalleryIcon },
   )
   items.push(

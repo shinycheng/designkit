@@ -212,11 +212,12 @@ const (
 	ErrCodeIllegalStateTransition = "DK_ILLEGAL_STATE_TRANSITION"
 
 	// —— 找不到 ——
-	ErrCodeJobNotFound    = "DK_JOB_NOT_FOUND"
-	ErrCodeItemNotFound   = "DK_ITEM_NOT_FOUND"
-	ErrCodeAssetNotFound  = "DK_ASSET_NOT_FOUND"
-	ErrCodeImageNotFound  = "DK_IMAGE_NOT_FOUND"
-	ErrCodePromptNotFound = "DK_PROMPT_NOT_FOUND"
+	ErrCodeJobNotFound         = "DK_JOB_NOT_FOUND"
+	ErrCodeItemNotFound        = "DK_ITEM_NOT_FOUND"
+	ErrCodeAssetNotFound       = "DK_ASSET_NOT_FOUND"
+	ErrCodeImageNotFound       = "DK_IMAGE_NOT_FOUND"
+	ErrCodePromptNotFound      = "DK_PROMPT_NOT_FOUND"
+	ErrCodeChatSessionNotFound = "DK_CHAT_SESSION_NOT_FOUND"
 
 	// —— 鉴权 ——
 	ErrCodeUnauthorized  = "DK_UNAUTHORIZED"
@@ -359,6 +360,10 @@ var errorCatalog = map[string]DesignkitError{
 	// —— 找不到 ——
 	ErrCodeJobNotFound: {
 		Message:    "找不到这个任务，可能已经被删除了。",
+		HTTPStatus: http.StatusNotFound,
+	},
+	ErrCodeChatSessionNotFound: {
+		Message:    "找不到这组对话，可能已经被删除了。",
 		HTTPStatus: http.StatusNotFound,
 	},
 	ErrCodeItemNotFound: {

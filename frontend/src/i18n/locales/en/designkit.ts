@@ -19,6 +19,7 @@ export default {
     nav: {
       workbench: 'Workbench',
       inspiration: 'Prompt Library',
+      chat: 'AI Chat',
       gallery: 'My Images',
       settings: 'Image Settings',
     },
@@ -360,6 +361,27 @@ export default {
 
         unavailable: 'Syncing is not available yet — contact your administrator. Browsing and search are unaffected.',
       },
+    },
+
+    // AI chat. Keys mirror zh/designkit.ts exactly.
+    chat: {
+      title: 'AI Chat',
+      empty: 'Ask something, or send a product photo.',
+      newSession: 'New chat',
+      sessions: 'Chat history',
+      deleteSession: 'Delete this chat',
+      deleteConfirm: 'Deleted chats cannot be recovered.',
+      inputPlaceholder: 'Type a question. Enter to send, Shift+Enter for a new line',
+      send: 'Send',
+      replying: 'AI is replying…',
+      attach: 'Send image',
+      attachLimit: 'Up to {max} images per message.',
+      attachTooLarge: 'Image over 2MB. Compress it and send again.',
+      failed: 'Not sent. Press "Resend".',
+      resend: 'Resend',
+      untitled: 'New chat',
+      loadFailed: 'History failed to load. Refresh the page.',
+      emptySessions: 'No chats yet.',
     },
 
     usage: {
