@@ -464,6 +464,12 @@ git show <commit> -- <文件>                          # 逐个读
       模板实测 gpt-image-2；不够用再考虑 fal.ai Kolors API（$0.07/张）。
     - 重打光（IC-Light）默认不做，触发条件与接入路径见调研文档。
 
+40. **新界面必须同步 Claude Design 设计稿**（monica 2026-08-16 追问后立规）。
+    任何新页面/新按钮上线时，`designkit/design/product/` 里要有对应稿并推送
+    Claude Design「DesignKit 产品端」项目，文案与 i18n 逐字一致。
+    实现先行时**当天补稿**。后端没有可视化设计这回事——后端设计记录在
+    代码注释与 `designkit/docs/`，不适用本条。
+
 **下面三条是纯技术决定，我定的，记在这里防止以后反复：**
 
 - **接口挂两个前缀，handler 和 service 完全共用**（2026-08-12 核实后修正，

@@ -1,10 +1,9 @@
-<!-- @dsCard group="产品端" name="生成工作台 · 空态" subtitle="studio 布局 · 三格数据卡 · 上传区 · AI 配词表单 · 花费预估" width="1440" -->
+<!-- @dsCard group="产品端" name="12 文案检查" subtitle="上游侧栏外壳 · 边输边查 · 超限变红 · 命中标红 · 无命中与未选平台小样" width="1440" -->
 <!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>生成工作台 · 空态</title>
+<title>文案检查 · DesignKit 产品端</title>
 <style>
 /*
  * DesignKit Dark — 设计系统地基（v3 定稿实现）
@@ -390,474 +389,288 @@ a:hover { color: var(--dk-accent-strong); }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   页面自有样式（dk-x- 前缀）：工作台空态 · studio 布局
-   外壳 = 上游同款文字侧栏（拍板增补 #1），只换深色皮。
+   页面自有样式（dk-x- 前缀）—— 文案检查
    ═══════════════════════════════════════════════════════════════ */
 
-/* 小间距工具（结构用，不涉色） */
-.dk-x-mt-1 { margin-top: 4px; }
-.dk-x-mt-2 { margin-top: 8px; }
-.dk-x-mt-3 { margin-top: 12px; }
-.dk-x-mt-4 { margin-top: 16px; }
+/* 画稿骨架：1440 定宽，一列多个演示区 */
+.dk-x-stage { width: 1440px; margin: 0 auto; padding: 28px 0 72px; display: grid; gap: 16px; }
 
-/* 整体框架：侧栏 240 + 画布 + 右 400 配置区 */
-.dk-x-app { display: flex; width: 1440px; min-height: 980px; margin: 0 auto; background: var(--dk-canvas); }
+/* 设计稿标注（给评审看的说明，不是产品文案） */
+.dk-x-annot { display: flex; align-items: center; gap: 10px; margin-top: 20px; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); letter-spacing: 0.02em; }
+.dk-x-annot::after { content: ""; flex: 1; height: 1px; background: var(--dk-border); }
+.dk-x-annot__tag { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border-strong); background: var(--dk-surface-raised); color: var(--dk-accent-strong); font-weight: 700; }
 
-/* 侧栏（上游 AppSidebar 同结构，深色皮：底 = 次级底，选中 = accent-soft + accent-strong） */
-.dk-x-sidebar {
-  flex: 0 0 240px; width: 240px;
-  background: var(--dk-surface-subtle);
-  border-right: 1px solid var(--dk-border);
-  display: flex; flex-direction: column;
-  padding: 16px 12px 14px;
-}
-.dk-x-sidebar-head { display: flex; align-items: center; gap: 10px; padding: 2px 6px 18px; }
-.dk-x-logo {
-  flex: 0 0 36px; width: 36px; height: 36px; border-radius: 10px;
-  background: var(--dk-surface-raised); border: 1px solid var(--dk-border);
-  display: grid; place-items: center;
-}
+/* 应用外壳：上游同款文字侧栏（拍板增补 #1），深色皮 */
+.dk-x-frame { display: flex; align-items: stretch; background: var(--dk-canvas); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); overflow: hidden; box-shadow: var(--dk-shadow-1); }
+.dk-x-sidebar { width: 256px; flex: none; display: flex; flex-direction: column; background: var(--dk-surface-subtle); border-right: 1px solid var(--dk-border); }
+.dk-x-sidebar-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 12px; }
+.dk-x-logo { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--dk-surface-raised); border: 1px solid var(--dk-border); }
 .dk-x-logo svg { width: 22px; height: 22px; display: block; }
-.dk-x-brand { font-size: var(--dk-text-lg); font-weight: 400; color: var(--dk-text); white-space: nowrap; }
-.dk-x-brand b { font-weight: 700; color: var(--dk-action); }
-.dk-x-sidenav { width: auto; padding: 0; }
-.dk-x-sidenav .dk-sidenav__item { text-decoration: none; }
-.dk-x-nav-icon { width: 20px; height: 20px; flex: 0 0 20px; display: block; }
-.dk-x-sidebar-foot { margin-top: auto; border-top: 1px solid var(--dk-border); padding-top: 10px; }
+.dk-x-wordmark { font-size: 17px; font-weight: 400; color: var(--dk-text); letter-spacing: 0.01em; }
+.dk-x-wordmark b { font-weight: 800; color: var(--dk-action); }
+.dk-x-sidebar .dk-sidenav { width: auto; padding: 6px 12px; }
+.dk-x-sidebar .dk-sidenav__item { height: 40px; font-size: var(--dk-text-md); }
+.dk-x-navicon { width: 20px; height: 20px; flex: none; }
+.dk-x-sidebar-foot { margin-top: auto; border-top: 1px solid var(--dk-border); padding: 12px; }
+.dk-x-sidebar-foot .dk-sidenav__item { width: 100%; background: none; border: none; text-align: left; font-family: var(--dk-font-sans); }
+.dk-x-main { flex: 1; min-width: 0; padding: 32px 40px 40px; }
+.dk-x-ticon { width: 16px; height: 16px; flex: none; }
 
-/* 主区 */
-.dk-x-main { flex: 1; display: flex; min-width: 0; }
-.dk-x-canvas { flex: 1; min-width: 0; padding: 28px 32px 44px; display: grid; gap: 16px; align-content: start; }
-.dk-x-canvas-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.dk-x-batch {
-  margin: 8px 0 0; white-space: nowrap;
-  font-size: var(--dk-text-sm); color: var(--dk-text-secondary);
-  font-variant-numeric: tabular-nums;
-  background: var(--dk-surface); border: 1px solid var(--dk-border);
-  border-radius: var(--dk-radius-pill); padding: 7px 14px;
+/* 页面骨架（与 DesignkitContentCheckView.vue 的 dk-canvas 结构同名） */
+.dk-canvas { display: grid; min-width: 0; gap: var(--dk-space-4); }
+.dk-canvas-header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--dk-space-3); border-bottom: 1px solid var(--dk-border); padding-bottom: var(--dk-space-3); }
+.dk-canvas-body { display: grid; min-width: 0; gap: var(--dk-space-4); }
+.dk-page-head { display: grid; min-width: 0; gap: 2px; }
+.dk-panel-head--tight { margin-bottom: var(--dk-space-3); }
+.dk-label--quiet { color: var(--dk-text-secondary); font-size: var(--dk-text-xs); font-weight: 500; }
+.dk-mt-1 { margin-top: var(--dk-space-1); }
+
+/* 「检查」按钮：代码里的类名是 dk-button--primary（designkit-ui.css 深色化时补上这条） */
+.dk-button--primary { background: var(--dk-action); color: #fff; }
+.dk-button--primary:hover { background: var(--dk-action-hover); }
+.dk-button--primary:active { background: var(--dk-action-pressed); }
+
+/* ── 文案检查组件（类名与 DesignkitContentCheckView.vue 一字不差） ── */
+.dk-cc-input { min-height: 140px; }
+.dk-cc-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.dk-cc-platform-label { margin-bottom: 0; }
+/* 下拉框对齐 .dk-input 的观感（designkit-ui.css 没有现成的 select 样式） */
+.dk-cc-select {
+  min-height: var(--dk-control-h);
+  border: 1px solid var(--dk-border-strong);
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-surface);
+  color: var(--dk-text);
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: var(--dk-text-md);
 }
-.dk-x-usage-note { margin-top: -6px; }
-
-/* 面板头右侧动作区 */
-.dk-x-panel-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; margin-top: 2px; }
-
-/* 上传缩略网格（AssetUploader 的 dk-thumb-grid 对应物） */
-.dk-x-thumb-grid { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
-.dk-x-thumb-cell { min-width: 0; }
-.dk-x-thumb-name { margin: 6px 2px 0; font-size: var(--dk-text-xs); color: var(--dk-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dk-x-thumb-status { margin: 2px 2px 0; font-size: var(--dk-text-xs); }
-/* 上传中的常显遮罩（区别于 hover 才出现的 dk-thumb__overlay） */
-.dk-x-veil {
-  position: absolute; inset: 0; display: grid; place-content: center; gap: 10px;
-  background: var(--dk-overlay); color: var(--dk-text);
-  font-size: var(--dk-text-sm); font-weight: 600; text-align: center; padding: 12px;
+.dk-cc-select:focus { border-color: var(--dk-accent); box-shadow: 0 0 0 3px var(--dk-focus); outline: none; }
+.dk-cc-count { color: var(--dk-text-secondary); font-size: var(--dk-text-sm); font-variant-numeric: tabular-nums; }
+.dk-cc-count--over { color: var(--dk-danger); font-weight: 650; }
+.dk-cc-check { margin-left: auto; }
+.dk-cc-words { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.dk-cc-word {
+  display: inline-block; padding: 2px 8px;
+  border-radius: var(--dk-radius-md);
+  background: var(--dk-danger-soft); color: var(--dk-danger);
+  font-size: var(--dk-text-sm); line-height: 1.6;
 }
-.dk-x-veil .dk-progress-track { width: 96px; margin: 0 auto; }
-
-/* 结果区空态 */
-.dk-x-result { min-height: 280px; display: grid; align-content: center; }
-
-/* 右配置区 */
-.dk-x-config {
-  flex: 0 0 var(--dk-config-w); width: var(--dk-config-w);
+.dk-cc-preview {
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md);
   background: var(--dk-surface-subtle);
-  border-left: 1px solid var(--dk-border);
-  padding: 24px 20px 36px;
-  display: grid; gap: 16px; align-content: start;
+  color: var(--dk-text);
+  padding: 10px 12px;
+  font-size: var(--dk-text-md);
+  line-height: 1.7;
+  white-space: pre-wrap;   /* 保留运营贴进来的换行和连续空格 */
+  word-break: break-word;
 }
-.dk-x-config-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
-
-/* 从灵感库带来的提示词：段落卡 */
-.dk-x-prompt-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
-.dk-x-prompt-item {
-  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start;
-  padding: 10px 12px; border: 1px solid var(--dk-border);
-  border-radius: var(--dk-radius-md); background: var(--dk-surface-subtle);
+.dk-cc-preview mark {
+  background: var(--dk-danger-soft);
+  color: var(--dk-danger-strong);
+  border-radius: 3px;
+  padding: 0 1px;
 }
-.dk-x-prompt-index {
-  width: 20px; height: 20px; border-radius: 50%; margin-top: 1px;
-  background: var(--dk-surface-raised); color: var(--dk-text-tertiary);
-  font-size: 11px; font-weight: 600; display: grid; place-items: center;
-}
-.dk-x-prompt-text { font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
 
-/* 比例块：按真实宽高比给形状定宽（高一律 34px） */
-.dk-x-shape-1x1 { width: 34px; }
-.dk-x-shape-3x4 { width: 26px; }
-.dk-x-shape-4x3 { width: 45px; }
-.dk-x-shape-16x9 { width: 60px; }
-.dk-x-shape-9x16 { width: 19px; }
-
-/* 花费预估行 */
-.dk-x-est { display: grid; gap: 6px; margin-top: 10px; }
-.dk-x-est-total { font-size: var(--dk-text-lg); font-weight: 700; margin: 0; }
-.dk-x-est p { margin: 0; }
-
-/* 「生成白底图」抠图中的转圈（按钮禁用 + 文案换成进度，照 AssetUploader 的写法） */
-.dk-x-spin { animation: dk-x-spin 0.9s linear infinite; transform-origin: center; }
-@keyframes dk-x-spin { to { transform: rotate(360deg); } }
+/* 状态小样：两栏 */
+.dk-x-states { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.dk-x-states .dk-panel { display: grid; gap: 12px; align-content: start; }
+.dk-x-states .dk-cc-input { min-height: 64px; }
 </style>
 </head>
 <body>
 
-<div class="dk-x-app">
+<div class="dk-x-stage">
 
-  <!-- ═══ 外壳：上游同款文字侧栏（运营视角：只有四项） ═══ -->
-  <aside class="dk-x-sidebar">
-    <div class="dk-x-sidebar-head">
-      <span class="dk-x-logo" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-          <!-- DesignKit mark · 方向 A「DK 取景框」（暂定，monica 挑定后可整体替换本文件） -->
-          <!-- 取景框四角；右下角用电光紫做点睛 -->
-          <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
-          <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
-          <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
-          <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/>
-          <!-- D -->
-          <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
-          <!-- K -->
-          <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
-        </svg>
-      </span>
-      <span class="dk-x-brand">Design<b>Kit</b></span>
-      <span class="dk-tag">dk-1.0</span>
-    </div>
+  <!-- ═══ 应用外壳：侧栏 + 文案检查主内容 ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">第一屏</span>输入停顿 500ms 自动查（纯本地词表、毫秒级、不扣费）；「检查」按钮留给改完平台立即要结果的人；字数条本地实时计算、超限变红；本样选中平台「淘宝」（上限 30 字）</div>
+  <div class="dk-x-frame">
 
-    <nav class="dk-sidenav dk-x-sidenav">
-      <a class="dk-sidenav__item is-active" href="#">
-        <svg class="dk-x-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3.5" y="4.5" width="17" height="13" rx="2"/>
-          <path d="M12.8 7.8 10.4 11h2.4l-1.6 3.2 4-4.4h-2.4l1.2-2z"/>
-          <path d="M9 21h6"/>
-        </svg>
-        生成工作台
-      </a>
-      <a class="dk-sidenav__item" href="#">
-        <svg class="dk-x-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 3.5a5.5 5.5 0 0 0-3.2 9.9c.7.6 1.2 1.3 1.2 2.1h4c0-.8.5-1.5 1.2-2.1A5.5 5.5 0 0 0 12 3.5z"/>
-          <path d="M9.8 18.5h4.4M10.8 21h2.4"/>
-        </svg>
-        灵感库
-      </a>
-      <a class="dk-sidenav__item" href="#">
-        <svg class="dk-x-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3.5" y="5" width="17" height="14" rx="2"/>
-          <circle cx="9" cy="10" r="1.6"/>
-          <path d="m6 17 4.5-5 3.5 4 2-2.5 2.5 3"/>
-        </svg>
-        我的图片
-      </a>
-      <a class="dk-sidenav__item" href="#">
-        <svg class="dk-x-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="8.2" r="3.4"/>
-          <path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/>
-        </svg>
-        个人资料
-      </a>
-    </nav>
-
-    <div class="dk-x-sidebar-foot">
-      <span class="dk-sidenav__item">
-        <svg class="dk-x-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m11 7-4.5 5L11 17M17.5 7 13 12l4.5 5"/>
-        </svg>
-        收起
-      </span>
-    </div>
-  </aside>
-
-  <div class="dk-x-main">
-
-    <!-- ═══ 中间：画布区 ═══ -->
-    <section class="dk-x-canvas">
-
-      <!-- 页头 + 右上批次摘要 -->
-      <header class="dk-x-canvas-head">
-        <div>
-          <p class="dk-eyebrow">商品图</p>
-          <h1 class="dk-page-title">生成工作台</h1>
-          <p class="dk-page-desc">上传商品图，配好提示词和比例，批量出图。</p>
-        </div>
-        <p class="dk-x-batch">3 张商品图 × 3 条提示词 = <span class="dk-money">9 张</span></p>
-      </header>
-
-      <!-- 三格数据卡（决策 16：本月出图 / 花费 / 余额） -->
-      <div class="dk-usage-grid">
-        <div class="dk-usage-cell">
-          <p class="dk-usage-cell__label">本月出图</p>
-          <p class="dk-usage-cell__value dk-money">128 张</p>
-        </div>
-        <div class="dk-usage-cell">
-          <p class="dk-usage-cell__label">花费</p>
-          <p class="dk-usage-cell__value dk-money">$136.35</p>
-        </div>
-        <div class="dk-usage-cell">
-          <p class="dk-usage-cell__label">余额</p>
-          <p class="dk-usage-cell__value dk-money">$63.65</p>
-        </div>
+    <!-- 侧栏：上游 AppSidebar 同款结构，深色化；「文案检查」高亮 -->
+    <aside class="dk-x-sidebar">
+      <div class="dk-x-sidebar-head">
+        <span class="dk-x-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#F2F5FA" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7"/>
+            <path d="M17 3h2.5A1.5 1.5 0 0 1 21 4.5V7"/>
+            <path d="M3 17v2.5A1.5 1.5 0 0 0 4.5 21H7"/>
+            <path d="M21 17v2.5a1.5 1.5 0 0 1-1.5 1.5H17" stroke="#7C6BFF" stroke-width="2"/>
+            <path d="M8.2 8v8M8.2 8h1.6a4 4 0 0 1 0 8H8.2"/>
+            <path d="M15.2 8v8M18.4 8l-3.2 4 3.2 4"/>
+          </svg>
+        </span>
+        <span class="dk-x-wordmark">Design<b>Kit</b></span>
       </div>
-      <p class="dk-note dk-note--quiet dk-x-usage-note">花费按实际扣费统计，含失败但已计费的部分；张数只统计「我的图片」里现存的图。两者对不上属正常。</p>
+      <nav class="dk-sidenav">
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="13" rx="2"/><path d="M10.8 6.5 8.6 10h2.8l-2.2 3.5"/></svg>
+          生成工作台
+        </a>
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 8.2a3.5 3.5 0 1 1 7 0c0 1.6-1 2.4-1.6 3.4-.3.5-.4 1-.4 1.6H8.5c0-.6-.1-1.1-.4-1.6C7.5 10.6 6.5 9.8 6.5 8.2z"/><path d="M8.5 15.7h3M9.2 17.7h1.6"/></svg>
+          灵感库
+        </a>
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h10A2.5 2.5 0 0 1 17.5 7v5a2.5 2.5 0 0 1-2.5 2.5h-4.6L7 17.2v-2.7H5A2.5 2.5 0 0 1 2.5 12V7A2.5 2.5 0 0 1 5 4.5z"/><path d="M6.5 8.4h7M6.5 11h4.6"/></svg>
+          AI 对话
+        </a>
+        <a class="dk-sidenav__item is-active" aria-current="page">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 2.5H12l3.5 3.5v10a1.5 1.5 0 0 1-1.5 1.5H5.5A1.5 1.5 0 0 1 4 16V4a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M11.8 2.7V6h3.4"/><path d="m7 11.4 2 2 3.6-4.4"/></svg>
+          文案检查
+        </a>
+        <a class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="14" height="11" rx="2"/><circle cx="7.1" cy="8.1" r="1.1"/><path d="M3.6 13.4 7.8 9.8l3 2.6 2.3-1.9 3.2 2.7"/></svg>
+          我的图片
+        </a>
+      </nav>
+      <div class="dk-x-sidebar-foot">
+        <button type="button" class="dk-sidenav__item">
+          <svg class="dk-x-navicon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 5-4.5 5 4.5 5M15.5 5 11 10l4.5 5"/></svg>
+          收起
+        </button>
+      </div>
+    </aside>
 
-      <!-- 第一步 · 选商品图 -->
-      <section class="dk-panel">
-        <header class="dk-panel-head">
-          <h2 class="dk-panel-title">第一步 · 选商品图</h2>
-          <div class="dk-x-panel-actions">
-            <span class="dk-badge">已选 3 项</span>
-            <button type="button" class="dk-button dk-button--quiet dk-button--sm">清空</button>
+    <!-- 主内容：结构与 DesignkitContentCheckView.vue 一致 -->
+    <main class="dk-x-main">
+      <div class="dk-canvas">
+        <header class="dk-canvas-header">
+          <div class="dk-page-head">
+            <p class="dk-eyebrow">商品图</p>
+            <h1 class="dk-page-title">文案检查</h1>
+            <p class="dk-page-desc">贴入标题或文案，检查违禁词和平台字数。</p>
           </div>
         </header>
 
-        <button type="button" class="dk-dropzone">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--dk-text-tertiary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 15.5V5m0 0L7.8 9.2M12 5l4.2 4.2"/>
-            <path d="M5 16v1.5A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5V16"/>
-          </svg>
-          <span class="dk-dropzone__title">拖入图片，或点击选择</span>
-          <span class="dk-dropzone__meta">支持 JPG / PNG / WEBP / HEIC（iPhone 格式），单张不超过 20MB，可多选。</span>
-          <span class="dk-button dk-button--secondary dk-button--sm dk-x-mt-1">选择图片</span>
-        </button>
+        <div class="dk-canvas-body">
 
-        <ul class="dk-x-thumb-grid">
-          <!-- ① 衣物轮廓：已上传 -->
-          <li class="dk-x-thumb-cell">
-            <div class="dk-thumb">
-              <svg class="dk-thumb__media" viewBox="0 0 96 96" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="针织开衫线稿">
-                <g stroke="var(--dk-text-secondary)">
-                  <path d="M36 24 26 29c-5 2.5-7.5 6-8.5 11L14 57l10.5 3L28 47"/>
-                  <path d="M60 24l10 5c5 2.5 7.5 6 8.5 11L82 57l-10.5 3L68 47"/>
-                  <path d="M28 47v29h40V47"/>
-                  <path d="M36 24c4 6 8 8 12 8s8-2 12-8"/>
-                </g>
-                <path d="M28 69h40" stroke="var(--dk-text-tertiary)"/>
-                <g stroke="var(--dk-action)">
-                  <path d="M48 32v44"/>
-                  <circle cx="52.5" cy="46" r="1.4"/>
-                  <circle cx="52.5" cy="57" r="1.4"/>
-                </g>
-              </svg>
+          <!-- 输入面板 -->
+          <section class="dk-panel">
+            <textarea class="dk-textarea dk-cc-input" rows="6" placeholder="贴入要检查的文字">夏季冰感防晒衣，顶级冰丝面料，全网最低价，国家级检测认证，轻薄透气，晒后不发烫。</textarea>
+
+            <div class="dk-cc-toolbar">
+              <label class="dk-label dk-label--quiet dk-cc-platform-label" for="dk-cc-platform">平台</label>
+              <select id="dk-cc-platform" class="dk-cc-select">
+                <option>不限平台</option>
+                <option selected>淘宝</option>
+                <option>天猫</option>
+                <option>京东</option>
+                <option>拼多多</option>
+                <option>抖音</option>
+                <option>Amazon</option>
+              </select>
+
+              <!-- 字数条：本地实时算，超出变红（40 字 > 淘宝上限 30） -->
+              <span class="dk-cc-count dk-cc-count--over">标题 40 / 30 字 · 超出 10 字</span>
+
+              <button type="button" class="dk-button dk-button--primary dk-button--sm dk-cc-check">检查</button>
             </div>
-            <p class="dk-x-thumb-name">米白针织开衫-正面.jpg</p>
-            <p class="dk-x-thumb-status dk-note--success">已上传</p>
-            <!-- 卡片操作区（AssetUploader：status==='done' 才出现；实现里下面还有「高清放大」，本稿先只画白底图） -->
-            <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2">生成白底图</button>
-            <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2">高清放大</button>
-          </li>
 
-          <!-- ①-b 帆布托特包：抠图中 —— 点了「生成白底图」，按钮转圈 + 禁用，文案换成进度。
-               实现里一次只抠一张（whitebgUid 非 null 时所有「生成白底图」一并禁用），
-               此处并列画两种状态只为演示。 -->
-          <li class="dk-x-thumb-cell">
-            <div class="dk-thumb">
-              <svg class="dk-thumb__media" viewBox="0 0 96 96" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="帆布托特包线稿">
-                <g stroke="var(--dk-text-secondary)">
-                  <path d="M28 38h40l-4.5 36h-31z"/>
-                  <path d="M38 38c0-13 20-13 20 0"/>
-                </g>
-                <path d="M33.5 64h29" stroke="var(--dk-text-tertiary)"/>
-                <g stroke="var(--dk-action)">
-                  <path d="M40 50h16"/>
-                </g>
-              </svg>
+            <p class="dk-note dk-note--quiet dk-mt-1">词表按广告法极限词整理，命中不代表一定违规，以平台审核为准。</p>
+          </section>
+
+          <!-- 结果面板：命中 3 个 -->
+          <section class="dk-panel">
+            <div class="dk-panel-head dk-panel-head--tight">
+              <h2 class="dk-panel-title">命中 3 个违禁词</h2>
             </div>
-            <p class="dk-x-thumb-name">帆布托特包.jpg</p>
-            <p class="dk-x-thumb-status dk-note--success">已上传</p>
-            <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2" disabled>
-              <svg class="dk-x-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
-              抠图中…
-            </button>
-          </li>
 
-          <!-- ② 瓶：上一轮出的图（角标） -->
-          <li class="dk-x-thumb-cell">
-            <div class="dk-thumb">
-              <svg class="dk-thumb__media" viewBox="0 0 96 96" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="护肤瓶线稿">
-                <g stroke="var(--dk-text-secondary)">
-                  <rect x="41" y="14" width="14" height="9" rx="2"/>
-                  <path d="M44.5 23h7v6h-7z"/>
-                  <path d="M34 37c0-6 4-8 10-8h8c6 0 10 2 10 8v33c0 5-4 8-10 8h-8c-6 0-10-3-10-8z"/>
-                </g>
-                <rect x="40" y="46" width="16" height="14" rx="3" stroke="var(--dk-action)"/>
-                <path d="M43 53h10" stroke="var(--dk-text-tertiary)"/>
-              </svg>
-              <span class="dk-thumb__tag">上一轮出的图</span>
+            <!-- 命中词汇总：同词合并成「词 ×N」，保持首次出现顺序 -->
+            <div class="dk-cc-words">
+              <span class="dk-cc-word">顶级</span>
+              <span class="dk-cc-word">全网最低</span>
+              <span class="dk-cc-word">国家级</span>
             </div>
-            <p class="dk-x-thumb-name">上一轮出的图</p>
-            <p class="dk-x-thumb-status dk-note--success">已上传</p>
-            <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2">生成白底图</button>
-            <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2">高清放大</button>
-          </li>
 
-          <!-- ③ 杯：上传中 63% -->
-          <li class="dk-x-thumb-cell">
-            <div class="dk-thumb">
-              <svg class="dk-thumb__media" viewBox="0 0 96 96" fill="none" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="陶瓷马克杯线稿">
-                <g stroke="var(--dk-text-secondary)">
-                  <path d="M30 38h30v28a9 9 0 0 1-9 9H39a9 9 0 0 1-9-9z"/>
-                  <path d="M60 45c8 0 11 4 10.5 9-.5 6-5 9-10.5 8.5"/>
-                </g>
-                <g stroke="var(--dk-action)">
-                  <path d="M39.5 30c-2-3 2-5 0-8"/>
-                  <path d="M50.5 30c-2-3 2-5 0-8"/>
-                </g>
-              </svg>
-              <div class="dk-x-veil">
-                <span>上传中… 63%</span>
-                <span class="dk-progress-track"><span class="dk-progress-bar" style="width: 63%"></span></span>
-              </div>
-            </div>
-            <p class="dk-x-thumb-name">陶瓷马克杯.jpg</p>
-          </li>
-        </ul>
-      </section>
+            <!-- 正文标红：只读预览块（不用 contenteditable），部分重叠区间合并成一段 -->
+            <div class="dk-cc-preview">夏季冰感防晒衣，<mark>顶级</mark>冰丝面料，<mark>全网最低</mark>价，<mark>国家级</mark>检测认证，轻薄透气，晒后不发烫。</div>
+          </section>
 
-      <!-- 结果区空态：虚线框亮紫点（9.4 画布空插画） -->
-      <section class="dk-panel dk-x-result">
-        <div class="dk-empty">
-          <svg class="dk-empty__icon" width="200" height="160" viewBox="0 0 200 160" fill="none" aria-hidden="true">
-            <rect x="28" y="24" width="144" height="104" rx="10" stroke="var(--dk-border-strong)" stroke-width="1.75" stroke-dasharray="7 7"/>
-            <circle cx="100" cy="76" r="18" stroke="var(--dk-action)" stroke-width="1.75" opacity="0.16"/>
-            <circle cx="100" cy="76" r="11" stroke="var(--dk-action)" stroke-width="1.75" opacity="0.4"/>
-            <circle cx="100" cy="76" r="5" fill="var(--dk-action)"/>
-          </svg>
-          <p class="dk-empty__title">出好的图会显示在这里</p>
-          <p class="dk-empty__description">先选商品图，在右侧配好提示词和比例，点「提交出图」。</p>
         </div>
-      </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══ 状态小样 ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">状态小样</span>左：无命中（平台淘宝、字数未超限，正文预览无标红）；右：未选平台（下拉停在「不限平台」，字数条只报字数不报上限，违禁词照查）</div>
+  <div class="dk-x-states">
+
+    <!-- 无命中 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">无命中</p>
+      <textarea class="dk-textarea dk-cc-input" rows="2">纯棉白色T恤 圆领短袖 夏季新款</textarea>
+      <div class="dk-cc-toolbar">
+        <label class="dk-label dk-label--quiet dk-cc-platform-label">平台</label>
+        <select class="dk-cc-select">
+          <option>不限平台</option>
+          <option selected>淘宝</option>
+          <option>天猫</option>
+          <option>京东</option>
+          <option>拼多多</option>
+          <option>抖音</option>
+          <option>Amazon</option>
+        </select>
+        <span class="dk-cc-count">标题 16 / 30 字</span>
+        <button type="button" class="dk-button dk-button--primary dk-button--sm dk-cc-check">检查</button>
+      </div>
+      <h2 class="dk-panel-title">没有命中违禁词。</h2>
+      <div class="dk-cc-preview">纯棉白色T恤 圆领短袖 夏季新款</div>
     </section>
 
-    <!-- ═══ 右：400px 配置区 ═══ -->
-    <aside class="dk-x-config" aria-label="出图设置">
-      <div class="dk-x-config-head">
-        <span class="dk-panel-title">出图设置</span>
-      </div>
-
-      <!-- 从灵感库带来的提示词（仅带来时出现） -->
-      <section class="dk-panel">
-        <header class="dk-panel-head">
-          <div>
-            <h2 class="dk-panel-title">从灵感库带来的提示词</h2>
-            <p class="dk-panel-hint">出图时这些排在你手写的前面。不想要了就点「移除」。</p>
-          </div>
-          <button type="button" class="dk-button dk-button--quiet dk-button--sm">清空</button>
-        </header>
-        <ul class="dk-x-prompt-list">
-          <li class="dk-x-prompt-item">
-            <span class="dk-x-prompt-index">1</span>
-            <span class="dk-x-prompt-text dk-clamp-2">纯白背景商业摄影，柔和顶光，产品置于哑光石台正中，背景大面积留白，细腻投影，突出高级质感</span>
-            <button type="button" class="dk-button dk-button--quiet dk-button--sm">移除</button>
-          </li>
-        </ul>
-      </section>
-
-      <!-- 第二步 · AI 配词 -->
-      <section class="dk-panel">
-        <header class="dk-panel-head">
-          <div>
-            <h2 class="dk-panel-title">第二步 · 选分类、写商品特点，让 AI 配提示词</h2>
-            <p class="dk-panel-hint">选分类、写商品特点，AI 根据商品图从灵感库挑 5 条参考，合成一条提示词。</p>
-          </div>
-        </header>
-
-        <label class="dk-label" for="dkx-category">大致分类</label>
-        <select id="dkx-category" class="dk-select">
-          <option selected>全部分类（AI 看图判断）</option>
+    <!-- 未选平台：只查违禁词 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">未选平台（只查违禁词）</p>
+      <textarea class="dk-textarea dk-cc-input" rows="2">国家级非遗手作陶瓷杯，礼盒装</textarea>
+      <div class="dk-cc-toolbar">
+        <label class="dk-label dk-label--quiet dk-cc-platform-label">平台</label>
+        <select class="dk-cc-select">
+          <option selected>不限平台</option>
+          <option>淘宝</option>
+          <option>天猫</option>
+          <option>京东</option>
+          <option>拼多多</option>
+          <option>抖音</option>
+          <option>Amazon</option>
         </select>
-        <p class="dk-note dk-note--quiet dk-x-mt-1">不确定就选「全部分类」，AI 会看图判断。</p>
+        <span class="dk-cc-count">14 字</span>
+        <button type="button" class="dk-button dk-button--primary dk-button--sm dk-cc-check">检查</button>
+      </div>
+      <h2 class="dk-panel-title">命中 1 个违禁词</h2>
+      <div class="dk-cc-words">
+        <span class="dk-cc-word">国家级</span>
+      </div>
+      <div class="dk-cc-preview"><mark>国家级</mark>非遗手作陶瓷杯，礼盒装</div>
+    </section>
 
-        <label class="dk-label dk-x-mt-3" for="dkx-features">商品特点</label>
-        <textarea id="dkx-features" class="dk-textarea" rows="3" placeholder="例如：米白色针织开衫，秋冬新品，主打柔软亲肤，想要日系温柔的感觉"></textarea>
-        <p class="dk-note dk-note--quiet dk-x-mt-1">写商品本身：材质、颜色、卖点、想要的风格。不用写提示词。</p>
-        <p class="dk-note dk-note--quiet dk-x-mt-1">选填。填了推荐更贴合商品。</p>
-
-        <button type="button" class="dk-button dk-button--primary-action dk-button--block dk-x-mt-3">
-          让 AI 推荐
-          <span class="dk-button__price">· $0.09~$0.34</span>
-        </button>
-      </section>
-
-      <!-- 第三步 · 选出图比例 -->
-      <section class="dk-panel">
-        <header class="dk-panel-head">
-          <div>
-            <h2 class="dk-panel-title">第三步 · 选出图比例</h2>
-            <p class="dk-panel-hint">按所选比例给商品图补白边，产品不会被裁剪。</p>
-          </div>
-        </header>
-
-        <ul class="dk-size-options" style="list-style: none; margin: 0; padding: 0;">
-          <li>
-            <button type="button" class="dk-size-option is-selected" aria-pressed="true">
-              <span class="dk-size-option__tier">2K</span>
-              <span class="dk-size-option__shape dk-x-shape-1x1" aria-hidden="true"></span>
-              <span class="dk-size-option__ratio">1:1</span>
-              <span class="dk-size-option__label">主图（正方形）</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="dk-size-option" aria-pressed="false">
-              <span class="dk-size-option__tier">2K</span>
-              <span class="dk-size-option__shape dk-x-shape-3x4" aria-hidden="true"></span>
-              <span class="dk-size-option__ratio">3:4</span>
-              <span class="dk-size-option__label">详情竖版</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="dk-size-option" aria-pressed="false">
-              <span class="dk-size-option__tier">2K</span>
-              <span class="dk-size-option__shape dk-x-shape-4x3" aria-hidden="true"></span>
-              <span class="dk-size-option__ratio">4:3</span>
-              <span class="dk-size-option__label">横版</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="dk-size-option" aria-pressed="false">
-              <span class="dk-size-option__tier">2K</span>
-              <span class="dk-size-option__shape dk-x-shape-16x9" aria-hidden="true"></span>
-              <span class="dk-size-option__ratio">16:9</span>
-              <span class="dk-size-option__label">横幅</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="dk-size-option" aria-pressed="false">
-              <span class="dk-size-option__tier">2K</span>
-              <span class="dk-size-option__shape dk-x-shape-9x16" aria-hidden="true"></span>
-              <span class="dk-size-option__ratio">9:16</span>
-              <span class="dk-size-option__label">竖屏</span>
-            </button>
-          </li>
-        </ul>
-
-        <p class="dk-note dk-note--quiet dk-x-mt-3">实际按出图的真实尺寸计费，可能和这里的预估档位不一样。</p>
-      </section>
-
-      <!-- 第四步 · 核对花费并提交（够用态） -->
-      <section class="dk-panel">
-        <header class="dk-panel-head">
-          <h2 class="dk-panel-title">第四步 · 核对花费并提交</h2>
-        </header>
-
-        <p class="dk-eyebrow">花费预估</p>
-        <div class="dk-x-est">
-          <p>这一批共 <span class="dk-money">9 张</span></p>
-          <p>每张 <span class="dk-money">$1.00</span></p>
-          <p class="dk-x-est-total">预计花费 <span class="dk-money">$9.00</span></p>
-          <p class="dk-muted">账户余额 <span class="dk-money">$63.65</span></p>
-          <p class="dk-muted">当前可用 <span class="dk-money">$63.65</span></p>
-          <p class="dk-note dk-note--quiet">可用 = 余额 − 已经排队占用的钱。</p>
-        </div>
-
-        <div class="dk-alert dk-alert--success dk-x-mt-3">余额充足，可以提交。</div>
-
-        <label class="dk-label dk-x-mt-4" for="dkx-job-name">批次名称（选填）</label>
-        <input id="dkx-job-name" type="text" class="dk-input" placeholder="例如：夏季新款-白底主图">
-
-        <button type="button" class="dk-button dk-button--primary-action dk-button--block dk-x-mt-4">提交出图</button>
-        <p class="dk-note dk-note--quiet dk-x-mt-2">金额都是美元（$），不是人民币。</p>
-      </section>
-    </aside>
   </div>
+
 </div>
+
+<!--
+  界面文案键值对照（已实现，zh/designkit.ts 与 en/designkit.ts 逐字摘录；不是新增键）
+
+  designkit.brand                    zh: '商品图'
+  designkit.nav.contentCheck         zh: '文案检查'                                en: 'Copy Check'
+
+  designkit.contentCheck.title       zh: '文案检查'                                en: 'Copy Check'
+  designkit.contentCheck.description zh: '贴入标题或文案，检查违禁词和平台字数。'    en: 'Paste a title or copy to check banned words and the platform length limit.'
+  designkit.contentCheck.placeholder zh: '贴入要检查的文字'                         en: 'Paste the text to check'
+  designkit.contentCheck.platformLabel zh: '平台'                                  en: 'Platform'
+  designkit.contentCheck.platformNone  zh: '不限平台'                              en: 'Any platform'
+  designkit.contentCheck.check       zh: '检查'                                    en: 'Check'
+  designkit.contentCheck.hits        zh: '命中 {count} 个违禁词'                    en: '{count} banned words found'
+  designkit.contentCheck.noHits      zh: '没有命中违禁词。'                         en: 'No banned words found.'
+  designkit.contentCheck.titleLen    zh: '标题 {len} / {max} 字'                   en: 'Title {len} / {max} chars'
+  designkit.contentCheck.titleOver   zh: '超出 {n} 字'                             en: '{n} over the limit'
+  designkit.contentCheck.lenOnly     zh: '{len} 字'                                en: '{len} chars'
+  designkit.contentCheck.note        zh: '词表按广告法极限词整理，命中不代表一定违规，以平台审核为准。'
+                                     en: 'The word list follows Chinese Advertising Law extreme-word lists. A match is not necessarily a violation — the platform review is final.'
+
+  平台与上限（镜像自 api/contentcheck.ts 的 CONTENT_CHECK_PLATFORMS，权威在后端 wordcheck/platform.go）：
+  淘宝 30 · 天猫 30 · 京东 45 · 拼多多 30 · 抖音 30 · Amazon 200
+-->
 
 </body>
 </html>
