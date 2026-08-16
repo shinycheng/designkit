@@ -142,6 +142,21 @@
             >
               {{ upscaleLabelOf(entry.asset?.uid) }}
             </button>
+            <!--
+              删除素材：把这条商品图从服务端删掉（软删）并移出列表。
+              跟右上角的「移除这张」是两件事：移除只是这一批不用它，图还留着，
+              下次还能搜到复用；删除是以后不再出现在商品图列表里。
+              历史批次不受影响（批次里存的是提示词快照和结果图），所以确认文案敢这么写。
+            -->
+            <button
+              v-if="entry.asset"
+              type="button"
+              class="dk-button dk-button--danger dk-button--sm dk-button--block"
+              :disabled="deleting"
+              @click="deleteTarget = entry"
+            >
+              {{ t('designkit.del.assetButton') }}
+            </button>
           </template>
           <template v-else-if="entry.status === 'failed'">
             <p class="dk-note dk-note--danger">{{ entry.error }}</p>
@@ -160,6 +175,18 @@
     <p v-else class="dk-note dk-mt-4">
       {{ t('designkit.workbench.emptyAssets') }}
     </p>
+
+    <!-- 「删除素材」的二次确认。文案敢写「不受影响」是核对过后端语义的（软删，批次存快照）。 -->
+    <ConfirmDialog
+      :show="deleteTarget !== null"
+      :title="t('designkit.del.assetButton')"
+      :message="t('designkit.del.assetConfirm')"
+      :confirm-text="t('designkit.common.delete')"
+      :cancel-text="t('designkit.common.cancel')"
+      :danger="true"
+      @confirm="confirmDeleteAsset()"
+      @cancel="deleteTarget = null"
+    />
   </section>
 </template>
 
@@ -167,9 +194,11 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import {
   ACCEPT_ATTRIBUTE,
   checkUploadFile,
+  deleteAsset,
   errorText,
   fetchContentBlob,
   isCanceledError,
@@ -391,6 +420,53 @@ function whitebgErrorMessage(err: unknown): string {
     return t('designkit.whitebg.unavailable')
   }
   return t('designkit.whitebg.failed')
+}
+
+// ---------------------------------------------------------------------------
+// 删除素材（软删；历史批次不受影响）
+// ---------------------------------------------------------------------------
+
+/** 正在等确认的那一条。null = 弹窗关着。 */
+const deleteTarget = ref<UploadEntry | null>(null)
+/** 有一条正在删（接口在途）。期间所有「删除素材」按钮禁用，防连点。 */
+const deleting = ref(false)
+
+/**
+ * 确认删除：调后端软删这条商品图，然后从列表里移出。
+ *
+ * 删成功后走 removeEntry（它顺手回收预览的 objectURL）；
+ * 删失败列表**不动**，运营看到图还在，跟提示「没删掉」对得上。
+ */
+async function confirmDeleteAsset(): Promise<void> {
+  const entry = deleteTarget.value
+  deleteTarget.value = null
+  const uid = entry?.asset?.uid
+  if (!entry || !uid || deleting.value) {
+    return
+  }
+  deleting.value = true
+  try {
+    await deleteAsset(uid)
+    removeEntry(entry.id)
+    appStore.showToast('success', t('designkit.del.done'))
+  } catch (err) {
+    appStore.showToast('error', deleteErrorMessage(err))
+  } finally {
+    deleting.value = false
+  }
+}
+
+/**
+ * 删失败给运营看什么：带 DK_ 码的业务错误显示后端的中文原文
+ * （比如「找不到这张商品图，可能已经被删除了」），其余（断网、超时）
+ * 显示「没删掉，重试一次。」
+ */
+function deleteErrorMessage(err: unknown): string {
+  const friendly = toFriendlyError(err)
+  if (typeof friendly.code === 'string' && friendly.code.startsWith('DK_')) {
+    return friendly.message
+  }
+  return t('designkit.del.failed')
 }
 
 // ---------------------------------------------------------------------------

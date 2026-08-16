@@ -22,6 +22,25 @@
       <span class="dk-insp-cat__count">{{ totalCount }}</span>
     </button>
 
+    <!--
+      「我的提示词」：紧跟「全部」的一个页签（决策：分类栏顶部一项，不另开页面）。
+      选中值是前端内部标记 MY_PROMPTS_FILTER，不是真实分类 slug。
+      条数拿不到时（接口失败）不显示数字，页签本身照常——入口不能跟着接口一起消失。
+    -->
+    <button
+      v-if="showMine"
+      type="button"
+      class="dk-insp-cat"
+      :class="{ 'is-active': modelValue === MY_PROMPTS_FILTER }"
+      :disabled="disabled"
+      @click="select(MY_PROMPTS_FILTER)"
+    >
+      <span class="dk-insp-cat__name">{{ t('designkit.myPrompts.title') }}</span>
+      <span v-if="mineCount !== null && mineCount !== undefined" class="dk-insp-cat__count">
+        {{ mineCount }}
+      </span>
+    </button>
+
     <button
       v-for="category in categories"
       :key="category.slug"
@@ -39,15 +58,20 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { MY_PROMPTS_FILTER } from '../../api'
 import type { PromptCategory } from '../../api'
 
 defineProps<{
   /** 分类列表，**顺序即显示顺序**（后端已经排好，不要再排一遍）。 */
   categories: PromptCategory[]
-  /** 当前选中的分类 slug；空串 = 全部分类。 */
+  /** 当前选中的分类 slug；空串 = 全部分类；MY_PROMPTS_FILTER = 我的提示词。 */
   modelValue: string
   /** 「全部分类」后面那个总数。 */
   totalCount: number
+  /** 要不要显示「我的提示词」页签。灵感库页传 true。 */
+  showMine?: boolean
+  /** 「我的提示词」的条数；null = 没拿到（页签照常显示，只是不带数字）。 */
+  mineCount?: number | null
   /** 正在加载时禁用，避免连点几下把请求排成一串。 */
   disabled?: boolean
 }>()

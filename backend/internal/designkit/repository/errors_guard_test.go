@@ -37,6 +37,8 @@ func allStaticSQL() []string {
 		buildListImagesByItemSQL(false),
 		buildListQuotaRequestsSQL(true),
 		buildListQuotaRequestsSQL(false),
+		buildListQuotaRequestDetailsSQL(true),
+		buildListQuotaRequestDetailsSQL(false),
 	}
 }
 

@@ -135,6 +135,8 @@
 .dk-mt-4 { margin-top: var(--dk-space-4); }
 .dk-mt-5 { margin-top: var(--dk-space-5); }
 .dk-mt-auto { margin-top: auto; }
+/* 把一个按钮推到 flex 行的最右边（批次详情标题行里的「删除这一批记录」）。 */
+.dk-ml-auto { margin-left: auto; }
 
 /* ── 文字 ─────────────────────────────────────────────────── */
 .dk-text {

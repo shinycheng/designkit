@@ -437,3 +437,51 @@ func TestRatiosMarkUnconfirmedPrice(t *testing.T) {
 	assert.Equal(t, false, first["price_confirmed"])
 	assert.Equal(t, float64(2048), first["target_width"])
 }
+
+// ============================================================================
+// 删除这一批记录（软删）
+// ============================================================================
+
+// DELETE /jobs/:uid 浏览器组和 ERP 读组都要挂。
+func TestDeleteJobMountedOnBothPrefixes(t *testing.T) {
+	jobs := &fakeJobService{}
+	engine := newTestEngine(t, testServices(jobs), testUserID)
+
+	for _, path := range []string{
+		"/api/v1/designkit/jobs/01J8ZK7Q9X2M4N6P8R0T2V4W6Y",
+		"/v1/designkit/jobs/01J8ZK7Q9X2M4N6P8R0T2V4W6Y",
+	} {
+		rec := doRequest(t, engine, http.MethodDelete, path, "", nil)
+		require.Equal(t, http.StatusOK, rec.Code, "路径 %s 响应体：%s", path, rec.Body.String())
+	}
+	require.Equal(t, 2, jobs.deleteCall)
+	assert.Equal(t, "01J8ZK7Q9X2M4N6P8R0T2V4W6Y", jobs.lastDeleteUID)
+}
+
+// 删别人的批次必须是 404（DK_JOB_NOT_FOUND），不能是 403 ——
+// 403 等于告诉对方「这个任务号存在，只是不是你的」。
+func TestDeleteJobOwnershipMismatchIs404(t *testing.T) {
+	jobs := &fakeJobService{deleteErr: dkdomain.NewError(dkdomain.ErrCodeJobNotFound)}
+	engine := newTestEngine(t, testServices(jobs), testUserID)
+
+	rec := doRequest(t, engine, http.MethodDelete,
+		"/api/v1/designkit/jobs/01J8ZK7Q9X2M4N6P8R0T2V4W6Y", "", nil)
+
+	require.Equal(t, http.StatusNotFound, rec.Code, "响应体：%s", rec.Body.String())
+	assertErrorEnvelope(t, rec.Body.Bytes(), dkdomain.ErrCodeJobNotFound)
+}
+
+// 没结束的批次不让删：service 拒绝时要把它的 409 和中文提示原样透出去。
+func TestDeleteJobRefusedWhileRunningKeepsServiceMessage(t *testing.T) {
+	jobs := &fakeJobService{deleteErr: dkdomain.NewError(dkdomain.ErrCodeIllegalStateTransition).
+		WithMessage("这批任务还没结束，不能删除。先点「停止排队」，等它结束再删。")}
+	engine := newTestEngine(t, testServices(jobs), testUserID)
+
+	rec := doRequest(t, engine, http.MethodDelete,
+		"/api/v1/designkit/jobs/01J8ZK7Q9X2M4N6P8R0T2V4W6Y", "", nil)
+
+	require.Equal(t, http.StatusConflict, rec.Code, "响应体：%s", rec.Body.String())
+	errObj := errorObject(t, rec.Body.Bytes())
+	assert.Equal(t, dkdomain.ErrCodeIllegalStateTransition, errObj["error_code"])
+	assert.Contains(t, errObj["message"], "停止排队")
+}

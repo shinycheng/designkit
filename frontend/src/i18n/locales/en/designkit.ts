@@ -322,6 +322,18 @@ export default {
       deleteConfirm: 'Delete this image? It cannot be recovered, and charges are not refunded.',
     },
 
+    // Delete (asset / batch record). Semantics verified against the backend:
+    // deleting an asset never touches past batches; deleting a batch hides it
+    // and its results from My Images, and charges are not refunded.
+    del: {
+      assetButton: 'Delete image',
+      assetConfirm: 'Delete this product image? Past batches and their result images are not affected.',
+      jobButton: 'Delete this batch record',
+      jobConfirm: 'Delete this batch record? Its result images disappear from My Images, and charges already made are not refunded.',
+      done: 'Deleted.',
+      failed: 'Delete failed. Try again.',
+    },
+
     inspiration: {
       title: 'Prompt Library',
       description: 'Browse prompts by category; send the ones you like to the workbench.',
@@ -384,6 +396,23 @@ export default {
 
         unavailable: 'Syncing is not available yet — contact your administrator. Browsing and search are unaffected.',
       },
+    },
+
+    // My prompts (user-saved). Keys mirror zh/designkit.ts exactly.
+    myPrompts: {
+      title: 'My Prompts',
+      empty: 'No saved prompts yet.',
+      create: 'New',
+      edit: 'Edit',
+      save: 'Save',
+      saveFromResult: 'Save to My Prompts',
+      saved: 'Saved to My Prompts.',
+      deleted: 'Deleted.',
+      deleteConfirm: 'Delete this prompt? Images already generated are not affected.',
+      titleLabel: 'Title',
+      bodyLabel: 'Prompt text',
+      limitReached: 'Limit is {max} saved prompts. Delete a few first.',
+      failed: 'Not saved. Try again.',
     },
 
     // AI chat. Keys mirror zh/designkit.ts exactly.
@@ -591,6 +620,32 @@ export default {
       syncReadonly: 'Change this on the Prompt Library page; read-only here.',
       syncOpen: 'Open the Prompt Library page',
       syncWhyReadonly: 'One place to change it, so two screens can never disagree.',
+    },
+
+    quotaAdmin: {
+      title: 'Quota Requests',
+      description: 'Requests operators submit via "Request quota" land here. Approving adds balance to the requester.',
+      pending: 'Pending',
+      handled: 'Handled',
+      empty: 'No pending requests.',
+      approve: 'Approve',
+      reject: 'Reject',
+      amountLabel: 'Amount to add (USD)',
+      amountPlaceholder: 'e.g. 50',
+      noteLabel: 'Note (optional)',
+      approved: 'Approved and balance added',
+      rejected: 'Rejected',
+      handleFailed: 'Not processed. Try again.',
+      requester: 'Requester',
+      requestNote: 'Request note',
+      requestedAt: 'Requested at',
+      handledAt: 'Handled at',
+      amountInvalid: 'Enter a number greater than 0, e.g. 50.',
+      requesterDeleted: 'Account deleted',
+      handledBy: 'Handled by',
+      unavailable: 'Not available yet',
+      unavailableHint: 'The quota request service is not ready. Submitted requests are kept and will show up once it is. Screenshot this for the technical owner.',
+      loadFailed: 'Failed to load the list.',
     },
 
     health: {

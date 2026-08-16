@@ -711,13 +711,18 @@ a:hover { color: var(--dk-accent-strong); }
       </section>
 
       <!-- 展开的批次详情 -->
-      <div class="dk-x-annot"><span class="dk-x-annot__tag">状态演示</span>点「打开这一批」之后 —— 图片严格按「第几张」排列；第 2 张常显了悬停操作，第 3 张演示白底衬底切换，第 4 张演示「高清放大」进行中</div>
+      <div class="dk-x-annot"><span class="dk-x-annot__tag">状态演示</span>点「打开这一批」之后 —— 图片严格按「第几张」排列；第 2 张常显了悬停操作，第 3 张演示白底衬底切换，第 4 张演示「高清放大」进行中；标题行右侧是「删除这一批记录」（批次结束后才显示）</div>
       <div style="margin-top:10px">
         <button type="button" class="dk-button dk-button--quiet dk-button--sm">← 返回列表</button>
         <section class="dk-panel" style="margin-top:12px">
           <div class="dk-x-batch__title">
             <span>夏季新款-白底主图</span>
             <span class="dk-badge dk-badge--warning"><span class="dk-badge__dot" aria-hidden="true"></span>部分成功</span>
+            <!-- 删除这一批记录（软删）：**只在批次结束后显示**（JobDetail 的 canDelete）——
+                 删掉还在跑的批次，图照样出、钱照样扣，而「停止排队」按钮会跟记录一起消失，
+                 后端对没结束的批次也会拒，这里干脆不给入口。点了先弹危险确认（规格照本稿下方
+                 的删除确认弹窗）：「删除这一批的记录？结果图会一起从「我的图片」消失，已扣的费用不退。」 -->
+            <button type="button" class="dk-button dk-button--danger dk-button--sm" style="margin-left:auto">删除这一批记录</button>
           </div>
           <dl class="dk-x-facts">
             <div><dt>提交时间</dt><dd>2026-08-15 10:24</dd></div>

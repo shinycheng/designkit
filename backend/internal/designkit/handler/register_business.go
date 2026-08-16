@@ -84,7 +84,8 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 	// 为它把出图端点整组下线完全不成比例。
 	var prompts *PromptHandler
 	if opts.Services.Prompts != nil {
-		prompts = NewPromptHandler(opts.Services.Prompts, opts.Services.PromptSync, opts.Services.Suggest)
+		prompts = NewPromptHandler(opts.Services.Prompts, opts.Services.PromptSync,
+			opts.Services.Suggest, opts.Services.MyPrompts)
 	} else {
 		slog.Warn("designkit 灵感库服务未就绪：分类、检索、同步这几个端点不可用，" +
 			"运营仍可手打提示词出图")
@@ -147,6 +148,8 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 		mountPromptAdminRoutes(web, prompts, opts.Services.PromptSync)
 		// designkit 设置同理：只挂浏览器组、只放管理员。
 		mountSettingsAdminRoutes(web, opts.Services.Settings)
+		// 额度申请管理同理：只挂浏览器组、只放管理员。
+		mountQuotaAdminRoutes(web, opts.Services.QuotaAdmin)
 	}
 
 	// ---- 机器（ERP）----
@@ -257,7 +260,11 @@ func mountCommonRoutes(g *gin.RouterGroup, assets *AssetHandler, catalog *Catalo
 		// 抠图服务没配置时路由照挂：service 会返回中文的「还没准备好」，
 		// 比裸 404 说得清楚（这条不像 AI 推荐那样有「按 404 判功能未上线」的前端约定）。
 		g.POST("/assets/:uid/remove-background", assets.RemoveBackground)
-		// TODO(designkit): DELETE /assets/:uid、POST /assets/:uid/preprocess
+
+		// 删除商品图（软删）。**不花钱**，挂这一组。
+		// 历史批次的记录和结果图不受影响（item 存的是提示词快照和结果图）。
+		g.DELETE("/assets/:uid", assets.Delete)
+		// TODO(designkit): POST /assets/:uid/preprocess
 	}
 
 	// 报价
@@ -277,7 +284,10 @@ func mountCommonRoutes(g *gin.RouterGroup, assets *AssetHandler, catalog *Catalo
 		// 「停止排队」算在这一组：它**不花钱**，正相反 —— 它是运营用来**别再花钱**的。
 		// 挂在花钱那一组会被上游的计费准入拦掉：额度耗尽时最需要能停的人反而停不了。
 		g.POST("/jobs/:uid/stop", jobs.Stop)
-		// TODO(designkit): DELETE /jobs/:uid
+
+		// 「删除这一批记录」（软删）。**不花钱**，挂这一组。
+		// 只删可见性：账和图都还在，已扣的费用不退；没结束的批次 service 会拒绝。
+		g.DELETE("/jobs/:uid", jobs.Delete)
 	}
 
 	// 结果图
@@ -307,8 +317,20 @@ func mountCommonRoutes(g *gin.RouterGroup, assets *AssetHandler, catalog *Catalo
 		if prompts.hasSuggest() {
 			g.POST("/prompts/suggest", prompts.SuggestPrompt)
 		}
+
+		// 「我的提示词」的三条写端点（运营自建：存 / 改 / 删）。
+		// 读取就是上面那条 GET /prompts（带 ?source=user）。
+		// **都不花钱**，挂这一组：额度耗尽照样能整理自己的词。
+		// 服务缺席时整组不挂（裸 404 = 功能没上线，跟 suggest 同一套前端约定）。
+		//
+		// ⚠ PUT/DELETE /prompts/:uid 跟管理员组的 PUT /prompts/sync/settings
+		// 同层共存（静态段优先于参数段，见本文件头上 gin 路由树那段说明）。
+		if prompts.hasMyPrompts() {
+			g.POST("/prompts", prompts.CreateMine)
+			g.PUT("/prompts/:uid", prompts.UpdateMine)
+			g.DELETE("/prompts/:uid", prompts.DeleteMine)
+		}
 	}
-	// TODO(designkit): POST /prompts、PUT|DELETE /prompts/:uid（运营自己存的提示词）
 }
 
 // mountPromptAdminRoutes 挂灵感库同步那四个端点。**仅管理员**。
@@ -360,6 +382,30 @@ func mountSettingsAdminRoutes(g *gin.RouterGroup, svc SettingsService) {
 	admin.Use(RequireAdmin("商品图设置只有管理员能改，需要调整的话请联系管理员。"))
 	admin.GET("/admin/settings", handler.Get)
 	admin.PUT("/admin/settings", handler.Update)
+}
+
+// mountQuotaAdminRoutes 挂额度申请的两个管理端点。**仅管理员**（决策 19 的闭环）。
+//
+// 为什么只挂浏览器组、不挂 ERP 组：处理申请是管理动作，「通过」还会真的加余额。
+// 给外部系统那把 Key 一个「往任意账号打钱」的入口，是纯粹的风险敞口。
+//
+// svc 为 nil 时整块不挂（裸 404）：运营提交申请（mountMeRoutes 那条）照常，
+// 只是管理页显示「还没准备好」—— 申请仍然会进表，晚一点处理不丢。
+//
+// ⚠ RequireAdmin 必须挂在 RequireAuthenticated 后面：它从上下文取角色，
+// 而角色是鉴权中间件塞进去的。
+func mountQuotaAdminRoutes(g *gin.RouterGroup, svc QuotaAdminService) {
+	if svc == nil {
+		slog.Warn("designkit 额度申请管理服务未就绪：管理员看不到「额度申请」那一页，" +
+			"运营仍可提交申请（记录会留在表里，服务就绪后可见）")
+		return
+	}
+
+	handler := NewQuotaAdminHandler(svc)
+	admin := g.Group("")
+	admin.Use(RequireAdmin("额度申请只有管理员能处理，需要加额请联系管理员。"))
+	admin.GET("/admin/quota-requests", handler.List)
+	admin.POST("/admin/quota-requests/:id/handle", handler.Handle)
 }
 
 // mountMeRoutes 挂「我的消费」。me 为 nil 时整块不挂，其余端点照常。

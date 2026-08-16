@@ -809,10 +809,10 @@ CI（`.github/workflows/backend-ci.yml`）在**每次 push**（任意分支）�
 | 缺什么 | 现状 | 后果 |
 |---|---|---|
 | **ERP 回调通知** | `callback_url` 收下、校验、存库、查询时回显——但**全仓没有任何一处发过请求**。`FinalizeJob` 拿到 `won=true` 只打了一行 Info 日志 | 决策 4 的三件配套只做了一件。防重复发送的地基（`RowsAffected=1` 守卫）已经打好，上面什么都没盖。补它要再写一条 9xxx 迁移（`designkit_jobs` 只有 `callback_url` 一列，没有投递状态/重试次数） |
-| **ERP 接口文档** | 不存在。`designkit/docs/` 三份都是运营向的 | 对接方没有东西可看。而 `设计定型.md` 第三节那张路径表里有 **5 条路径实际不存在**（`DELETE /assets/:uid`、`POST /assets/:uid/preprocess`、`POST /prompts`、`PUT\|DELETE /prompts/:uid`、`DELETE /jobs/:uid`），照它写会 404 |
-| **管理员看不到额度申请** | `POST /me/quota-requests` 已挂、前端有弹窗，但 `ListQuotaRequests` / `HandleQuotaRequest` **零调用方**，没有任何界面 | 决策 19 想解决的问题原封不动：申请单进了一张没人看得见的表 |
-| **删除素材 / 删除任务** | `service.DeleteAsset` 和 `repository.SoftDeleteJob` 都实现了、也有单测，但 `handler/ports.go` 没声明、路由没挂 | 从 HTTP 完全够不到的死代码 |
-| **运营自建提示词** | 表备好了（`source`/`owner_user_id` + 部分索引），`prompt_repo` 三个方法都在，service 和路由没做 | 运营手打的提示词用完即弃 |
+| ~~ERP 接口文档~~ | **2026-08-16 已完成**：`designkit/docs/ERP接口文档.md`，以代码为准盘点全部端点；设计定型第三节的幻影路径表已加「以新文档为准」提醒 | — |
+| ~~管理员看不到额度申请~~ | **2026-08-16 已完成**：管理端「额度申请」页（侧栏带红点），通过=先原子认领再走上游 `AdminService.UpdateUserBalance` 打款（打款失败自动退回待处理）；迁移 9003 加处理备注/金额两列 | — |
+| ~~删除素材 / 删除任务~~ | **2026-08-16 已完成**：`DELETE /assets/:uid`、`DELETE /jobs/:uid` 双前缀挂载；批次未结束拒删（防「停止排队」入口消失）；工作台/批次详情有入口 | — |
+| ~~运营自建提示词~~ | **2026-08-16 已完成**：「我的提示词」增删改（上限 200 条/人，仅本人可见，youmind 词不可改删）；灵感库入口 + AI 推荐结果「存为我的提示词」 | — |
 | **推荐结果缓存** | 没有 | 重复点「重新推荐」每次真花 $0.09~$0.34 |
 | **仪表盘是隐藏菜单的后门** | 「渠道状态」已隐藏，但 `/dashboard` 的「快捷操作」四个按钮直通 `/keys`、`/usage`、`/batch-image`、`/redeem`——全是决策 10 要藏的 | 菜单藏了、按钮还在。**monica 还没决定要不要一起藏** |
 | **版本更新检查仍指向上游** | 后端 `github_release_service.go` 轮询的是上游 Sub2API 的 releases；脱离上游后「有新版本」提示恒为误导，管理员照着升级会把系统换成上游镜像。前端徽章的仓库常量已改指本仓库（命令变 404，无害化），后端轮询未关 | 管理员界面可能长期显示可升级；关掉轮询是后续活 |

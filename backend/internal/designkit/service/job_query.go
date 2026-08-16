@@ -294,6 +294,36 @@ func (s *JobService) finalizeAfterStop(ctx context.Context, job *dkdomain.Job) {
 }
 
 // ============================================================================
+// 删除一批记录（软删）
+// ============================================================================
+
+// DeleteJob 把一个批次从「我的图片」里删掉（软删：user_deleted_at 打上时间戳）。
+//
+// 删的只是**记录的可见性**：数据行、结果图文件、账单全都还在，
+// 只是列表和详情不再返回它（仓储的查询都带 user_deleted_at IS NULL）。
+// 已扣的费用不退 —— 界面确认弹窗必须把这句写出来。
+//
+// **没结束的批次不让删。** 不是技术做不到，而是刻意的：
+// 出图跟浏览器连接是故意脱钩的（决策 21），删掉一个还在跑的批次，
+// 图照样出、钱照样扣，而运营连「停止排队」的按钮都找不到了 ——
+// 这就是决策 21 要防的「取消了还扣我钱」换了一件马甲。
+// 先停、等它结束、再删，每一步都看得见。
+func (s *JobService) DeleteJob(ctx context.Context, userID int64, jobUID string) error {
+	job, err := s.mustGetJob(ctx, userID, jobUID)
+	if err != nil {
+		return err
+	}
+	if !job.Status.IsTerminal() && !job.IsSettled() {
+		return dkdomain.NewError(dkdomain.ErrCodeIllegalStateTransition).
+			WithMessage("这批任务还没结束，不能删除。先点「停止排队」，等它结束再删。")
+	}
+	if err := s.repo.SoftDeleteJob(ctx, userID, jobUID); err != nil {
+		return mapJobRepoError(err, dkdomain.ErrCodeJobNotFound)
+	}
+	return nil
+}
+
+// ============================================================================
 // 重试一张（决策 20 / 设计定型 6.2）
 // ============================================================================
 

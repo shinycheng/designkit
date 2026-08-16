@@ -106,6 +106,7 @@ type JobStore interface {
 	RequestJobStop(ctx context.Context, jobID int64) (cancelled int, err error)
 	RetryItem(ctx context.Context, params dkdomain.RetryItemParams) (*dkdomain.JobItem, error)
 	FinalizeJob(ctx context.Context, params dkdomain.FinalizeJobParams) (won bool, err error)
+	SoftDeleteJob(ctx context.Context, userID int64, uid string) error
 
 	// —— 素材 / 灵感库（展开批次要把 uid 换成内部主键）——
 	GetAssetByUID(ctx context.Context, userID int64, uid string) (*dkdomain.Asset, error)

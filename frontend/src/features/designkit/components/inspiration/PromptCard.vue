@@ -40,9 +40,49 @@
         </span>
       </div>
 
-      <button type="button" class="dk-button dk-button--sm" @click="emit('use')">
-        {{ t('designkit.inspiration.useThis') }}
-      </button>
+      <div class="dk-insp-card__actions">
+        <!-- 「我的提示词」页签里多两个动作：编辑、删除（其余卡片没有）。 -->
+        <template v-if="editable">
+          <button
+            type="button"
+            class="dk-button dk-button--quiet dk-button--sm"
+            @click="emit('edit')"
+          >
+            {{ t('designkit.myPrompts.edit') }}
+          </button>
+          <button
+            type="button"
+            class="dk-button dk-button--quiet dk-button--sm"
+            @click="confirmingDelete = true"
+          >
+            {{ t('designkit.common.delete') }}
+          </button>
+        </template>
+        <button type="button" class="dk-button dk-button--sm" @click="emit('use')">
+          {{ t('designkit.inspiration.useThis') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 原地确认（照抄对话列表的删除确认）：删了找不回来，但历史出图不受影响。 -->
+    <div v-if="editable && confirmingDelete" class="dk-insp-card__confirm">
+      <span class="dk-note dk-note--danger">{{ t('designkit.myPrompts.deleteConfirm') }}</span>
+      <span class="dk-inline-actions">
+        <button
+          type="button"
+          class="dk-button dk-button--danger dk-button--sm"
+          @click="confirmDelete()"
+        >
+          {{ t('designkit.common.delete') }}
+        </button>
+        <button
+          type="button"
+          class="dk-button dk-button--quiet dk-button--sm"
+          @click="confirmingDelete = false"
+        >
+          {{ t('designkit.common.cancel') }}
+        </button>
+      </span>
     </div>
   </article>
 </template>
@@ -54,16 +94,30 @@ import type { Prompt } from '../../api'
 
 const props = defineProps<{
   prompt: Prompt
+  /** 「我的提示词」页签里为 true：多出编辑 / 删除两个动作。 */
+  editable?: boolean
 }>()
 
 const emit = defineEmits<{
-  /** 点了卡片主体：打开详情。 */
+  /** 点了卡片主体：打开详情（我的提示词页签里是打开编辑）。 */
   (e: 'open'): void
   /** 点了「用它生成」：直接带到工作台。 */
   (e: 'use'): void
+  /** 点了「编辑」（仅 editable）。 */
+  (e: 'edit'): void
+  /** 原地确认之后才发出（仅 editable）——收到它就可以直接删，不用再问一遍。 */
+  (e: 'delete'): void
 }>()
 
 const { t } = useI18n()
+
+/** 删除的原地确认开关。确认条收在卡片底部，不用弹窗。 */
+const confirmingDelete = ref(false)
+
+function confirmDelete(): void {
+  confirmingDelete.value = false
+  emit('delete')
+}
 
 /** 示例图加载失败（外部网站，国内网络常常拉不到）。失败就整块不显示。 */
 const previewFailed = ref(false)
@@ -184,5 +238,22 @@ const displayTitle = computed(() => {
   color: var(--dk-text-tertiary);
   font-size: var(--dk-text-xs);
   white-space: nowrap;
+}
+
+.dk-insp-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--dk-space-1);
+  flex-shrink: 0;
+}
+
+.dk-insp-card__confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dk-space-2);
+  flex-wrap: wrap;
+  padding: var(--dk-space-2) var(--dk-space-4) var(--dk-space-3);
+  border-top: 1px solid var(--dk-border);
 }
 </style>

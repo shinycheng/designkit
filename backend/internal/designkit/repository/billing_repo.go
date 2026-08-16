@@ -283,36 +283,159 @@ func (r *designkitRepository) ListQuotaRequests(ctx context.Context, status dkdo
 	return scanQuotaRequests(rows)
 }
 
-func (r *designkitRepository) HandleQuotaRequest(ctx context.Context, id int64, handledBy int64, status dkdomain.QuotaRequestStatus) error {
+// quotaRequestDetailSQL 管理端列表：本体 + 申请人邮箱 + 处理详情。
+//
+// 前 7 列**必须**跟 quotaRequestColumns 同名同序（scanQuotaRequestDetail 先扫它们）。
+// handle_note / approved_amount 是 9003 加的列，刻意不进那个常量
+// （columns_parity_test.go 拿 9001 当唯一真相，见 9003 文件头）。
+//
+// JOIN users 只读邮箱，**绝不写 users**。LEFT JOIN + COALESCE：
+// 申请人账号被删时行照样列出来（钱的事不能因为删号就凭空消失），邮箱给空串。
+const quotaRequestDetailSQL = `
+SELECT q.id, q.user_id, q.note, q.status, q.handled_by, q.handled_at, q.created_at,
+       q.handle_note, q.approved_amount,
+       COALESCE(u.email, ''),
+       hu.email
+FROM designkit_quota_requests q
+LEFT JOIN users u ON u.id = q.user_id AND u.deleted_at IS NULL
+LEFT JOIN users hu ON hu.id = q.handled_by AND hu.deleted_at IS NULL`
+
+// buildListQuotaRequestDetailsSQL 两个 tab 各一条 WHERE：
+// 待处理最老的排前面（先来先处理），处理过的最新的排前面（刚点完的在最上面）。
+func buildListQuotaRequestDetailsSQL(pendingOnly bool) string {
+	if pendingOnly {
+		return quotaRequestDetailSQL + `
+WHERE q.status = 'pending'
+ORDER BY q.created_at ASC, q.id ASC
+LIMIT $1 OFFSET $2`
+	}
+	return quotaRequestDetailSQL + `
+WHERE q.status <> 'pending'
+ORDER BY q.handled_at DESC, q.id DESC
+LIMIT $1 OFFSET $2`
+}
+
+func scanQuotaRequestDetail(row rowScanner) (*dkdomain.QuotaRequestDetail, error) {
+	var d dkdomain.QuotaRequestDetail
+	var note sql.NullString
+	var status string
+	var handledBy sql.NullInt64
+	var handledAt sql.NullTime
+	var handleNote sql.NullString
+	var approvedAmount decimal.NullDecimal
+	var handledByEmail sql.NullString
+
+	if err := row.Scan(
+		&d.ID, &d.UserID, &note, &status, &handledBy, &handledAt, &d.CreatedAt,
+		&handleNote, &approvedAmount, &d.RequesterEmail, &handledByEmail,
+	); err != nil {
+		return nil, err
+	}
+
+	d.Note = nullStringPtr(note)
+	d.Status = dkdomain.QuotaRequestStatus(status)
+	d.HandledBy = nullInt64Ptr(handledBy)
+	d.HandledAt = nullTimePtr(handledAt)
+	d.HandleNote = nullStringPtr(handleNote)
+	if approvedAmount.Valid {
+		amount := approvedAmount.Decimal
+		d.ApprovedAmount = &amount
+	}
+	d.HandledByEmail = nullStringPtr(handledByEmail)
+	return &d, nil
+}
+
+func (r *designkitRepository) ListQuotaRequestDetails(ctx context.Context, pendingOnly bool, limit, offset int) ([]*dkdomain.QuotaRequestDetail, error) {
+	limit = clampLimit(limit, DefaultPageLimit, MaxPageLimit)
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := r.sql.QueryContext(ctx, buildListQuotaRequestDetailsSQL(pendingOnly), limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer closeRows(rows)
+
+	var out []*dkdomain.QuotaRequestDetail
+	for rows.Next() {
+		d, err := scanQuotaRequestDetail(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// CountPendingQuotaRequests 待处理条数（侧边栏红点用）。走 status 索引。
+func (r *designkitRepository) CountPendingQuotaRequests(ctx context.Context) (int, error) {
+	var count int
+	err := r.sql.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM designkit_quota_requests WHERE status = 'pending'`).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *designkitRepository) HandleQuotaRequest(ctx context.Context, id int64, handledBy int64, status dkdomain.QuotaRequestStatus, handleNote *string, approvedAmount *dkdomain.Money) (*dkdomain.QuotaRequest, error) {
 	if status != dkdomain.QuotaRequestHandled && status != dkdomain.QuotaRequestRejected {
-		return fmt.Errorf("designkit: 处理额度申请只能置 handled 或 rejected，收到 %q: %w",
+		return nil, fmt.Errorf("designkit: 处理额度申请只能置 handled 或 rejected，收到 %q: %w",
 			status, dkdomain.ErrConflict)
 	}
+	// 金额存 NullDecimal：驳回的行是 NULL，不是 0 —— 0 会被读成「通过了但一分没加」。
+	var amount decimal.NullDecimal
+	if approvedAmount != nil {
+		amount = decimal.NullDecimal{Decimal: dkdomain.QuantizeMoney(*approvedAmount), Valid: true}
+	}
+	// WHERE status='pending' 是「两个管理员同时点通过」的唯一防线：
+	// 第二个人会打中 0 行 → ErrConflict，绝不会加第二次钱。
+	q, err := scanQuotaRequest(r.sql.QueryRowContext(ctx, `
+UPDATE designkit_quota_requests
+SET status = $3, handled_by = $2, handled_at = NOW(), handle_note = $4, approved_amount = $5
+WHERE id = $1 AND status = 'pending'
+RETURNING `+quotaRequestColumns,
+		id, handledBy, status.String(), nullableStringPtr(handleNote), amount))
+	if err == nil {
+		return q, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, translate(err, "额度申请")
+	}
+
+	// 打中 0 行有两种可能，分开报错，管理员才知道是「没这条」还是「已经被处理过」。
+	var exists bool
+	if scanErr := r.sql.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM designkit_quota_requests WHERE id = $1)`, id).Scan(&exists); scanErr != nil {
+		return nil, scanErr
+	}
+	if !exists {
+		return nil, notFoundErr("额度申请")
+	}
+	return nil, conflictErr(fmt.Sprintf("额度申请 %d 已经被处理过了", id))
+}
+
+// ReopenQuotaRequest 把一条刚置成 handled 的申请退回 pending（补偿用）。
+//
+// 只认 handled 的行：rejected 不该被退回（驳回没有后续动作会失败）。
+// 退回可能撞「同人只能有一条 pending」的部分唯一索引（申请人已另提一条新申请），
+// translate 会把 23505 翻成 ErrConflict，调用方据此换文案。
+func (r *designkitRepository) ReopenQuotaRequest(ctx context.Context, id int64) error {
 	res, err := r.sql.ExecContext(ctx, `
 UPDATE designkit_quota_requests
-SET status = $3, handled_by = $2, handled_at = NOW()
-WHERE id = $1 AND status = 'pending'`, id, handledBy, status.String())
+SET status = 'pending', handled_by = NULL, handled_at = NULL, handle_note = NULL, approved_amount = NULL
+WHERE id = $1 AND status = 'handled'`, id)
 	if err != nil {
-		return err
+		return translate(err, "额度申请")
 	}
 	affected, err := affectedRows(res)
 	if err != nil {
 		return err
 	}
-	if affected == 1 {
-		return nil
-	}
-
-	// 影响 0 行有两种可能，分开报错，管理员才知道是「没这条」还是「已经被处理过」。
-	var exists bool
-	if err := r.sql.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM designkit_quota_requests WHERE id = $1)`, id).Scan(&exists); err != nil {
-		return err
-	}
-	if !exists {
+	if affected != 1 {
 		return notFoundErr("额度申请")
 	}
-	return conflictErr(fmt.Sprintf("额度申请 %d 已经被处理过了", id))
+	return nil
 }
 
 // designkitUsageLogRequestIDPattern 是「这条账单是 designkit 出图产生的」的判据：

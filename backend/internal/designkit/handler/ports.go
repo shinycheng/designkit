@@ -50,6 +50,13 @@ type Services struct {
 	// 为它把出图端点整组下线完全不成比例。
 	Prompts PromptService
 
+	// MyPrompts 「我的提示词」（运营自建：新建 / 修改 / 删除）。所有登录用户都能用。
+	// 读取走 Prompts（列表带 source=user 过滤）。
+	//
+	// **同样刻意不算进 Ready()**：只依赖数据库。缺席时那三条写端点整组不挂
+	// （裸 404，前端据此显示「还没准备好」），浏览和出图照常。
+	MyPrompts MyPromptService
+
 	// PromptSync 灵感库同步（触发同步、看同步状态、选同步用的代理）。**只有管理员能用。**
 	//
 	// 缺席时那四个管理端点不注册，浏览照常 —— 运营那一页不受影响。
@@ -67,6 +74,12 @@ type Services struct {
 	// **同样刻意不算进 Ready()**：它只依赖数据库。缺席时「商品图设置」那一页不可用，
 	// 出图照常按数据库里已有的配置跑 —— 为一个设置页把出图端点整组下线完全不成比例。
 	Settings SettingsService
+
+	// QuotaAdmin 额度申请的管理端（列表 + 通过/驳回）。**只有管理员能用。**
+	//
+	// **同样刻意不算进 Ready()**：缺席时只有「额度申请」那一页不可用（裸 404），
+	// 运营提交申请（Me）和出图都照常。
+	QuotaAdmin QuotaAdminService
 
 	// Chat 「AI 对话」页（决策 38：会话保存 / 能发图 / 所有运营可用）。
 	//
@@ -195,6 +208,13 @@ type AssetService interface {
 	// 不花钱（走本地 rembg，不经过出图网关）。抠图服务没配置时返回带中文文案的
 	// *DesignkitError（「白底图功能还没准备好，请联系管理员。」）。
 	RemoveBackgroundAsset(ctx context.Context, userID int64, uid string, origin dkdomain.Origin) (*dkdomain.Asset, error)
+
+	// DeleteAsset 删除一张商品图（软删），校验归属。
+	//
+	// 只影响商品图列表：历史批次的记录和结果图**不受影响**
+	// （item 存的是提示词快照和结果图，job_items.asset_id 刻意没建外键）。
+	// 对象存储里的文件也不删（决策 17：图片永久保留）。
+	DeleteAsset(ctx context.Context, userID int64, uid string) error
 }
 
 // ---- 配置 / 报价 ----
@@ -365,6 +385,14 @@ type JobService interface {
 	// DK_MAX_ATTEMPTS_EXCEEDED（累计次数到顶）、DK_JOB_ALREADY_SETTLED（已结算）、
 	// DK_INSUFFICIENT_BALANCE（余额不够）。
 	RetryJobItem(ctx context.Context, in RetryItemInput) (*dkdomain.JobItem, error)
+
+	// DeleteJob 删除一批记录（软删），校验归属。
+	//
+	// 删的只是可见性：这一批和它的结果图从「我的图片」消失，
+	// 数据行、图片文件、账单都还在，**已扣的费用不退**。
+	// 没结束的批次拒绝删除（DK_ILLEGAL_STATE_TRANSITION）——
+	// 删掉一个在跑的批次等于把「停止排队」的入口藏起来（决策 21 的语义）。
+	DeleteJob(ctx context.Context, userID int64, jobUID string) error
 }
 
 // StopJobResult 是一次「停止排队」的结果。
@@ -452,6 +480,46 @@ type MeService interface {
 	CreateQuotaRequest(ctx context.Context, userID int64, note string) (*QuotaRequestResult, error)
 }
 
+// ---- 额度申请（管理端，决策 19 的闭环）----
+
+// QuotaRequestAdminList 管理端列表的一页。
+type QuotaRequestAdminList struct {
+	// Items 当前 tab 的行。
+	Items []*dkdomain.QuotaRequestDetail
+	// PendingCount 全部待处理条数（侧边栏红点 + 「待处理」tab 的角标）。
+	// 跟 Items 无关：看「已处理」tab 时它也照给。
+	PendingCount int
+}
+
+// HandleQuotaRequestInput 管理员处理一条申请的输入。
+type HandleQuotaRequestInput struct {
+	// ID 申请的自增主键（管理端接口暴露它，同上游用户管理的惯例；
+	// 运营侧接口仍然不暴露，见 quotaRequestDTO 的注释）。
+	ID int64
+	// AdminUserID 处理人（当前登录的管理员）。
+	AdminUserID int64
+	// Approve true=通过并加额，false=驳回。
+	Approve bool
+	// Note 处理备注，可为空串。
+	Note string
+	// Amount 通过时要加的金额（美元）。Approve=true 时必须 > 0；驳回时忽略。
+	Amount dkdomain.Money
+}
+
+// QuotaAdminService 额度申请的管理端。**只有管理员路由挂它。**
+type QuotaAdminService interface {
+	// ListQuotaRequests pendingOnly=true 看待处理，false 看处理过的（通过 + 驳回）。
+	ListQuotaRequests(ctx context.Context, pendingOnly bool, limit, offset int) (*QuotaRequestAdminList, error)
+
+	// HandleQuotaRequest 通过（标记 + 给申请人加余额）或驳回（只标记）。
+	// 返回处理后的那一行。
+	//   - 行不存在 → domain.ErrNotFound
+	//   - 已被处理过（含两个管理员同时点）→ domain.ErrConflict
+	//   - 标记成功但加余额失败 → 带中文 message 的 DesignkitError，
+	//     实现内部已尽力把行退回 pending，文案里写清楚了还能不能直接重试
+	HandleQuotaRequest(ctx context.Context, in HandleQuotaRequestInput) (*dkdomain.QuotaRequest, error)
+}
+
 // ---- 灵感库 ----
 
 // PromptCategoryView 是灵感库左侧那一列分类里的一项。
@@ -466,6 +534,10 @@ type PromptCategoryView struct {
 	PromptCount int
 }
 
+// ListPromptSourceMine 是 GET /prompts 里 source 参数的取值：「我的提示词」。
+// 跟 promptDTO.Source 的字面量一致（user），别再发明第三个词。
+const ListPromptSourceMine = "user"
+
 // ListPromptsInput 是 GET /prompts 的检索条件。
 //
 // **一律游标分页**（cursor.go 的注释说了为什么不用 offset）。
@@ -475,6 +547,13 @@ type ListPromptsInput struct {
 	// 传了一个不存在的 slug 时，实现应当返回空页而不是报错 ——
 	// 分类刚被同步改名时，界面上那个旧链接不该变成一个红色报错。
 	CategorySlug string
+	// Source 空串 = 共享目录（youmind，全站一样）；
+	// "user" = 只看 ViewerUserID 自己存的（「我的提示词」）。
+	//
+	// ⚠ 实现必须保证：**任何取值下都带不出别人的自建词**。
+	Source string
+	// ViewerUserID 当前登录用户。Source="user" 时按它过滤归属。
+	ViewerUserID int64
 	// Keyword 关键词，标题和正文都搜。**实现必须用 ILIKE**（PostgreSQL 的 LIKE 区分大小写，
 	// 用 LIKE 会出现「搜 dress 搜不到 Dress」这种运营根本想不到的结果）。
 	Keyword string
@@ -510,8 +589,9 @@ type PromptPage struct {
 	NextCursorID int64
 }
 
-// PromptService 灵感库的浏览。**所有登录用户都能用**，不做归属过滤 ——
-// 灵感库是全站共享的目录。
+// PromptService 灵感库的浏览。**所有登录用户都能用**。
+// 共享目录（youmind）不做归属过滤；运营自建的词（source=user）**只有本人可见**，
+// 过滤责任在实现侧（列表按 Source/ViewerUserID，详情按归属）。
 type PromptService interface {
 	// ListCategories 分类列表，按 (sort_order, id) 排，顺序即界面显示顺序。
 	ListCategories(ctx context.Context) ([]*PromptCategoryView, error)
@@ -519,11 +599,30 @@ type PromptService interface {
 	// ListPrompts 检索提示词，游标分页。只返回没下架、没删的。
 	ListPrompts(ctx context.Context, in ListPromptsInput) (*PromptPage, error)
 
-	// GetPrompt 按对外编号取一条。
+	// GetPrompt 按对外编号取一条。viewerUserID 是当前登录用户 ——
+	// 别人的自建词一律「找不到」（不泄露编号存在）。
 	//
 	// **这里不过滤 is_enabled**：运营收藏夹里那条词后来被管理员下架了，
 	// 点开详情仍要看得到，否则他只会看到一个莫名其妙的 404。
-	GetPrompt(ctx context.Context, uid string) (*PromptView, error)
+	GetPrompt(ctx context.Context, viewerUserID int64, uid string) (*PromptView, error)
+}
+
+// MyPromptService 「我的提示词」的写入。**所有登录用户都能用**，
+// 但每条只有归属人自己能改能删；youmind 来源的一律拒绝（会被自动同步覆盖回去）。
+//
+// 读取刻意不放在这里：列表 / 详情走 PromptService（同一套分页、同一个 DTO），
+// 前端「我的提示词」那个页签只是 GET /prompts?source=user。
+type MyPromptService interface {
+	// CreateMyPrompt 存一条（source=user，归属当前用户）。
+	// 每人上限 200 条，超了返回带中文文案的 DK_INVALID_REQUEST。
+	CreateMyPrompt(ctx context.Context, userID int64, title, body string) (*dkdomain.Prompt, error)
+
+	// UpdateMyPrompt 改标题和正文。别人的词返回 domain.ErrNotFound；
+	// youmind 来源返回 DK_INVALID_REQUEST（「灵感库的提示词不能修改」）。
+	UpdateMyPrompt(ctx context.Context, userID int64, uid, title, body string) (*dkdomain.Prompt, error)
+
+	// DeleteMyPrompt 软删一条自己的。历史任务里的提示词快照不受影响。
+	DeleteMyPrompt(ctx context.Context, userID int64, uid string) error
 }
 
 // ----------------------------------------------------------------------------

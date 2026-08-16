@@ -98,7 +98,21 @@
         class="dk-textarea"
         :placeholder="t('designkit.suggest.resultHint')"
       ></textarea>
-      <p class="dk-note dk-mt-1">{{ t('designkit.suggest.resultHint') }}</p>
+      <div class="dk-editor-result-actions dk-mt-1">
+        <p class="dk-note">{{ t('designkit.suggest.resultHint') }}</p>
+        <!--
+          存的是**当前编辑后**的内容（绑定的就是 finalPrompt），不是 AI 的原始输出。
+          不花钱、不出图，存完下次在灵感库的「我的提示词」页签里能直接「用它生成」。
+        -->
+        <button
+          type="button"
+          class="dk-button dk-button--secondary dk-button--sm"
+          :disabled="savingMine || finalPrompt.trim() === ''"
+          @click="saveToMyPrompts"
+        >
+          {{ savingMine ? t('designkit.common.loading') : t('designkit.myPrompts.saveFromResult') }}
+        </button>
+      </div>
 
       <!--
         判成了哪个分类必须让运营看见：选「全部」时这是他唯一能发现
@@ -131,11 +145,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores'
 import {
+  createMyPrompt,
   isEmptySuggestion,
   isSuggestUnavailableError,
   listPromptCategories,
   suggestPrompt,
+  toFriendlyError,
   type PromptCategory,
   type SuggestPromptCandidate,
 } from '../../api'
@@ -227,6 +244,33 @@ onMounted(async () => {
   }
 })
 
+const appStore = useAppStore()
+
+/** 「存为我的提示词」进行中：禁掉按钮，连点等于存出两条一样的。 */
+const savingMine = ref(false)
+
+/**
+ * 把结果框里**当前这份**（可能已被运营改过）存进「我的提示词」。
+ * 不花钱、不出图；成功只弹一句 toast，不打断出图流程。
+ * 失败显示后端的中文原因（上限 200 条那类），兜底一句「没保存成功」。
+ */
+async function saveToMyPrompts() {
+  const body = finalPrompt.value.trim()
+  if (savingMine.value || body === '') {
+    return
+  }
+  savingMine.value = true
+  try {
+    // 标题留空：卡片会拿正文开头顶上，比机器起的名字更认得出。
+    await createMyPrompt({ title: '', body })
+    appStore.showSuccess(t('designkit.myPrompts.saved'))
+  } catch (error) {
+    appStore.showError(toFriendlyError(error).message || t('designkit.myPrompts.failed'))
+  } finally {
+    savingMine.value = false
+  }
+}
+
 async function runSuggest() {
   if (!canSuggest.value) {
     return
@@ -260,3 +304,13 @@ async function runSuggest() {
   }
 }
 </script>
+
+<style scoped>
+.dk-editor-result-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dk-space-2);
+  flex-wrap: wrap;
+}
+</style>

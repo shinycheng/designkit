@@ -212,12 +212,13 @@ const (
 	ErrCodeIllegalStateTransition = "DK_ILLEGAL_STATE_TRANSITION"
 
 	// —— 找不到 ——
-	ErrCodeJobNotFound         = "DK_JOB_NOT_FOUND"
-	ErrCodeItemNotFound        = "DK_ITEM_NOT_FOUND"
-	ErrCodeAssetNotFound       = "DK_ASSET_NOT_FOUND"
-	ErrCodeImageNotFound       = "DK_IMAGE_NOT_FOUND"
-	ErrCodePromptNotFound      = "DK_PROMPT_NOT_FOUND"
-	ErrCodeChatSessionNotFound = "DK_CHAT_SESSION_NOT_FOUND"
+	ErrCodeJobNotFound          = "DK_JOB_NOT_FOUND"
+	ErrCodeItemNotFound         = "DK_ITEM_NOT_FOUND"
+	ErrCodeAssetNotFound        = "DK_ASSET_NOT_FOUND"
+	ErrCodeImageNotFound        = "DK_IMAGE_NOT_FOUND"
+	ErrCodePromptNotFound       = "DK_PROMPT_NOT_FOUND"
+	ErrCodeChatSessionNotFound  = "DK_CHAT_SESSION_NOT_FOUND"
+	ErrCodeQuotaRequestNotFound = "DK_QUOTA_REQUEST_NOT_FOUND"
 
 	// —— 鉴权 ——
 	ErrCodeUnauthorized  = "DK_UNAUTHORIZED"
@@ -386,6 +387,10 @@ var errorCatalog = map[string]DesignkitError{
 	},
 	ErrCodePromptNotFound: {
 		Message:    "找不到这条提示词，可能已经从灵感库下架了。",
+		HTTPStatus: http.StatusNotFound,
+	},
+	ErrCodeQuotaRequestNotFound: {
+		Message:    "找不到这条申请，刷新列表看最新状态。",
 		HTTPStatus: http.StatusNotFound,
 	},
 

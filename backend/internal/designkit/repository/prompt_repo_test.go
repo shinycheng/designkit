@@ -89,6 +89,34 @@ func TestListPromptsAlwaysOrdersByIDAscending(t *testing.T) {
 	}
 }
 
+func TestListPromptsFiltersBySource(t *testing.T) {
+	// 「我的提示词」和共享目录靠 source 分开。少了这个条件，
+	// 运营 A 存的词会混进运营 B 的灵感库列表 —— 自建词只有本人可见。
+	src := dkdomain.PromptSourceUser
+	owner := int64(9)
+	sqlText, args := buildListPromptsQuery(dkdomain.ListPromptsQuery{
+		Source:      &src,
+		OwnerUserID: &owner,
+	})
+	if !strings.Contains(sqlText, "AND source = $1") {
+		t.Fatalf("要能按来源过滤:\n%s", sqlText)
+	}
+	if !strings.Contains(sqlText, "AND owner_user_id = $2") {
+		t.Fatalf("我的提示词必须带归属过滤:\n%s", sqlText)
+	}
+	if args[0] != "user" {
+		t.Fatalf("来源参数不对: %v", args[0])
+	}
+
+	// 不传 Source 时不能凭空多出过滤条件（共享目录的过滤由 service 侧显式给）。
+	// ⚠ 判据必须是「过滤子句」而不是裸字符串 "source"——SELECT 列表里本来就有
+	// source / source_ref 两列，拿裸字符串判会永远失败。
+	plain, _ := buildListPromptsQuery(dkdomain.ListPromptsQuery{})
+	if strings.Contains(plain, "AND source = ") {
+		t.Fatalf("没传 Source 不该出现 source 过滤条件:\n%s", plain)
+	}
+}
+
 func TestSyncedPromptUpsertNeverTouchesUserPrompts(t *testing.T) {
 	// 同步写入的 source 恒为 'youmind'，绝不会覆盖运营自己存的那些
 	// （它们的 source_ref 是空的，部分唯一索引也不会命中）。

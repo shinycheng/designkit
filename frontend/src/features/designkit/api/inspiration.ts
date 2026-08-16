@@ -202,6 +202,11 @@ export const MAX_PROMPT_KEYWORD_LENGTH = 64
 export interface ListPromptsQuery {
   /** 分类的 slug；不填 = 全部分类。 */
   category?: string
+  /**
+   * 不填 = 共享目录（全站一样）；`'user'` = 只看自己存的（「我的提示词」）。
+   * 取值必须逐字是 `user`（后端只认这一个，拼错直接 400，不静默当成不填）。
+   */
+  source?: 'user'
   /** 关键词，标题和正文都搜；不填 = 不过滤。 */
   keyword?: string
   /** 上一页返回的 `next_cursor`；不填 = 第一页。**不透明字符串，不要解析。** */
@@ -218,6 +223,9 @@ export async function listPrompts(query: ListPromptsQuery = {}): Promise<PromptP
   const keyword = (query.keyword ?? '').trim()
   if (category !== '') {
     params.category = category
+  }
+  if (query.source) {
+    params.source = query.source
   }
   if (keyword !== '') {
     params.keyword = keyword
@@ -254,6 +262,72 @@ export async function getPrompt(uid: string, signal?: AbortSignal): Promise<Prom
     { signal },
   )
   return { ...data, variables: data.variables ?? [] }
+}
+
+// ============================================================================
+// 我的提示词（运营自建，所有登录用户）
+//
+// 读取沿用上面的 `listPrompts({ source: 'user' })` / `getPrompt()`；
+// 这里只有三条写接口。规则都在后端（这里不重复校验，只把上限拿来做输入框的
+// maxlength）：每人 200 条、标题 100 字、正文 5000 字、别人的词一律 404、
+// youmind 来源的词不可改删（返回带中文说明的 400）。
+// ============================================================================
+
+/**
+ * 「我的提示词」在分类栏里那个页签的**前端内部标记**。
+ *
+ * ⚠ 只在前端流转（选中态、网址 query），**绝不发给后端**——
+ * 后端认的是 `source=user` 参数，这个值只是用来跟真实分类 slug 区分开。
+ * 带双下划线是为了永远不会撞上 YouMind 的分类 slug。
+ */
+export const MY_PROMPTS_FILTER = '__mine__'
+
+/** 每人最多存多少条。跟后端 `MaxUserPromptsPerUser` 一致。 */
+export const MY_PROMPT_MAX_COUNT = 200
+/** 标题字数上限。跟后端 `MaxUserPromptTitleRunes` 一致。 */
+export const MY_PROMPT_TITLE_MAX = 100
+/** 正文字数上限。跟后端 `MaxUserPromptBodyRunes` 一致。 */
+export const MY_PROMPT_BODY_MAX = 5000
+
+/** 存 / 改一条自己的提示词的输入。标题可以留空（卡片会拿正文开头顶上）。 */
+export interface MyPromptInput {
+  title: string
+  body: string
+}
+
+/** 存一条到「我的提示词」。超上限时后端返回带中文文案的 400，原样显示即可。 */
+export async function createMyPrompt(input: MyPromptInput): Promise<Prompt> {
+  const { data } = await apiClient.post<Prompt>(`${DESIGNKIT_API_BASE_PATH}/prompts`, {
+    title: (input.title ?? '').trim(),
+    body: (input.body ?? '').trim(),
+  })
+  return { ...data, variables: data.variables ?? [] }
+}
+
+/** 改一条自己的（只有标题和正文能改）。别人的 / youmind 的会被后端拒绝。 */
+export async function updateMyPrompt(uid: string, input: MyPromptInput): Promise<Prompt> {
+  const { data } = await apiClient.put<Prompt>(
+    `${DESIGNKIT_API_BASE_PATH}/prompts/${encodeURIComponent(uid)}`,
+    {
+      title: (input.title ?? '').trim(),
+      body: (input.body ?? '').trim(),
+    },
+  )
+  return { ...data, variables: data.variables ?? [] }
+}
+
+/** 删一条自己的（软删）。已出过的图和历史记录不受影响。 */
+export async function deleteMyPrompt(uid: string): Promise<void> {
+  await apiClient.delete(`${DESIGNKIT_API_BASE_PATH}/prompts/${encodeURIComponent(uid)}`)
+}
+
+/**
+ * 这个错误是不是「后端还没上线『我的提示词』」。
+ * 判据跟 `isSuggestUnavailableError()` 完全一致：裸 404/405 = 端点没挂；
+ * 带 DK_ 错误码的是正经业务错误（越权、上限、youmind 不可改），不算没上线。
+ */
+export function isMyPromptUnavailableError(error: unknown): boolean {
+  return isSuggestUnavailableError(error)
 }
 
 // ============================================================================

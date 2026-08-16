@@ -496,6 +496,9 @@ a:hover { color: var(--dk-accent-strong); }
 /* 「生成白底图」抠图中的转圈（按钮禁用 + 文案换成进度，照 AssetUploader 的写法） */
 .dk-x-spin { animation: dk-x-spin 0.9s linear infinite; transform-origin: center; }
 @keyframes dk-x-spin { to { transform: rotate(360deg); } }
+
+/* AI 推荐结果下方那行：说明在左、「存为我的提示词」在右（PromptEditor 的 dk-editor-result-actions） */
+.dk-x-editor-result-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 </style>
 </head>
 <body>
@@ -639,9 +642,13 @@ a:hover { color: var(--dk-accent-strong); }
             </div>
             <p class="dk-x-thumb-name">米白针织开衫-正面.jpg</p>
             <p class="dk-x-thumb-status dk-note--success">已上传</p>
-            <!-- 卡片操作区（AssetUploader：status==='done' 才出现；实现里下面还有「高清放大」，本稿先只画白底图） -->
+            <!-- 卡片操作区（AssetUploader：status==='done' 才出现）：生成白底图 / 高清放大 / 删除素材。
+                 「删除素材」跟移除是两件事：移除只是这一批不用它，图还留着；删除是软删，
+                 从商品图列表里消失，历史批次的记录和结果图不受影响。点了先弹危险确认：
+                 「删除这张商品图？历史批次的记录和结果图不受影响。」（弹窗规格照 06 稿的删除确认） -->
             <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2">生成白底图</button>
             <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2">高清放大</button>
+            <button type="button" class="dk-button dk-button--danger dk-button--sm dk-button--block dk-x-mt-2">删除素材</button>
           </li>
 
           <!-- ①-b 帆布托特包：抠图中 —— 点了「生成白底图」，按钮转圈 + 禁用，文案换成进度。
@@ -666,6 +673,8 @@ a:hover { color: var(--dk-accent-strong); }
               <svg class="dk-x-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
               抠图中…
             </button>
+            <!-- 抠图中只禁用「生成白底图」那一排；「删除素材」照常可点（实现里只在删除请求在途时禁用） -->
+            <button type="button" class="dk-button dk-button--danger dk-button--sm dk-button--block dk-x-mt-2">删除素材</button>
           </li>
 
           <!-- ② 瓶：上一轮出的图（角标） -->
@@ -686,6 +695,7 @@ a:hover { color: var(--dk-accent-strong); }
             <p class="dk-x-thumb-status dk-note--success">已上传</p>
             <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2">生成白底图</button>
             <button type="button" class="dk-button dk-button--secondary dk-button--sm dk-button--block dk-x-mt-2">高清放大</button>
+            <button type="button" class="dk-button dk-button--danger dk-button--sm dk-button--block dk-x-mt-2">删除素材</button>
           </li>
 
           <!-- ③ 杯：上传中 63% -->
@@ -774,6 +784,16 @@ a:hover { color: var(--dk-accent-strong); }
           让 AI 推荐
           <span class="dk-button__price">· $0.09~$0.34</span>
         </button>
+
+        <!-- AI 推荐结果（演示态：推荐已完成）。textarea 就是最终提示词，可直接改，
+             出图用的是改完的版本。「存为我的提示词」存的也是当前编辑后的内容——
+             不花钱、不出图，存完在灵感库「我的提示词」页签里能直接「用它生成」 -->
+        <label class="dk-label dk-x-mt-4" for="dkx-suggest-result">AI 推荐的提示词</label>
+        <textarea id="dkx-suggest-result" class="dk-textarea" rows="7">米白色针织开衫平铺在浅灰亚麻布面上，旁边点缀干燥花与牛皮纸标签，顶部打柔和自然光，日系温柔氛围，画面干净、留白均匀，细节清晰，质感高级，适合电商平台展示。</textarea>
+        <div class="dk-x-editor-result-actions dk-x-mt-1">
+          <p class="dk-note">可直接修改。出图用这一条，出 1 张。</p>
+          <button type="button" class="dk-button dk-button--secondary dk-button--sm">存为我的提示词</button>
+        </div>
       </section>
 
       <!-- 第三步 · 选出图比例 -->

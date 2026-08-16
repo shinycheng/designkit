@@ -261,6 +261,31 @@ func (h *AssetHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, newAssetDTO(mountPrefixOf(c), asset))
 }
 
+// Delete 处理 DELETE /assets/:uid。
+//
+// 软删：只从商品图列表里消失，历史批次的记录和结果图不受影响
+// （item 存的是提示词快照和结果图，不跟着商品图走），
+// 对象存储里的文件也不删（决策 17：图片永久保留）。
+// 归属不匹配走 404（DK_ASSET_NOT_FOUND），不是 403 —— 403 会泄露「这个编号存在」。
+func (h *AssetHandler) Delete(c *gin.Context) {
+	userID, ok := userIDOf(c)
+	if !ok {
+		failCode(c, dkdomain.ErrCodeUnauthorized)
+		return
+	}
+	uid, ok := requireUID(c, "uid", dkdomain.ErrCodeAssetNotFound)
+	if !ok {
+		return
+	}
+
+	if err := h.assets.DeleteAsset(c.Request.Context(), userID, uid); err != nil {
+		failService(c, err, dkdomain.ErrCodeAssetNotFound)
+		return
+	}
+	// 跟 DELETE /chat/sessions/:uid 同一个口径：200 + {"ok":true}。
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // Content 处理 GET /assets/:uid/content，直接回图片字节。
 func (h *AssetHandler) Content(c *gin.Context) {
 	userID, ok := userIDOf(c)

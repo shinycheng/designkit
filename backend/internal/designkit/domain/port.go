@@ -478,8 +478,26 @@ type BillingRepository interface {
 	// ListQuotaRequests 管理员后台看待办。**必须显式 ORDER BY**。
 	ListQuotaRequests(ctx context.Context, status QuotaRequestStatus, limit, offset int) ([]*QuotaRequest, error)
 
-	// HandleQuotaRequest 管理员处理一条申请。
-	HandleQuotaRequest(ctx context.Context, id int64, handledBy int64, status QuotaRequestStatus) error
+	// ListQuotaRequestDetails 管理端列表：本体 + 申请人邮箱 + 处理详情。
+	// pendingOnly=true 只看待处理；false 只看**处理过的**（handled + rejected 都算）。
+	// **必须显式 ORDER BY**。
+	ListQuotaRequestDetails(ctx context.Context, pendingOnly bool, limit, offset int) ([]*QuotaRequestDetail, error)
+
+	// CountPendingQuotaRequests 待处理条数（侧边栏红点用）。
+	CountPendingQuotaRequests(ctx context.Context) (int, error)
+
+	// HandleQuotaRequest 管理员处理一条申请：原子地把 pending 行置成
+	// handled / rejected 并写处理详情，返回**处理后的那一行**（调用方要用
+	// UserID 去加余额）。行不存在返回 ErrNotFound；已被处理过返回 ErrConflict ——
+	// 这条 WHERE status='pending' 守卫就是「两个管理员同时点通过」的唯一防线，
+	// 少了它同一条申请会被加两次钱。
+	HandleQuotaRequest(ctx context.Context, id int64, handledBy int64, status QuotaRequestStatus, handleNote *string, approvedAmount *Money) (*QuotaRequest, error)
+
+	// ReopenQuotaRequest 把一条刚置成 handled 的申请退回 pending（补偿用：
+	// 标记成功但加余额失败时调它，让管理员能直接重试）。
+	// 只认 handled 状态的行；退回会撞「同人只能有一条 pending」的部分唯一索引时
+	// 返回 ErrConflict（说明申请人已另提了一条新申请）。
+	ReopenQuotaRequest(ctx context.Context, id int64) error
 
 	// GetUsageSummary 工作台角落那三个数。from/to 是时间窗（本月）。
 	//
@@ -560,6 +578,12 @@ type ListPromptsQuery struct {
 	CategoryID *int64
 	// Keyword 关键词。**一律用 ILIKE**（PostgreSQL 的 LIKE 区分大小写）。
 	Keyword string
+	// Source 只看这个来源；nil = 不过滤。
+	//
+	// ⚠ 对外的列表必须带上它：不带的话，运营 A 存的提示词会混进
+	// 运营 B 的灵感库列表里 —— 自建词只有本人可见（「我的提示词」）。
+	// 共享目录一律 Source=youmind；「我的提示词」一律 Source=user + OwnerUserID。
+	Source *PromptSource
 	// OwnerUserID 只看某人自己存的；nil = 不过滤。
 	OwnerUserID *int64
 	// OnlyEnabled 只看没下架的。

@@ -96,7 +96,11 @@
             >
               <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
               <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
-              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+              <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
+                {{ item.label }}
+                <!-- designkit: 待办红点（目前只有「额度申请」用）。收起时随标签一起隐藏。 -->
+                <span v-if="item.dot" class="ml-1.5 inline-block h-2 w-2 rounded-full bg-red-500 align-middle" aria-hidden="true"></span>
+              </span>
             </router-link>
           </template>
         </div>
@@ -196,16 +200,23 @@ import {
   DESIGNKIT_CONTENT_CHECK_PATH,
   DESIGNKIT_GALLERY_PATH,
   DESIGNKIT_INSPIRATION_PATH,
+  DESIGNKIT_QUOTA_REQUESTS_PATH,
   DESIGNKIT_SETTINGS_PATH,
   DESIGNKIT_WORKBENCH_PATH,
   DesignkitChatIcon,
   DesignkitContentCheckIcon,
   DesignkitGalleryIcon,
   DesignkitInspirationIcon,
+  DesignkitQuotaIcon,
   DesignkitSettingsIcon,
   DesignkitWorkbenchIcon,
   isUpstreamNavHiddenFromUser,
 } from '@/features/designkit/nav'
+// designkit: 「额度申请」菜单项的红点（有待处理的申请时亮）。
+import {
+  designkitQuotaPendingCount,
+  refreshDesignkitQuotaPendingCount,
+} from '@/features/designkit/stores/quotaBadge'
 
 interface NavItem {
   path: string
@@ -226,6 +237,11 @@ interface NavItem {
    * 开关切换时菜单自动更新。
    */
   featureFlag?: () => boolean | undefined
+  /**
+   * designkit: true 时菜单项标签旁显示一个红点（有待办）。
+   * 值在 computed 里算（读的 reactive 来源被自动追踪），目前只有「额度申请」用。
+   */
+  dot?: boolean
 }
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
@@ -808,7 +824,15 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true },
     // designkit: 商品图设置（出图比例 / 模型 / 并发 / 单价）。排在上游「系统设置」前面一格。
     // 刻意不加 hideInSimpleMode：这是这套系统最核心的配置，简单模式下更需要看得到。
-    { path: DESIGNKIT_SETTINGS_PATH, label: t('designkit.nav.settings'), icon: DesignkitSettingsIcon }
+    { path: DESIGNKIT_SETTINGS_PATH, label: t('designkit.nav.settings'), icon: DesignkitSettingsIcon },
+    // designkit: 额度申请（决策 19 的闭环），排在「商品图设置」旁边。
+    // 有待处理的申请时标签旁亮红点；条数在侧边栏挂载和管理页动作后刷新（quotaBadge.ts）。
+    {
+      path: DESIGNKIT_QUOTA_REQUESTS_PATH,
+      label: t('designkit.quotaAdmin.title'),
+      icon: DesignkitQuotaIcon,
+      dot: designkitQuotaPendingCount.value > 0
+    }
   ]
 
   const visible = applyFeatureFlags(baseItems)
@@ -920,6 +944,8 @@ onMounted(() => {
   void refreshBatchImageAccess()
   if (isAdmin.value) {
     adminSettingsStore.fetch()
+    // designkit: 「额度申请」的红点。失败静默（store 里吞），不轮询。
+    void refreshDesignkitQuotaPendingCount()
   }
   // Restore sidebar scroll position after route change re-mounts the component
   if (appStore.sidebarScrollTop > 0 && sidebarNavRef.value) {

@@ -38,9 +38,10 @@ type fakePromptService struct {
 	listErr  error
 	lastList ListPromptsInput
 
-	view       *PromptView
-	getErr     error
-	lastGetUID string
+	view          *PromptView
+	getErr        error
+	lastGetUID    string
+	lastGetViewer int64
 }
 
 func (f *fakePromptService) ListCategories(_ context.Context) ([]*PromptCategoryView, error) {
@@ -58,7 +59,8 @@ func (f *fakePromptService) ListPrompts(_ context.Context, in ListPromptsInput) 
 	return f.page, nil
 }
 
-func (f *fakePromptService) GetPrompt(_ context.Context, uid string) (*PromptView, error) {
+func (f *fakePromptService) GetPrompt(_ context.Context, viewerUserID int64, uid string) (*PromptView, error) {
+	f.lastGetViewer = viewerUserID
 	f.lastGetUID = uid
 	if f.getErr != nil {
 		return nil, f.getErr
@@ -302,6 +304,8 @@ func TestPromptDetailKeepsFullBodyAndVariables(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Equal(t, "01J8ZK7Q9X2M4N6P8R0T2V4W6Y", prompts.lastGetUID)
+	assert.Equal(t, testUserID, prompts.lastGetViewer,
+		"详情必须带上当前用户：别人的自建词要在 service 侧被拦成「找不到」")
 
 	body := decodeJSON(t, rec.Body.Bytes())
 	assert.Equal(t, view.Prompt.Body, body["body"], "正文一个字都不能少：运营点「用这条」带走的就是它")

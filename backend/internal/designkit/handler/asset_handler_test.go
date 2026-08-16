@@ -148,6 +148,39 @@ func TestCreateAssetRejectsWrongFieldName(t *testing.T) {
 	assert.Contains(t, errObj["message"], uploadFormField)
 }
 
+// 删除素材（软删）：浏览器组和 ERP 读组都要挂 DELETE /assets/:uid。
+func TestDeleteAssetMountedOnBothPrefixes(t *testing.T) {
+	assets := &fakeAssetService{}
+	services := testServices(&fakeJobService{})
+	services.Assets = assets
+	engine := newTestEngine(t, services, testUserID)
+
+	for _, path := range []string{
+		"/api/v1/designkit/assets/01J8ZK7Q9X2M4N6P8R0T2V4W6Y",
+		"/v1/designkit/assets/01J8ZK7Q9X2M4N6P8R0T2V4W6Y",
+	} {
+		rec := doRequest(t, engine, http.MethodDelete, path, "", nil)
+		require.Equal(t, http.StatusOK, rec.Code, "路径 %s 响应体：%s", path, rec.Body.String())
+	}
+	require.Equal(t, 2, assets.deleteCall)
+	assert.Equal(t, "01J8ZK7Q9X2M4N6P8R0T2V4W6Y", assets.lastDeleteUID)
+}
+
+// 删别人的素材必须是 404（DK_ASSET_NOT_FOUND），不能是 403 ——
+// 403 等于告诉对方「这个编号存在，只是不是你的」。
+func TestDeleteAssetOwnershipMismatchIs404(t *testing.T) {
+	assets := &fakeAssetService{deleteErr: dkdomain.NewError(dkdomain.ErrCodeAssetNotFound)}
+	services := testServices(&fakeJobService{})
+	services.Assets = assets
+	engine := newTestEngine(t, services, testUserID)
+
+	rec := doRequest(t, engine, http.MethodDelete,
+		"/api/v1/designkit/assets/01J8ZK7Q9X2M4N6P8R0T2V4W6Y", "", nil)
+
+	require.Equal(t, http.StatusNotFound, rec.Code, "响应体：%s", rec.Body.String())
+	assert.Equal(t, dkdomain.ErrCodeAssetNotFound, errorObject(t, rec.Body.Bytes())["error_code"])
+}
+
 func TestResolveImageContentType(t *testing.T) {
 	// 客户端声明优先。
 	ct, ok := resolveImageContentType("image/jpeg", "a.bin", nil)

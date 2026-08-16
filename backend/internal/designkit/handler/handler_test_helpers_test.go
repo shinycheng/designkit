@@ -34,6 +34,10 @@ type fakeAssetService struct {
 	blob        *ContentBlob
 	contentErr  error
 	removeBgErr error
+
+	deleteCall    int
+	lastDeleteUID string
+	deleteErr     error
 }
 
 func (f *fakeAssetService) CreateAsset(_ context.Context, in CreateAssetInput) (*dkdomain.Asset, error) {
@@ -64,6 +68,12 @@ func (f *fakeAssetService) RemoveBackgroundAsset(_ context.Context, _ int64, _ s
 		return nil, f.removeBgErr
 	}
 	return f.asset, nil
+}
+
+func (f *fakeAssetService) DeleteAsset(_ context.Context, _ int64, uid string) error {
+	f.deleteCall++
+	f.lastDeleteUID = uid
+	return f.deleteErr
 }
 
 // ---- 假的配置服务 ----
@@ -106,6 +116,10 @@ type fakeJobService struct {
 	retryErr  error
 	retryCall int
 	lastRetry RetryItemInput
+
+	deleteCall    int
+	lastDeleteUID string
+	deleteErr     error
 }
 
 func (f *fakeJobService) EstimateJob(_ context.Context, _ JobSpec) (*EstimateResult, error) {
@@ -174,6 +188,12 @@ func (f *fakeJobService) RetryJobItem(_ context.Context, in RetryItemInput) (*dk
 		return nil, f.retryErr
 	}
 	return f.retry, nil
+}
+
+func (f *fakeJobService) DeleteJob(_ context.Context, _ int64, jobUID string) error {
+	f.deleteCall++
+	f.lastDeleteUID = jobUID
+	return f.deleteErr
 }
 
 // ---- 假的消费服务 ----

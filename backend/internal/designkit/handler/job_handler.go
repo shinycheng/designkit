@@ -239,6 +239,32 @@ func (h *JobHandler) Stop(c *gin.Context) {
 	c.JSON(http.StatusOK, newStopJobDTO(mountPrefixOf(c), result))
 }
 
+// Delete 处理 DELETE /jobs/:uid —— 「删除这一批记录」（软删）。
+//
+// 删的只是可见性：这一批和它的结果图从「我的图片」消失，
+// 数据行、图片文件、账单都还在，**已扣的费用不退**。
+// 没结束的批次由 service 拒绝（DK_ILLEGAL_STATE_TRANSITION，带中文提示）：
+// 删掉一个在跑的批次，图照样出、钱照样扣，而「停止排队」的按钮没了 ——
+// 那正是决策 21 要防的「取消了还扣我钱」。
+func (h *JobHandler) Delete(c *gin.Context) {
+	userID, ok := userIDOf(c)
+	if !ok {
+		failCode(c, dkdomain.ErrCodeUnauthorized)
+		return
+	}
+	uid, ok := requireUID(c, "uid", dkdomain.ErrCodeJobNotFound)
+	if !ok {
+		return
+	}
+
+	if err := h.jobs.DeleteJob(c.Request.Context(), userID, uid); err != nil {
+		failService(c, err, dkdomain.ErrCodeJobNotFound)
+		return
+	}
+	// 跟 DELETE /chat/sessions/:uid 同一个口径：200 + {"ok":true}。
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // RetryItem 处理 POST /jobs/:uid/items/:seq/retry —— 决策 20 的「重试这一张」。
 //
 // **必须带 Idempotency-Key。** 运营双击必然发生，而重试一张 = 重新出一张图 =

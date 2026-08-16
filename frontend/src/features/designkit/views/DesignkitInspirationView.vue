@@ -68,6 +68,8 @@
           class="dk-mt-4"
           :categories="categories"
           :total-count="totalPromptCount"
+          :show-mine="true"
+          :mine-count="myCount"
           :disabled="loading"
         />
 
@@ -77,6 +79,13 @@
 
       <!-- ── 列表 ───────────────────────────────────────────── -->
       <section class="dk-panel">
+        <!-- 「我的提示词」页签里多一个「新建」（其余页签是共享目录，只能看）。 -->
+        <div v-if="mineSelected" class="dk-insp-mine-head">
+          <button type="button" class="dk-button dk-button--sm" @click="openCreate()">
+            {{ t('designkit.myPrompts.create') }}
+          </button>
+        </div>
+
         <!-- 第一次加载 -->
         <p v-if="loading && prompts.length === 0" class="dk-muted">
           {{ t('designkit.common.loading') }}
@@ -110,6 +119,14 @@
           </RouterLink>
         </div>
 
+        <!-- 「我的提示词」还一条没存过（没在搜索时才算空，搜不到是另一回事） -->
+        <div v-else-if="mineEmpty" class="dk-empty">
+          <p class="dk-empty__description">{{ t('designkit.myPrompts.empty') }}</p>
+          <button type="button" class="dk-button" @click="openCreate()">
+            {{ t('designkit.myPrompts.create') }}
+          </button>
+        </div>
+
         <!-- 库里有词，但这个条件下搜不到 -->
         <div v-else-if="prompts.length === 0" class="dk-empty">
           <p class="dk-empty__title">{{ t('designkit.inspiration.noResultTitle') }}</p>
@@ -125,8 +142,11 @@
             v-for="prompt in prompts"
             :key="prompt.uid"
             :prompt="prompt"
-            @open="openDetail(prompt)"
+            :editable="mineSelected"
+            @open="mineSelected ? openEdit(prompt) : openDetail(prompt)"
             @use="useFromCard(prompt)"
+            @edit="openEdit(prompt)"
+            @delete="removeMine(prompt)"
           />
         </div>
       </section>
@@ -148,14 +168,28 @@
         </p>
       </div>
 
-      <!-- 署名：上游是 CC BY 4.0，整页显示一次即可（不必逐条重复） -->
-      <p class="dk-note dk-note--quiet">{{ t('designkit.inspiration.attribution') }}</p>
+      <!-- 署名：上游是 CC BY 4.0，整页显示一次即可（不必逐条重复）。
+           「我的提示词」页签里不显示——那些是运营自己写的，不是 YouMind 的。 -->
+      <p v-if="!mineSelected" class="dk-note dk-note--quiet">
+        {{ t('designkit.inspiration.attribution') }}
+      </p>
 
       <PromptDetailDialog
         :show="detailPrompt !== null"
         :prompt="detailPrompt"
         @close="detailPrompt = null"
         @use="sendToWorkbench"
+      />
+
+      <MyPromptDialog
+        :show="editorOpen"
+        :mode="editorMode"
+        :initial-title="editorTitle"
+        :initial-body="editorBody"
+        :saving="editorSaving"
+        :error="editorError"
+        @close="editorOpen = false"
+        @save="saveMine"
       />
     </div>
   </AppLayout>
@@ -169,15 +203,20 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAppStore, useAuthStore } from '@/stores'
 import {
   MAX_PROMPT_KEYWORD_LENGTH,
+  MY_PROMPTS_FILTER,
+  createMyPrompt,
+  deleteMyPrompt,
   isCanceledError,
   listPromptCategories,
   listPrompts,
   toFriendlyError,
+  updateMyPrompt,
 } from '../api'
-import type { FriendlyError, Prompt, PromptCategory } from '../api'
+import type { FriendlyError, MyPromptInput, Prompt, PromptCategory } from '../api'
 import { DESIGNKIT_WORKBENCH_PATH } from '../nav'
 import { usePromptHandoffStore } from '../stores/promptHandoff'
 import InspirationSyncPanel from '../components/inspiration/InspirationSyncPanel.vue'
+import MyPromptDialog from '../components/inspiration/MyPromptDialog.vue'
 import PromptCard from '../components/inspiration/PromptCard.vue'
 import PromptCategoryFilter from '../components/inspiration/PromptCategoryFilter.vue'
 import PromptDetailDialog from '../components/inspiration/PromptDetailDialog.vue'
@@ -229,6 +268,19 @@ const loadError = ref<FriendlyError | null>(null)
 /** 打开详情的那一条；null = 没开。 */
 const detailPrompt = ref<Prompt | null>(null)
 
+// ---- 我的提示词 ----
+/** 「我的提示词」页签上的条数；null = 还没拿到（页签照常显示，只是不带数字）。 */
+const myCount = ref<number | null>(null)
+/** 新建 / 编辑弹窗。 */
+const editorOpen = ref(false)
+const editorMode = ref<'create' | 'edit'>('create')
+/** 正在编辑哪条；新建时是空串。 */
+const editorUid = ref('')
+const editorTitle = ref('')
+const editorBody = ref('')
+const editorSaving = ref(false)
+const editorError = ref('')
+
 let listController: AbortController | null = null
 let categoryController: AbortController | null = null
 let searchTimer: number | null = null
@@ -236,8 +288,16 @@ let searchTimer: number | null = null
 /** 关键词超长：后端会 400（不会静默截断），所以前端先拦一道。 */
 const keywordTooLong = computed(() => keywordInput.value.trim().length > MAX_PROMPT_KEYWORD_LENGTH)
 
+/** 现在开的是不是「我的提示词」页签（category 里放的是前端内部标记）。 */
+const mineSelected = computed(() => category.value === MY_PROMPTS_FILTER)
+
 /** 有没有在筛（决定空列表该说哪句话）。 */
 const filtering = computed(() => keyword.value.trim() !== '' || category.value !== '')
+
+/** 「我的提示词」一条都没存过（没在搜索时才算空，搜不到是另一回事）。 */
+const mineEmpty = computed(
+  () => mineSelected.value && !loading.value && prompts.value.length === 0 && keyword.value.trim() === '',
+)
 
 /**
  * 整个灵感库是不是空的（还没同步过）。
@@ -307,17 +367,33 @@ async function fetchPage(append: boolean): Promise<void> {
   }
   loadError.value = null
   try {
-    const page = await listPrompts({
-      category: category.value,
-      keyword: keyword.value,
-      cursor: append ? cursor.value : null,
-      limit: PAGE_SIZE,
-      signal,
-    })
+    // 「我的提示词」页签走 source=user（MY_PROMPTS_FILTER 是前端内部标记，
+    // 绝不能当分类 slug 发出去——后端只认 source 参数）。
+    const page = await listPrompts(
+      mineSelected.value
+        ? {
+            source: 'user',
+            keyword: keyword.value,
+            cursor: append ? cursor.value : null,
+            limit: PAGE_SIZE,
+            signal,
+          }
+        : {
+            category: category.value,
+            keyword: keyword.value,
+            cursor: append ? cursor.value : null,
+            limit: PAGE_SIZE,
+            signal,
+          },
+    )
     prompts.value = append ? [...prompts.value, ...page.items] : page.items
     total.value = page.total
     cursor.value = page.next_cursor
     hasMore.value = page.has_more
+    // 没在搜索时，这一页的 total 就是「我存了多少条」，顺手把页签上的数字校准。
+    if (mineSelected.value && keyword.value.trim() === '') {
+      myCount.value = page.total
+    }
   } catch (error) {
     if (isCanceledError(error)) {
       return
@@ -439,8 +515,85 @@ function sendToWorkbench(payload: { uid: string; title: string; text: string }):
   void router.push(DESIGNKIT_WORKBENCH_PATH)
 }
 
+// ---------------------------------------------------------------------------
+// 我的提示词（新建 / 编辑 / 删除）
+// ---------------------------------------------------------------------------
+
+/**
+ * 拉「我存了多少条」（页签上的数字）。拉不到就不显示数字，页签照常 ——
+ * 入口不能跟着一个次要数字一起消失。
+ */
+async function fetchMineCount(): Promise<void> {
+  try {
+    const page = await listPrompts({ source: 'user', limit: 1 })
+    myCount.value = page.total
+  } catch {
+    myCount.value = null
+  }
+}
+
+function openCreate(): void {
+  editorMode.value = 'create'
+  editorUid.value = ''
+  editorTitle.value = ''
+  editorBody.value = ''
+  editorError.value = ''
+  editorOpen.value = true
+}
+
+function openEdit(prompt: Prompt): void {
+  editorMode.value = 'edit'
+  editorUid.value = prompt.uid
+  editorTitle.value = prompt.title
+  editorBody.value = prompt.body
+  editorError.value = ''
+  editorOpen.value = true
+}
+
+/**
+ * 弹窗点了「保存」。失败时弹窗保持打开、错误显示在弹窗里
+ * （后端的中文文案自带原因和下一步：上限、youmind 不可改、越权）。
+ */
+async function saveMine(input: MyPromptInput): Promise<void> {
+  if (editorSaving.value) {
+    return
+  }
+  editorSaving.value = true
+  editorError.value = ''
+  try {
+    if (editorMode.value === 'create') {
+      await createMyPrompt(input)
+    } else {
+      await updateMyPrompt(editorUid.value, input)
+    }
+    editorOpen.value = false
+    appStore.showSuccess(t('designkit.myPrompts.saved'))
+    void fetchMineCount()
+    if (mineSelected.value) {
+      reload()
+    }
+  } catch (error) {
+    editorError.value = toFriendlyError(error).message || t('designkit.myPrompts.failed')
+  } finally {
+    editorSaving.value = false
+  }
+}
+
+/** 卡片上确认过的删除（原地确认在 PromptCard 里，这里直接删）。 */
+async function removeMine(prompt: Prompt): Promise<void> {
+  try {
+    await deleteMyPrompt(prompt.uid)
+    appStore.showSuccess(t('designkit.myPrompts.deleted'))
+    void fetchMineCount()
+    reload()
+  } catch (error) {
+    appStore.showError(toFriendlyError(error).message || t('designkit.myPrompts.failed'))
+  }
+}
+
 onMounted(() => {
   void fetchCategories()
+  void fetchMineCount()
   reload()
 })
 
@@ -458,6 +611,12 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: var(--dk-space-2);
+}
+
+.dk-insp-mine-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--dk-space-3);
 }
 
 .dk-insp-search .dk-input {

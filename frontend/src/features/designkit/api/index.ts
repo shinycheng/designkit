@@ -225,6 +225,16 @@ export async function getAsset(uid: string): Promise<DesignkitAsset> {
   return data
 }
 
+/**
+ * 删除一张商品图。
+ *
+ * 只从商品图列表里消失：历史批次的记录和结果图**不受影响**
+ * （批次里存的是提示词快照和结果图，不跟着商品图走），文件本身也不删。
+ */
+export async function deleteAsset(uid: string): Promise<void> {
+  await apiClient.delete(`${DESIGNKIT_API_BASE_PATH}/assets/${encodeURIComponent(uid)}`)
+}
+
 // ============================================================================
 // 出图比例
 // ============================================================================
@@ -395,6 +405,16 @@ export async function listJobs(query: ListJobsQuery = {}): Promise<JobPage> {
 export async function getJob(uid: string, signal?: AbortSignal): Promise<Job> {
   const { data } = await apiClient.get<Job>(`${DESIGNKIT_API_BASE_PATH}/jobs/${encodeURIComponent(uid)}`, { signal })
   return data
+}
+
+/**
+ * 删除一批记录（「我的图片」里的一条）。
+ *
+ * ⚠ 删的是**记录的可见性**：这一批和它的结果图从「我的图片」消失，
+ * 已扣的费用不退。没结束的批次后端会拒绝（先「停止排队」等它结束）。
+ */
+export async function deleteJob(uid: string): Promise<void> {
+  await apiClient.delete(`${DESIGNKIT_API_BASE_PATH}/jobs/${encodeURIComponent(uid)}`)
 }
 
 /**
@@ -602,11 +622,15 @@ export * from './contentcheck'
 export * from './upscale'
 // 「商品图设置」（仅管理员）。放在这里一起导出，页面只 import 一处。
 export * from './settings'
+// 「额度申请」管理端（仅管理员）。
+export * from './quotaAdmin'
 
 export const designkitAPI = {
   getHealth,
   uploadAsset,
   getAsset,
+  // 删除商品图（软删）。历史批次的记录和结果图不受影响。
+  deleteAsset,
   // 一键白底图。**会等几十秒**，调用方要给「抠图中…」的状态并禁掉按钮。
   removeBackground,
   listRatios,
@@ -614,6 +638,8 @@ export const designkitAPI = {
   createJob,
   listJobs,
   getJob,
+  // 删除一批记录（软删）。结果图一起从「我的图片」消失，已扣费用不退。
+  deleteJob,
   getJobItems,
   getJobItem,
   getImage,

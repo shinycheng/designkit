@@ -1,4 +1,4 @@
-<!-- @dsCard group="产品端" name="灵感库" subtitle="示例图主角 · 分类侧栏 · 详情抽屉 · 同步面板 · 空态" width="1440" -->
+<!-- @dsCard group="产品端" name="灵感库" subtitle="示例图主角 · 分类侧栏 · 我的提示词 · 详情抽屉 · 同步面板 · 空态" width="1440" -->
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -496,6 +496,22 @@ a:hover { color: var(--dk-accent-strong); }
 .dk-x-empties { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .dk-x-empty-art { width: 200px; height: 160px; color: var(--dk-text-tertiary); }
 .dk-x-ticon { width: 16px; height: 16px; flex: none; }
+
+/* 「我的提示词」页签：运营自建的词没有示例图，用文字卡（对应 PromptCard 的 editable 态） */
+.dk-x-mine-head { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.dk-x-minegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+.dk-x-mycard { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); background: var(--dk-surface); overflow: hidden; transition: border-color var(--dk-motion-fast) var(--dk-ease-out), box-shadow var(--dk-motion-fast) var(--dk-ease-out); }
+.dk-x-mycard:hover { border-color: var(--dk-border-strong); box-shadow: var(--dk-shadow-1); }
+.dk-x-mycard__open { display: grid; gap: 8px; flex: 1; padding: 16px 16px 12px; text-align: left; }
+.dk-x-mycard__title { margin: 0; font-size: var(--dk-text-md); font-weight: 600; line-height: var(--dk-leading-tight); }
+.dk-x-mycard__body { margin: 0; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dk-x-mycard__foot { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 0 16px 14px; }
+/* 原地删除确认（收在卡片底部，不用弹窗；照抄 PromptCard 的 dk-insp-card__confirm） */
+.dk-x-mycard__confirm { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 16px 12px; border-top: 1px solid var(--dk-border); }
+.dk-x-inline-actions { display: inline-flex; gap: 4px; }
+
+/* 新建 / 编辑弹窗小样：两个静态并排（不压遮罩，遮罩规格见 06 稿的删除确认） */
+.dk-x-dialogrow { display: flex; gap: 16px; align-items: flex-start; }
 </style>
 </head>
 <body>
@@ -699,6 +715,10 @@ a:hover { color: var(--dk-accent-strong); }
         <nav class="dk-sidenav dk-x-cats">
           <div class="dk-sidenav__group">分类</div>
           <a class="dk-sidenav__item">全部<span class="dk-x-cat-count">15045</span></a>
+          <!-- 「我的提示词」：紧跟「全部」的页签（PromptCategoryFilter 的 showMine，
+               选中值是前端内部标记，不是分类 slug）。条数接口拿不到时不显示数字，
+               页签本身照常——入口不能跟着一个次要数字一起消失。选中态见下方演示区 -->
+          <a class="dk-sidenav__item">我的提示词<span class="dk-x-cat-count">4</span></a>
           <a class="dk-sidenav__item">社交媒体帖子<span class="dk-x-cat-count">3978</span></a>
           <a class="dk-sidenav__item">产品营销<span class="dk-x-cat-count">3752</span></a>
           <a class="dk-sidenav__item">海报与传单<span class="dk-x-cat-count">2785</span></a>
@@ -934,6 +954,96 @@ a:hover { color: var(--dk-accent-strong); }
         <button type="button" class="dk-button dk-button--secondary">清空筛选条件</button>
       </div>
     </section>
+
+  </div>
+
+  <!-- ═══ 「我的提示词」页签：运营自建（来源两处：这里点「新建」，或工作台推荐结果旁的「存为我的提示词」） ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">我的提示词</span>侧栏选中「我的提示词」后的列表——右上多一个「新建」；卡片多「编辑 / 删除」两个动作，点卡片主体打开的是编辑（不是详情）；第 2 张演示原地删除确认（收在卡片底部，不用弹窗）；只有自己看得见；本页签不显示 CC BY 署名行——这些词不是 YouMind 的</div>
+  <section class="dk-panel" style="margin-top:10px">
+    <div class="dk-x-mine-head">
+      <button type="button" class="dk-button dk-button--sm">新建</button>
+    </div>
+    <div class="dk-x-minegrid">
+
+      <!-- 我的词卡 1 -->
+      <article class="dk-x-mycard">
+        <div class="dk-x-mycard__open">
+          <h3 class="dk-x-mycard__title">白底主图-通用</h3>
+          <p class="dk-x-mycard__body">纯白背景商业摄影，柔和顶光，产品置于画面正中，底部保留浅浅的自然投影，细节清晰，高级质感，适合直接用作电商平台主图。</p>
+        </div>
+        <div class="dk-x-mycard__foot">
+          <button type="button" class="dk-button dk-button--quiet dk-button--sm">编辑</button>
+          <button type="button" class="dk-button dk-button--quiet dk-button--sm">删除</button>
+          <button type="button" class="dk-button dk-button--sm">用它生成</button>
+        </div>
+      </article>
+
+      <!-- 我的词卡 2：原地删除确认展开态（点了「删除」之后；确认后才真删，删了找不回来） -->
+      <article class="dk-x-mycard">
+        <div class="dk-x-mycard__open">
+          <h3 class="dk-x-mycard__title">详情页场景-木质桌面</h3>
+          <p class="dk-x-mycard__body">商品放在原木色桌面上，背景是虚化的窗边绿植，午后自然光从左侧打进来，整体氛围温暖、有生活感，适合详情页场景图。</p>
+        </div>
+        <div class="dk-x-mycard__foot">
+          <button type="button" class="dk-button dk-button--quiet dk-button--sm">编辑</button>
+          <button type="button" class="dk-button dk-button--quiet dk-button--sm">删除</button>
+          <button type="button" class="dk-button dk-button--sm">用它生成</button>
+        </div>
+        <div class="dk-x-mycard__confirm">
+          <span class="dk-note dk-note--danger">删除这条提示词？已出过的图不受影响。</span>
+          <span class="dk-x-inline-actions">
+            <button type="button" class="dk-button dk-button--danger dk-button--sm">删除</button>
+            <button type="button" class="dk-button dk-button--quiet dk-button--sm">取消</button>
+          </span>
+        </div>
+      </article>
+
+      <!-- 我的词卡 3：从工作台「存为我的提示词」存进来的（存的是编辑后的版本，跟 AI 原始输出可以不同） -->
+      <article class="dk-x-mycard">
+        <div class="dk-x-mycard__open">
+          <h3 class="dk-x-mycard__title">针织开衫-日系平铺</h3>
+          <p class="dk-x-mycard__body">米白色针织开衫平铺在浅灰亚麻布面上，旁边点缀干燥花与牛皮纸标签，顶部打柔和自然光，日系温柔氛围，画面干净、留白均匀。</p>
+        </div>
+        <div class="dk-x-mycard__foot">
+          <button type="button" class="dk-button dk-button--quiet dk-button--sm">编辑</button>
+          <button type="button" class="dk-button dk-button--quiet dk-button--sm">删除</button>
+          <button type="button" class="dk-button dk-button--sm">用它生成</button>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ═══ 新建 / 编辑弹窗（MyPromptDialog：标题可空、正文必填；每人最多 200 条，超了后端拒） ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">弹窗小样</span>左：「新建」空表单——正文为空时「保存」禁用（标题 100 字、正文 5000 字，输入框 maxlength 先拦一道，真正的校验在后端）；右：「编辑」保存失败——弹窗保持打开、错误显示在弹窗里，内容不丢，改一下能直接重试</div>
+  <div class="dk-x-dialogrow">
+
+    <!-- 新建：空表单，保存禁用 -->
+    <div class="dk-dialog" role="dialog">
+      <h3 class="dk-dialog__title">新建</h3>
+      <label class="dk-label" for="dk-my-prompt-title-new">标题</label>
+      <input id="dk-my-prompt-title-new" type="text" class="dk-input">
+      <label class="dk-label" for="dk-my-prompt-body-new" style="margin-top:12px">提示词正文</label>
+      <textarea id="dk-my-prompt-body-new" class="dk-textarea" rows="8"></textarea>
+      <div class="dk-dialog-actions">
+        <button type="button" class="dk-button dk-button--secondary">取消</button>
+        <button type="button" class="dk-button" disabled>保存</button>
+      </div>
+    </div>
+
+    <!-- 编辑：已填内容 + 保存失败（后端的中文文案原样显示；这里演示兜底那句） -->
+    <div class="dk-dialog" role="dialog">
+      <h3 class="dk-dialog__title">编辑</h3>
+      <label class="dk-label" for="dk-my-prompt-title-edit">标题</label>
+      <input id="dk-my-prompt-title-edit" type="text" class="dk-input" value="详情页场景-木质桌面">
+      <label class="dk-label" for="dk-my-prompt-body-edit" style="margin-top:12px">提示词正文</label>
+      <textarea id="dk-my-prompt-body-edit" class="dk-textarea" rows="8">商品放在原木色桌面上，背景是虚化的窗边绿植，午后自然光从左侧打进来，整体氛围温暖、有生活感，适合详情页场景图。</textarea>
+      <p class="dk-note dk-note--danger" style="margin-top:10px">没保存成功，重试一次。</p>
+      <div class="dk-dialog-actions">
+        <button type="button" class="dk-button dk-button--secondary">取消</button>
+        <button type="button" class="dk-button">保存</button>
+      </div>
+    </div>
 
   </div>
 

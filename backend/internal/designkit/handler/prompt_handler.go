@@ -134,11 +134,14 @@ type PromptHandler struct {
 	// suggest 「AI 挑提示词」。允许为 nil —— 为 nil 时那条路由**根本不挂**，
 	// 见 register_business.go 里的理由。
 	suggest SuggestService
+	// my 「我的提示词」的写入。允许为 nil —— 为 nil 时那三条写路由整组不挂
+	// （裸 404 = 功能没上线，跟 suggest 同一套前端约定）。
+	my MyPromptService
 }
 
-// NewPromptHandler 建 handler。suggest 可以为 nil。
-func NewPromptHandler(prompts PromptService, sync PromptSyncService, suggest SuggestService) *PromptHandler {
-	return &PromptHandler{prompts: prompts, sync: sync, suggest: suggest}
+// NewPromptHandler 建 handler。suggest 和 my 都可以为 nil。
+func NewPromptHandler(prompts PromptService, sync PromptSyncService, suggest SuggestService, my MyPromptService) *PromptHandler {
+	return &PromptHandler{prompts: prompts, sync: sync, suggest: suggest, my: my}
 }
 
 // hasSuggest 「AI 挑提示词」这块能不能用。
@@ -147,6 +150,12 @@ func NewPromptHandler(prompts PromptService, sync PromptSyncService, suggest Sug
 // 缺席时**整条不挂**，让它自然 404，前端才能区分「功能没上线」和「业务错误」。
 func (h *PromptHandler) hasSuggest() bool {
 	return h != nil && h.suggest != nil
+}
+
+// hasMyPrompts 「我的提示词」的写入能不能用。缺席时那三条写路由整组不挂，
+// 判据和后果跟 hasSuggest 完全一致。
+func (h *PromptHandler) hasMyPrompts() bool {
+	return h != nil && h.my != nil
 }
 
 // ----------------------------------------------------------------------------
@@ -278,15 +287,33 @@ func (h *PromptHandler) Categories(c *gin.Context) {
 //
 //	category  分类的 slug；不传 = 全部分类
 //	keyword   关键词，标题和正文都搜；不传 = 不过滤
+//	source    不传 = 共享目录；"user" = 只看自己存的（「我的提示词」）
 //	cursor    上一页返回的 next_cursor；不传 = 第一页
 //	limit     每页条数，默认 20，最大 100
 //
 // **只返回没下架也没删的**（OnlyEnabled 由 service 侧设死）。
+// **任何取值下都带不出别人的自建词**（过滤在 service 侧，见 ListPromptsInput）。
 func (h *PromptHandler) List(c *gin.Context) {
+	userID, ok := userIDOf(c)
+	if !ok {
+		failCode(c, dkdomain.ErrCodeUnauthorized)
+		return
+	}
+
 	keyword := strings.TrimSpace(c.Query("keyword"))
 	if len([]rune(keyword)) > maxPromptKeywordRunes {
 		failCodef(c, dkdomain.ErrCodeInvalidRequest,
 			"搜索词最多 %d 个字，换一个短一点的词试试。", maxPromptKeywordRunes)
+		return
+	}
+
+	// source 只认两个值：空 = 共享目录，"user" = 我的提示词。
+	// 别的值直接拒绝，不静默当成空 —— 静默的话，前端拼错参数会表现成
+	// 「我的提示词永远是空的」，谁也想不到是参数名的问题。
+	source := strings.TrimSpace(c.Query("source"))
+	if source != "" && source != ListPromptSourceMine {
+		abortWithDesignkitError(c, dkdomain.NewError(dkdomain.ErrCodeInvalidRequest).
+			WithMessage("筛选参数不对，请刷新页面重试。"))
 		return
 	}
 
@@ -299,6 +326,8 @@ func (h *PromptHandler) List(c *gin.Context) {
 
 	page, err := h.prompts.ListPrompts(c.Request.Context(), ListPromptsInput{
 		CategorySlug: strings.TrimSpace(c.Query("category")),
+		Source:       source,
+		ViewerUserID: userID,
 		Keyword:      keyword,
 		CursorID:     cursorID,
 		Limit:        parseLimit(c.Query("limit")),
@@ -314,14 +343,21 @@ func (h *PromptHandler) List(c *gin.Context) {
 //
 // **不过滤 is_enabled**：运营收藏夹里那条词后来被管理员下架了，
 // 点开详情仍要看得到（响应里的 is_enabled 会是 false，界面据此提示一句）。
+//
+// 带上当前用户：别人的自建词（source=user）一律「找不到」，过滤在 service 侧。
 func (h *PromptHandler) Get(c *gin.Context) {
+	userID, ok := userIDOf(c)
+	if !ok {
+		failCode(c, dkdomain.ErrCodeUnauthorized)
+		return
+	}
 	uid := strings.TrimSpace(c.Param("uid"))
 	if uid == "" {
 		failCode(c, dkdomain.ErrCodePromptNotFound)
 		return
 	}
 
-	view, err := h.prompts.GetPrompt(c.Request.Context(), uid)
+	view, err := h.prompts.GetPrompt(c.Request.Context(), userID, uid)
 	if err != nil {
 		failService(c, err, dkdomain.ErrCodePromptNotFound)
 		return

@@ -570,6 +570,24 @@ type QuotaRequest struct {
 	CreatedAt time.Time
 }
 
+// QuotaRequestDetail 管理员后台看到的一条申请：本体 + 申请人邮箱 + 处理详情。
+//
+// 邮箱是查询时 JOIN 上游 users 表补出来的（只读，绝不写 users），
+// 处理详情两列是 9003 迁移后加的 —— 刻意**不**放进 QuotaRequest：
+// scan.go 的 quotaRequestColumns 常量以 9001 的建表列为唯一真相
+// （columns_parity_test.go 守着），加进去那个测试就挂了。
+type QuotaRequestDetail struct {
+	QuotaRequest
+	// RequesterEmail 申请人邮箱。申请人账号已删时是空串（界面显示「已删除的账号」）。
+	RequesterEmail string
+	// HandledByEmail 处理人邮箱，没处理过或处理人账号已删时为 nil。
+	HandledByEmail *string
+	// HandleNote 管理员处理时写的备注（驳回原因、加额说明），可为空。
+	HandleNote *string
+	// ApprovedAmount 通过时实际加的金额（美元）。驳回或未处理为 nil。
+	ApprovedAmount *Money
+}
+
 // ----------------------------------------------------------------------------
 // 11. designkit_sync_runs —— 灵感库每次同步的记录
 // ----------------------------------------------------------------------------

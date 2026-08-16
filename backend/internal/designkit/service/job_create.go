@@ -298,6 +298,13 @@ func (s *JobService) buildPlan(ctx context.Context, spec JobSpec) (*jobPlan, err
 		if prompt == nil {
 			return nil, dkdomain.NewError(dkdomain.ErrCodePromptNotFound)
 		}
+		// 别人的自建词（source=user 且不是本人的）按「找不到」拒绝 ——
+		// 自建词只有本人可见（「我的提示词」），列表带不出来，
+		// 拿编号硬提交也不能放行，否则可见性就是摆设。
+		if prompt.Source == dkdomain.PromptSourceUser &&
+			(prompt.OwnerUserID == nil || *prompt.OwnerUserID != spec.UserID) {
+			return nil, dkdomain.NewError(dkdomain.ErrCodePromptNotFound)
+		}
 		body := strings.TrimSpace(prompt.Body)
 		if body == "" {
 			return nil, dkdomain.NewError(dkdomain.ErrCodeInvalidRequest).

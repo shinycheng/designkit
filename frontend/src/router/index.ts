@@ -515,6 +515,20 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'designkit.settings.description'
     }
   },
+  {
+    // 额度申请：**仅管理员**（决策 19 的闭环：运营点「申请额度」之后，
+    // 管理员在这一页看到并处理）。requiresAdmin 的理由同「商品图设置」。
+    path: '/admin/quota-requests',
+    name: 'DesignkitQuotaRequests',
+    component: () => import('@/features/designkit/views/DesignkitQuotaRequestsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Quota Requests',
+      titleKey: 'designkit.quotaAdmin.title',
+      descriptionKey: 'designkit.quotaAdmin.description'
+    }
+  },
   // 老路径 → 新路径。2026-08-13 之前用的是 /designkit/* 这层前缀，
   // monica 的浏览器书签、我写的 designkit/docs/ 里都引用过，留着跳转不让它们死掉。
   { path: '/designkit/workbench', redirect: '/workbench' },

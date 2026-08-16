@@ -119,6 +119,13 @@ type Module struct {
 	// 出图必须有 Key：上游 Images() 第一件事就是从上下文取 API Key，取不到直接 401。
 	keys *dkservice.InternalKeyService
 
+	// adminBalance 「额度申请」管理页点「通过」时给申请人加余额的通道
+	// （上游 AdminService 的子集，从 h.Admin.User 上取）。
+	//
+	// 允许为 nil：缺席时「通过」返回中文的「加余额的通道没接上」，
+	// 看列表和驳回照常 —— 申请记录都在表里，不丢。
+	adminBalance adminBalanceService
+
 	// gateway 出图调用器（进程内重入上游 h.OpenAIGateway.Images()）。
 	gateway dkdomain.GatewayInvoker
 
@@ -293,6 +300,23 @@ func NewModule(
 		//
 		// 现在改成运行时解析，规则见 imageGroupIDResolver。
 		m.keys = dkservice.NewInternalKeyService(apiKeyService, m.imageGroupIDResolver())
+	}
+
+	// ---- 5·b. 管理员加余额通道（额度申请「通过」要用）----
+	//
+	// 从 wire 装配好的 AdminService 上取（handler/admin 包为此开了一个只读
+	// 访问器，见 backend/internal/handler/admin/designkit_export.go）。
+	// **只在成功时赋值**（typed-nil 的老规矩）；拿不到**不记降级**：
+	// 缺席的唯一后果是「通过」返回中文的「加余额的通道没接上」，
+	// 看列表、驳回、运营提交申请全都照常 —— 为它把健康检查染黄不成比例。
+	if h != nil && h.Admin != nil && h.Admin.User != nil {
+		if adminSvc := h.Admin.User.AdminService(); adminSvc != nil {
+			m.adminBalance = adminSvc
+		}
+	}
+	if m.adminBalance == nil {
+		slog.Warn("designkit 拿不到上游的用户管理服务：「额度申请」页的「通过」不能自动加余额，" +
+			"驳回和查看照常；加额可去「用户管理」手动调")
 	}
 
 	// ---- 6. 出图网关 ----
@@ -564,6 +588,18 @@ func (m *Module) buildServices() dkhandler.Services {
 		// 跟「我的消费」同一个道理：存储/网关坏了的时候，
 		// 「翻灵感库找一条词」照样该能用。
 		svcs.Prompts = promptServiceAdapter{repo: m.repo}
+
+		// 「我的提示词」（运营自建）：同样**只吃 repository**。
+		// *UserPromptService 直接满足 handler 的接口（参数只有标量和 domain 类型，
+		// 不需要适配器）；建不出来只降级不报错 —— 浏览和出图照常。
+		// ⚠ typed-nil：只在成功时赋值，理由同上面的 suggest。
+		if userPrompts, upErr := dkservice.NewUserPromptService(dkservice.UserPromptServiceDeps{
+			Prompts: m.repo,
+		}); upErr != nil {
+			m.degrade("「我的提示词」没建起来：%v", upErr)
+		} else {
+			svcs.MyPrompts = userPrompts
+		}
 		// ⚠ typed-nil：m.suggest 的声明类型是 *PromptSuggestService，
 		// 为 nil 时直接赋给接口字段会让 register_business.go 那句
 		// `if opts.Services.Suggest != nil` 恒为真，于是路由挂上去、
@@ -586,6 +622,13 @@ func (m *Module) buildServices() dkhandler.Services {
 		// 「商品图设置」也**只吃 repository**（代理服务只用来显示同步代理的名字）。
 		// 理由同上：存储 / 网关坏掉的时候，管理员更需要能打开设置页去改东西。
 		svcs.Settings = settingsServiceAdapter{repo: m.repo, proxies: m.proxies}
+
+		// 「额度申请」管理端：列表和驳回只吃 repository；「通过」还要
+		// 加余额的通道（m.adminBalance）。通道缺席时**页面照挂**：
+		// 看得到申请、驳回得了，只有「通过」会说「通道没接上」——
+		// 比整页 404 让管理员猜强。m.adminBalance 本身就是接口类型、
+		// 只在成功时赋值，这里不会踩 typed-nil。
+		svcs.QuotaAdmin = quotaAdminServiceAdapter{repo: m.repo, balance: m.adminBalance}
 	}
 	// 高清放大：跟数据库无关，只要队列建起来了就挂。
 	// ⚠ typed-nil：m.upscale 的声明类型是 *UpscaleService，为 nil 时直接赋给
@@ -622,6 +665,7 @@ func (m *Module) logStartupSummary() {
 		// 灵感库两项：浏览只要数据库在就有；同步器还没装配时「立即同步」不可用，
 		// 但同步状态和代理设置照常给得出来（见 promptSyncAdapter）。
 		slog.Bool("prompt_library", m.services.Prompts != nil),
+		slog.Bool("my_prompts", m.services.MyPrompts != nil),
 		slog.Bool("prompt_sync_runner", m.promptSync != nil),
 		slog.Bool("proxy_options", m.proxies != nil),
 		slog.Bool("business_api", m.services.Ready()),
@@ -1366,6 +1410,11 @@ func (a assetServiceAdapter) RemoveBackgroundAsset(ctx context.Context, userID i
 	return a.svc.RemoveBackground(ctx, userID, uid, origin)
 }
 
+// DeleteAsset 软删一张商品图（service 内部已校验归属；历史批次不受影响）。
+func (a assetServiceAdapter) DeleteAsset(ctx context.Context, userID int64, uid string) error {
+	return a.svc.DeleteAsset(ctx, userID, uid)
+}
+
 // ratioCatalog 是「比例列表」需要的最小能力。
 //
 // 刻意用接口而不是绑死某个 service：比例只读 designkit_settings，
@@ -1575,6 +1624,11 @@ func (a jobServiceAdapter) RetryJobItem(ctx context.Context, in dkhandler.RetryI
 	return item, nil
 }
 
+// DeleteJob 「删除这一批记录」（软删；没结束的批次 service 会拒绝）。
+func (a jobServiceAdapter) DeleteJob(ctx context.Context, userID int64, jobUID string) error {
+	return a.svc.DeleteJob(ctx, userID, jobUID)
+}
+
 // ----------------------------------------------------------------------------
 // 我的消费（决策 16 / 19）
 // ----------------------------------------------------------------------------
@@ -1670,6 +1724,109 @@ func currentMonthRange(now time.Time) (from, to time.Time) {
 	return from, to
 }
 
+// ----------------------------------------------------------------------------
+// 额度申请（管理端，决策 19 的闭环）
+// ----------------------------------------------------------------------------
+
+// adminBalanceService 「通过申请给用户加余额」用到的上游能力
+// （upstreamservice.AdminService 的子集）。
+//
+// 只声明用得到的这一个方法：测试好替假的，审起来也一眼看得出
+// 我们对上游用户体系只做「加余额」这一件事。
+//
+// ⛔ **不许绕开它直接 UPDATE users.balance**：上游这条通道是原子自增，
+// 还会失效余额缓存、留一条「余额变动历史」记录（管理员后台能对账）。
+// 自己写 UPDATE 三样全没有，并发时还会盖掉正在进行的计费扣款。
+type adminBalanceService interface {
+	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*upstreamservice.User, error)
+}
+
+// 编译期断言：上游 AdminService 满足这个子集（哪天上游改签名，这里先炸）。
+var _ adminBalanceService = (upstreamservice.AdminService)(nil)
+
+// quotaAdminServiceAdapter 把 repository + 上游加余额通道适配成 handler.QuotaAdminService。
+type quotaAdminServiceAdapter struct {
+	repo dkdomain.Repository
+	// balance 为 nil 时「通过」返回中文的「通道没接上」，列表和驳回照常。
+	// 只可能出现在残缺装配里（h.Admin 没给），生产 wire 一定有。
+	balance adminBalanceService
+}
+
+var _ dkhandler.QuotaAdminService = quotaAdminServiceAdapter{}
+
+func (a quotaAdminServiceAdapter) ListQuotaRequests(ctx context.Context, pendingOnly bool, limit, offset int) (*dkhandler.QuotaRequestAdminList, error) {
+	items, err := a.repo.ListQuotaRequestDetails(ctx, pendingOnly, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	pending, err := a.repo.CountPendingQuotaRequests(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &dkhandler.QuotaRequestAdminList{Items: items, PendingCount: pending}, nil
+}
+
+// HandleQuotaRequest 通过（标记 + 加余额）或驳回（只标记）。
+//
+// **顺序必须是「先标记、后打款」**：标记那条 UPDATE 带 WHERE status='pending'
+// 守卫，是「两个管理员同时点通过」的唯一防线 —— 反过来先打款的话，
+// 两个人会各打一次，同一条申请加两份钱，而且没有任何报错。
+// 标记成功、打款失败时做补偿（把行退回 pending 让管理员直接重试）；
+// 连补偿都失败才让管理员去「用户管理」手动收尾，文案里写清金额。
+func (a quotaAdminServiceAdapter) HandleQuotaRequest(ctx context.Context, in dkhandler.HandleQuotaRequestInput) (*dkdomain.QuotaRequest, error) {
+	status := dkdomain.QuotaRequestRejected
+	var amountPtr *dkdomain.Money
+	if in.Approve {
+		if a.balance == nil {
+			return nil, dkdomain.NewError(dkdomain.ErrCodeInternal).
+				WithMessage("加余额的通道没接上，这条申请保持待处理。" +
+					"先在「用户管理」里手动加余额，再回来驳回这条申请并在备注里写明已线下加额。")
+		}
+		// handler 已经拦过 0 和负数，这里是最后一道兜底 —— 加钱的入口宁可多查一次。
+		if !in.Amount.IsPositive() {
+			return nil, dkdomain.NewError(dkdomain.ErrCodeInvalidRequest).
+				WithMessage("金额要大于 0。")
+		}
+		status = dkdomain.QuotaRequestHandled
+		amount := dkdomain.QuantizeMoney(in.Amount)
+		amountPtr = &amount
+	}
+
+	claimed, err := a.repo.HandleQuotaRequest(ctx, in.ID, in.AdminUserID, status, optionalNote(in.Note), amountPtr)
+	if err != nil {
+		return nil, err
+	}
+
+	if in.Approve {
+		// notes 会出现在上游「余额变动历史」里，写清来源方便对账。
+		// MoneyToFloat 只该在调上游 API 时用 —— 这里正是（上游余额是 float64）。
+		_, balanceErr := a.balance.UpdateUserBalance(ctx, claimed.UserID,
+			dkdomain.MoneyToFloat(*amountPtr), "add",
+			fmt.Sprintf("designkit 额度申请 #%d 通过", in.ID))
+		if balanceErr == nil {
+			return claimed, nil
+		}
+
+		// 补偿：把行退回 pending，管理员能直接重试。
+		if reopenErr := a.repo.ReopenQuotaRequest(ctx, in.ID); reopenErr != nil {
+			slog.Error("designkit 额度申请补偿失败：申请已标成已处理，但余额没加上",
+				slog.Int64("quota_request_id", in.ID),
+				slog.Int64("requester_user_id", claimed.UserID),
+				slog.String("amount", dkdomain.MoneyString(*amountPtr)),
+				slog.Any("balance_error", balanceErr),
+				slog.Any("reopen_error", reopenErr))
+			return nil, dkdomain.NewError(dkdomain.ErrCodeInternal).
+				WithMessagef("申请已标成已处理，但余额没加上。去「用户管理」给申请人手动加 $%s，这条记录不用再点。",
+					dkdomain.MoneyString(*amountPtr)).
+				WithCause(balanceErr)
+		}
+		return nil, dkdomain.NewError(dkdomain.ErrCodeInternal).
+			WithMessage("余额没加上，这条申请还在待处理里，重试一次。").
+			WithCause(balanceErr)
+	}
+	return claimed, nil
+}
+
 // imageServiceAdapter 把 repository + 对象存储适配成 handler.ImageService。
 type imageServiceAdapter struct {
 	repo  dkdomain.Repository
@@ -1759,6 +1916,11 @@ type promptServiceAdapter struct {
 
 var _ dkhandler.PromptService = promptServiceAdapter{}
 
+// 「我的提示词」不走适配器：*UserPromptService 的方法签名只用标量和 domain 类型，
+// 直接满足 handler 的接口。这里钉一条编译期断言，两边签名漂移时在这里炸，
+// 而不是装配时静默装不进去。
+var _ dkhandler.MyPromptService = (*dkservice.UserPromptService)(nil)
+
 // categoryIndex 是一次请求里用得上的分类索引。
 //
 // 分类只有十几个、几乎不变，每次请求查一遍完全不心疼；
@@ -1832,6 +1994,11 @@ func promptProbeLimit(limit int) (pageSize, probe int) {
 }
 
 // ListPrompts 检索提示词。
+//
+// 可见性规则（**任何分支都带不出别人的自建词**）：
+//   - Source 空串 = 共享目录 → 钉死 source='youmind'。少了这一条，
+//     运营 A 存的词会混进运营 B 的灵感库列表；
+//   - Source="user" = 「我的提示词」→ source='user' + owner=当前用户。
 func (a promptServiceAdapter) ListPrompts(ctx context.Context, in dkhandler.ListPromptsInput) (*dkhandler.PromptPage, error) {
 	idx, err := a.loadCategories(ctx)
 	if err != nil {
@@ -1844,6 +2011,20 @@ func (a promptServiceAdapter) ListPrompts(ctx context.Context, in dkhandler.List
 		// 灵感库只列**没下架也没删**的。
 		// 下架过的词仍然能按 uid 单独打开（历史收藏点进来），见 GetPrompt。
 		OnlyEnabled: true,
+	}
+	if in.Source == dkhandler.ListPromptSourceMine {
+		if in.ViewerUserID <= 0 {
+			// 装配被改坏（鉴权中间件没塞用户）才会走到这里。
+			// 绝不能退化成「不过滤归属」——那等于把所有人的自建词端出来。
+			return nil, dkdomain.NewError(dkdomain.ErrCodeUnauthorized)
+		}
+		source := dkdomain.PromptSourceUser
+		owner := in.ViewerUserID
+		query.Source = &source
+		query.OwnerUserID = &owner
+	} else {
+		source := dkdomain.PromptSourceYouMind
+		query.Source = &source
 	}
 	if slug := in.CategorySlug; slug != "" {
 		category, ok := idx.bySlug[slug]
@@ -1890,10 +2071,18 @@ func (a promptServiceAdapter) ListPrompts(ctx context.Context, in dkhandler.List
 }
 
 // GetPrompt 按对外编号取一条。**不过滤 is_enabled**（见 ports.go 的说明）。
-func (a promptServiceAdapter) GetPrompt(ctx context.Context, uid string) (*dkhandler.PromptView, error) {
+//
+// 别人的自建词（source=user 且 owner 不是本人）一律「找不到」——
+// 不返回 403，那等于替他确认「这个编号存在」。
+func (a promptServiceAdapter) GetPrompt(ctx context.Context, viewerUserID int64, uid string) (*dkhandler.PromptView, error) {
 	prompt, err := a.repo.GetPromptByUID(ctx, uid)
 	if err != nil {
 		return nil, err
+	}
+	if prompt != nil && prompt.Source == dkdomain.PromptSourceUser &&
+		(prompt.OwnerUserID == nil || *prompt.OwnerUserID != viewerUserID) {
+		return nil, fmt.Errorf("designkit: 提示词 %s 不属于用户 %d: %w",
+			uid, viewerUserID, dkdomain.ErrNotFound)
 	}
 	idx, err := a.loadCategories(ctx)
 	if err != nil {

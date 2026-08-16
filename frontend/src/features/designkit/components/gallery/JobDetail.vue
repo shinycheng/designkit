@@ -25,6 +25,20 @@
       <div class="dk-history-card__title">
         <span>{{ displayName }}</span>
         <GalleryStatusBadge v-if="jobStatus" :status="jobStatus" kind="job" />
+        <!--
+          删除这一批记录（软删）。**只在批次结束后显示**：删掉一个还在跑的批次，
+          图照样出、钱照样扣，而「停止排队」的按钮跟着记录一起消失了 ——
+          后端对没结束的批次也会拒绝，这里干脆不给入口。
+        -->
+        <button
+          v-if="canDelete"
+          type="button"
+          class="dk-button dk-button--danger dk-button--sm dk-ml-auto"
+          :disabled="deleting"
+          @click="confirmingDelete = true"
+        >
+          {{ t('designkit.del.jobButton') }}
+        </button>
       </div>
 
       <dl class="dk-job-facts dk-mt-3">
@@ -103,6 +117,22 @@
       **先不画按钮**——画一个点不动的按钮，运营会以为系统坏了，比没有更糟。
       文案键已经备好：`designkit.gallery.downloadJob`。
     -->
+
+    <!--
+      「删除这一批记录」的二次确认。文案的两句都跟后端语义核对过：
+      列表和详情按 user_deleted_at 过滤 → 结果图确实从「我的图片」消失；
+      软删不碰账 → 已扣的费用确实不退。
+    -->
+    <ConfirmDialog
+      :show="confirmingDelete"
+      :title="t('designkit.del.jobButton')"
+      :message="t('designkit.del.jobConfirm')"
+      :confirm-text="t('designkit.common.delete')"
+      :cancel-text="t('designkit.common.cancel')"
+      :danger="true"
+      @confirm="confirmDeleteJob()"
+      @cancel="confirmingDelete = false"
+    />
   </div>
 </template>
 
@@ -111,14 +141,19 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { formatDateTimeToMinute } from '@/utils/format'
+import { useAppStore } from '@/stores/app'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import {
   PRICE_UNCONFIRMED,
+  deleteJob,
   errorText,
   formatMoney,
   getJob,
   isCanceledError,
+  isTerminalJobStatus,
   listRatios,
   ratioLabel,
+  toFriendlyError,
 } from '../../api'
 import type { DesignkitAsset, Job, Price } from '../../api'
 import { CONTINUE_ASSET_KEY } from '../../stores/promptHandoff'
@@ -136,6 +171,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const router = useRouter()
+const appStore = useAppStore()
 
 /**
  * 「用这张继续生成」——从「我的图片」点的时候。
@@ -197,6 +233,54 @@ const showCancelledCostNote = computed(() => {
   }
   return current.status === 'cancelled' || current.cancel_requested_at !== null
 })
+
+// ---------------------------------------------------------------------------
+// 删除这一批记录（软删）
+// ---------------------------------------------------------------------------
+
+/** 「删除这一批记录」的确认弹窗开没开。 */
+const confirmingDelete = ref(false)
+/** 删除接口在途。期间按钮禁用，防连点。 */
+const deleting = ref(false)
+
+/** 只有结束了的批次才给删除入口（没结束的后端也会拒绝，见按钮上的注释）。 */
+const canDelete = computed(() => {
+  const current = job.value
+  return current !== null && isTerminalJobStatus(current.status)
+})
+
+/**
+ * 确认删除：软删这一批，然后回到列表（列表会自己刷新，这一条已经不在了）。
+ * 失败时留在原地：记录还在，运营能直接再试。
+ */
+async function confirmDeleteJob(): Promise<void> {
+  confirmingDelete.value = false
+  if (deleting.value) {
+    return
+  }
+  deleting.value = true
+  try {
+    await deleteJob(props.jobUid)
+    appStore.showToast('success', t('designkit.del.done'))
+    emit('back')
+  } catch (error) {
+    appStore.showToast('error', deleteErrorMessage(error))
+  } finally {
+    deleting.value = false
+  }
+}
+
+/**
+ * 删失败给运营看什么：带 DK_ 码的业务错误显示后端的中文原文
+ * （比如没结束的批次会收到「先点停止排队」那句），其余显示「没删掉，重试一次。」
+ */
+function deleteErrorMessage(error: unknown): string {
+  const friendly = toFriendlyError(error)
+  if (typeof friendly.code === 'string' && friendly.code.startsWith('DK_')) {
+    return friendly.message
+  }
+  return t('designkit.del.failed')
+}
 
 /**
  * 读这一批的档案信息。

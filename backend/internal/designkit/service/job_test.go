@@ -64,6 +64,9 @@ type jobFakeRepo struct {
 	retryItem   *dkdomain.JobItem
 	retryErr    error
 
+	softDeleteCalls int
+	softDeleteErr   error
+
 	releasedHolds []int64
 	listQuery     *dkdomain.ListJobsQuery
 
@@ -188,6 +191,19 @@ func (r *jobFakeRepo) FinalizeJob(_ context.Context, params dkdomain.FinalizeJob
 	copied := params
 	r.finalizeParams = &copied
 	return r.finalizeWon, nil
+}
+
+func (r *jobFakeRepo) SoftDeleteJob(_ context.Context, userID int64, uid string) error {
+	r.softDeleteCalls++
+	if r.softDeleteErr != nil {
+		return r.softDeleteErr
+	}
+	if r.job == nil || r.job.UID != uid || r.job.UserID != userID || r.job.UserDeletedAt != nil {
+		return dkdomain.ErrNotFound
+	}
+	now := time.Now()
+	r.job.UserDeletedAt = &now
+	return nil
 }
 
 func (r *jobFakeRepo) GetAssetByUID(_ context.Context, userID int64, uid string) (*dkdomain.Asset, error) {
@@ -785,6 +801,50 @@ func TestJobService_GetJob_OtherUserGetsNotFound(t *testing.T) {
 	dkErr := jobRequireCode(t, err, dkdomain.ErrCodeJobNotFound)
 	if dkErr.HTTPStatus != 404 {
 		t.Fatalf("别人的任务必须是 404，不能是 403（403 会泄露「这个任务号存在」），实际 %d", dkErr.HTTPStatus)
+	}
+}
+
+// ============================================================================
+// 删除一批记录（软删）
+// ============================================================================
+
+func TestJobService_DeleteJob_TerminalJobIsDeleted(t *testing.T) {
+	svc, repo, _ := newJobFixture(t)
+	repo.job = &dkdomain.Job{ID: 1, UID: jobTestUID, UserID: 7, Status: dkdomain.JobStatusSucceeded}
+
+	if err := svc.DeleteJob(context.Background(), 7, jobTestUID); err != nil {
+		t.Fatalf("已结束的批次删除不该失败：%v", err)
+	}
+	if repo.softDeleteCalls != 1 {
+		t.Fatalf("该调一次 SoftDeleteJob，实际 %d 次", repo.softDeleteCalls)
+	}
+	if repo.job.UserDeletedAt == nil {
+		t.Fatal("软删之后 user_deleted_at 该有时间戳")
+	}
+}
+
+func TestJobService_DeleteJob_RunningJobIsRefused(t *testing.T) {
+	svc, repo, _ := newJobFixture(t)
+	repo.job = &dkdomain.Job{ID: 1, UID: jobTestUID, UserID: 7, Status: dkdomain.JobStatusRunning}
+
+	err := svc.DeleteJob(context.Background(), 7, jobTestUID)
+	jobRequireCode(t, err, dkdomain.ErrCodeIllegalStateTransition)
+	if repo.softDeleteCalls != 0 {
+		t.Fatal("没结束的批次绝不能碰 SoftDeleteJob：删掉一个在跑的批次，图照样出、钱照样扣，而「停止排队」的按钮没了")
+	}
+}
+
+func TestJobService_DeleteJob_OtherUserGetsNotFound(t *testing.T) {
+	svc, repo, _ := newJobFixture(t)
+	repo.job = &dkdomain.Job{ID: 1, UID: jobTestUID, UserID: 7, Status: dkdomain.JobStatusSucceeded}
+
+	err := svc.DeleteJob(context.Background(), 999, jobTestUID)
+	dkErr := jobRequireCode(t, err, dkdomain.ErrCodeJobNotFound)
+	if dkErr.HTTPStatus != 404 {
+		t.Fatalf("别人的任务必须是 404，不能是 403（403 会泄露「这个任务号存在」），实际 %d", dkErr.HTTPStatus)
+	}
+	if repo.softDeleteCalls != 0 {
+		t.Fatal("归属对不上时不该碰 SoftDeleteJob")
 	}
 }
 

@@ -80,6 +80,10 @@ func buildPromptFilter(query dkdomain.ListPromptsQuery, withCursor bool) (string
 		args = append(args, likeContains(kw))
 		fmt.Fprintf(&b, " AND (title ILIKE $%d OR body ILIKE $%d)", len(args), len(args))
 	}
+	if query.Source != nil {
+		args = append(args, query.Source.String())
+		fmt.Fprintf(&b, " AND source = $%d", len(args))
+	}
 	if query.OwnerUserID != nil {
 		args = append(args, *query.OwnerUserID)
 		fmt.Fprintf(&b, " AND owner_user_id = $%d", len(args))
