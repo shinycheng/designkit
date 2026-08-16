@@ -113,10 +113,12 @@
         :thumbnail-url="thumbUrlOf(item)"
         :image-failed-text="thumbFailedTextOf(item)"
         :continuing="continuingSeq === item.seq"
+        :upscale-state="upscaleStates[item.seq] ?? ''"
         @open="openLightbox(item)"
         @download="download(item)"
         @retry="openRetryDialog(item)"
         @continue="continueFrom(item)"
+        @upscale="upscaleFrom(item)"
       />
     </ul>
 
@@ -172,7 +174,15 @@ import {
 import type { DesignkitAsset, JobItem, Price } from '../../api'
 import { useAuthedImages, useJobPolling } from '../../composables'
 import { retryJobItem, stopJob } from './jobApi'
-import { continueFromImage } from '../../api'
+import {
+  continueFromImage,
+  isTerminalUpscaleStatus,
+  isUpscaleQueueFullError,
+  isUpscaleUnavailableError,
+  startUpscale,
+  toFriendlyError,
+  waitForUpscale,
+} from '../../api'
 import JobItemCard from './JobItemCard.vue'
 import StopJobDialog from './StopJobDialog.vue'
 import RetryItemDialog from './RetryItemDialog.vue'
@@ -192,6 +202,12 @@ const emit = defineEmits<{
   (e: 'balanceChanged'): void
   /** 「用这张继续生成」：把出好的图变成的新商品图交给工作台，塞进第一步。 */
   (e: 'continue-with-asset', asset: DesignkitAsset): void
+  /**
+   * 「高清放大」放完了：产物是一条新的商品图。
+   * 工作台听这个事件、把新图塞进第一步；「我的图片」那边不听（那个页面
+   * 没有第一步可塞），toast 已由本组件发过，不接也不缺信息。
+   */
+  (e: 'upscaled-asset', asset: DesignkitAsset): void
 }>()
 
 const { t } = useI18n()
@@ -229,6 +245,86 @@ async function continueFrom(item: JobItem) {
   }
 }
 const appStore = useAppStore()
+
+// ---------------------------------------------------------------------------
+// 高清放大（异步排队 + 每 5 秒轮询）
+// ---------------------------------------------------------------------------
+
+/** 每张结果图的放大进度（seq → queued/running）。不在表里 = 没在放。 */
+const upscaleStates = ref<Record<number, 'queued' | 'running'>>({})
+
+/** 每个在轮询的任务一只取消器，组件卸载时全部叫停。 */
+const upscaleControllers = new Map<number, AbortController>()
+
+function setUpscaleState(seq: number, status: string): void {
+  if (status === 'queued' || status === 'running') {
+    upscaleStates.value = { ...upscaleStates.value, [seq]: status }
+  }
+}
+
+function clearUpscaleState(seq: number): void {
+  const next = { ...upscaleStates.value }
+  delete next[seq]
+  upscaleStates.value = next
+}
+
+/**
+ * 「高清放大」：先把这张出好的结果图变成一条商品图（服务端复制、sha256 去重），
+ * 再把那条商品图排进放大队列，然后每 5 秒问一次，直到 done/failed。
+ *
+ * 完成后 toast「放大完成，已存为新图」，并把产物发给上层：
+ * 工作台把它塞进第一步的商品图列表；「我的图片」侧只有 toast。
+ */
+async function upscaleFrom(item: JobItem): Promise<void> {
+  const images = item.images ?? []
+  const current = images.find((one) => one.is_current) ?? images[0]
+  if (!current?.uid || upscaleStates.value[item.seq]) {
+    return
+  }
+  const controller = new AbortController()
+  upscaleControllers.set(item.seq, controller)
+  upscaleStates.value = { ...upscaleStates.value, [item.seq]: 'queued' }
+  try {
+    // 结果图 → 商品图（放大的输入输出都是商品图；重复点拿到同一条，不多占盘）。
+    const source = await continueFromImage(current.uid)
+    let task = await startUpscale(source.uid)
+    setUpscaleState(item.seq, task.status)
+    if (!isTerminalUpscaleStatus(task.status)) {
+      task = await waitForUpscale(source.uid, {
+        signal: controller.signal,
+        onStatus: (latest) => setUpscaleState(item.seq, latest.status),
+      })
+    }
+    if (task.status === 'done' && task.result) {
+      appStore.showToast('success', t('designkit.upscale.done'))
+      emit('upscaled-asset', task.result)
+    } else {
+      appStore.showToast('error', task.error_message || t('designkit.upscale.failed'))
+    }
+  } catch (err) {
+    if (!isCanceledError(err)) {
+      appStore.showToast('error', upscaleErrorMessage(err))
+    }
+  } finally {
+    upscaleControllers.delete(item.seq)
+    clearUpscaleState(item.seq)
+  }
+}
+
+/** 跟 AssetUploader 里那份同一套优先级：排队满 → 没上线 → 后端中文 → 兜底。 */
+function upscaleErrorMessage(err: unknown): string {
+  if (isUpscaleQueueFullError(err)) {
+    return t('designkit.upscale.queueFull')
+  }
+  if (isUpscaleUnavailableError(err)) {
+    return t('designkit.upscale.unavailable')
+  }
+  const friendly = toFriendlyError(err)
+  if (typeof friendly.code === 'string' && friendly.code.startsWith('DK_')) {
+    return friendly.message
+  }
+  return t('designkit.upscale.failed')
+}
 
 const polling = useJobPolling({
   onFinished: () => {
@@ -466,5 +562,10 @@ async function downloadFromLightbox(): Promise<void> {
 onBeforeUnmount(() => {
   polling.dispose()
   images.dispose()
+  // 放大的轮询也要叫停：不停的话页面关了它还每 5 秒打一次后端。
+  for (const controller of upscaleControllers.values()) {
+    controller.abort()
+  }
+  upscaleControllers.clear()
 })
 </script>

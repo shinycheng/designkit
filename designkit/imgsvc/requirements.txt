@@ -29,6 +29,19 @@ Pillow==12.3.0
 # 两个预编译轮子，所以 --only-binary 不会把 arm64 构建卡住。
 pillow-heif==1.4.0
 
+# 「高清放大」的 ONNX 推理引擎（models/realesr-general-x4v3.onnx，CPU 推理）。
+# 已核对（2026-08-16 查 PyPI）：1.23.2 同时提供
+#   cp312 manylinux_2_27_aarch64.manylinux_2_28_aarch64（NAS / arm64 用）
+#   cp312 manylinux_2_27_x86_64.manylinux_2_28_x86_64（服务器 / amd64 用）
+# bookworm 的 glibc 是 2.36，满足 manylinux_2_28。
+onnxruntime==1.23.2
+
+# onnxruntime 的张量输入输出全走 numpy。2.2.6 提供
+#   cp312 manylinux_2_17_aarch64.manylinux2014_aarch64
+#   cp312 manylinux_2_17_x86_64.manylinux2014_x86_64
+# 双架构预编译轮子（manylinux_2_17 比 onnxruntime 的要求还宽）。
+numpy==2.2.6
+
 # ─────────────────────────────────────────────────────────────────────────
 # 间接依赖（本来不用写，这里全部钉死，保证两个架构、每次构建装到的完全一样）
 # ─────────────────────────────────────────────────────────────────────────
@@ -51,3 +64,15 @@ typing-extensions==4.16.0
 typing-inspection==0.4.4
 annotated-types==0.8.0
 annotated-doc==0.0.5
+
+# onnxruntime 的间接依赖（requires: coloredlogs, flatbuffers, numpy, packaging,
+# protobuf, sympy；2026-08-16 从 1.23.2 的元数据里抄的）。
+# 只有 protobuf 带原生扩展：7.35.1 提供 cp310-abi3 的 manylinux2014
+# aarch64 + x86_64 双架构轮子（abi3 = cp312 也能装），其余全是纯 Python 轮子。
+coloredlogs==15.0.1
+humanfriendly==10.0
+flatbuffers==25.12.19
+packaging==26.3
+protobuf==7.35.1
+sympy==1.14.0
+mpmath==1.3.0

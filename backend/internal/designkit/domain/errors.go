@@ -224,6 +224,12 @@ const (
 	ErrCodeForbidden     = "DK_FORBIDDEN"
 	ErrCodeAPIKeyMissing = "DK_API_KEY_MISSING"
 
+	// —— 高清放大 ——
+	ErrCodeUpscaleUnavailable = "DK_UPSCALE_UNAVAILABLE"
+	ErrCodeUpscaleQueueFull   = "DK_UPSCALE_QUEUE_FULL"
+	ErrCodeUpscaleNotFound    = "DK_UPSCALE_NOT_FOUND"
+	ErrCodeUpscaleFailed      = "DK_UPSCALE_FAILED"
+
 	// —— 我们自己的基础设施 ——
 	ErrCodePreprocessFailed = "DK_PREPROCESS_FAILED"
 	ErrCodeStorageError     = "DK_STORAGE_ERROR"
@@ -396,6 +402,26 @@ var errorCatalog = map[string]DesignkitError{
 		// 每个运营用户首次进工作台时服务端会自动建一把内部专用 Key；建失败时报这个。
 		Message:    "账号还没开通出图权限，请联系管理员。",
 		HTTPStatus: http.StatusForbidden,
+	},
+
+	// —— 高清放大 ——
+	//
+	// 文案与前端 i18n 的 designkit.upscale.* 逐字对齐（monica 定稿），改一边必须改另一边。
+	ErrCodeUpscaleUnavailable: {
+		Message:    "放大功能还没准备好，请联系管理员。",
+		HTTPStatus: http.StatusServiceUnavailable,
+	},
+	ErrCodeUpscaleQueueFull: {
+		Message:    "排队满了，等会儿再试。",
+		HTTPStatus: http.StatusTooManyRequests,
+	},
+	ErrCodeUpscaleNotFound: {
+		Message:    "没有这张图的放大任务，重新点「高清放大」。",
+		HTTPStatus: http.StatusNotFound,
+	},
+	ErrCodeUpscaleFailed: {
+		Message:    "放大失败，重试一次。",
+		HTTPStatus: http.StatusBadGateway,
 	},
 
 	// —— 我们自己的基础设施 ——

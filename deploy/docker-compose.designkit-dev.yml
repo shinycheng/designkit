@@ -104,6 +104,47 @@ services:
       - sub2api-network
 
   # ═══════════════════════════════════════════════════════════════════════
+  # 抠图服务（rembg）——「生成白底图」按钮的后端
+  # ═══════════════════════════════════════════════════════════════════════
+  # 干什么：收一张商品图，返回抠掉背景的**透明 PNG**。合成白底在 Go 侧做
+  #   （backend/internal/designkit/service/asset_whitebg.go）。
+  #
+  # ⚠ 故意不写 ports：它只服务同一个 docker 网络里的 sub2api，
+  #   不该能从宿主机或局域网直接访问（跟 designkit-imgsvc 同一个规矩）。
+  #
+  # ⚠ 模型权重不在镜像里：第一次用到某个模型时才从 GitHub 下载（几十 MB），
+  #   所以①要带代理变量（国内直连 GitHub 基本拉不动），②把 /root/.u2net
+  #   挂成本地目录缓存住，容器重建不用重新下载。第一次点「生成白底图」
+  #   可能因为还在下模型而超时，等一两分钟再点一次就好。
+  #
+  # ⛔ 模型只准用 Go 侧白名单里那四个（isnet-general-use / u2net / u2netp /
+  #   birefnet-general-lite）。bria-rmbg 一系是 BRIA 的**非商用权重**，
+  #   商业系统不能用，Go 客户端也会当场拒掉（service/rembg_client.go）。
+  designkit-rembg:
+    image: danielgatis/rembg:latest
+    container_name: designkit-rembg
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # s = HTTP 服务模式。7000 端口只在 docker 网络内可达。
+    command: ["s", "--host", "0.0.0.0", "--port", "7000"]
+    volumes:
+      # 模型缓存。删掉这个目录 = 下次用时重新从 GitHub 下载。
+      - ./rembg_models:/root/.u2net
+    environment:
+      # ⚠ 刻意**不配任何代理**（2026-08-16 实测教训）：
+      # 上游那套默认值指向 host.docker.internal:7897——那是 Mac Docker Desktop
+      # 的专用主机名，Linux 上解析不了，rembg 一出网就报 ProxyError。
+      # 模型权重不走网络：手动放进 ./rembg_models/（配置手册有下载命令），
+      # 这个容器因此完全不需要出网。想让它自己下模型，在 .env 里设
+      # SUB2API_DEV_HTTP_PROXY 为真实可达的代理再取消下面两行注释。
+      # - HTTP_PROXY=${SUB2API_DEV_HTTP_PROXY:-}
+      # - HTTPS_PROXY=${SUB2API_DEV_HTTPS_PROXY:-}
+      - TZ=${TZ:-Asia/Shanghai}
+    networks:
+      - sub2api-network
+
+  # ═══════════════════════════════════════════════════════════════════════
   # 只给上游的 sub2api 容器补三个环境变量，别的一律不动
   # ═══════════════════════════════════════════════════════════════════════
   # compose 会把多个 -f 文件里同名服务的 environment 按变量名合并，
@@ -117,9 +158,10 @@ services:
   #   不加的话，后端调图像服务会先去连宿主机的代理端口，然后失败——
   #   现象是「本机明明起着服务，出图却报连不上」，很难往代理上想。
   #
-  #   下面重复了一遍上游的默认名单并在末尾加上 designkit-imgsvc。
+  #   下面重复了一遍上游的默认名单并在末尾加上 designkit-imgsvc 和
+  #   designkit-rembg（抠图服务，同样是按主机名匹配不到网段规则的内部容器）。
   #   如果你在 .env 里自定义了 SUB2API_DEV_NO_PROXY，**记得自己把
-  #   designkit-imgsvc 加进去**。
+  #   designkit-imgsvc 和 designkit-rembg 都加进去**。
   sub2api:
     environment:
       # ⚠ 走反向代理（群晖「登录门户 → 高级 → 反向代理」）之后必须配这一项。
@@ -136,12 +178,14 @@ services:
       # 不用反向代理、直接从路由器把端口转到 18080 时，这一项填了也无害
       #（那种情况下来源 IP 本来就是真实的公网 IP，不经过网关转换）。
       - SERVER_TRUSTED_PROXIES=${SERVER_TRUSTED_PROXIES:-172.16.0.0/12}
-      - NO_PROXY=${SUB2API_DEV_NO_PROXY:-127.0.0.1,localhost,::1,postgres,redis,sub2api,designkit-imgsvc,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,.local}
-      - no_proxy=${SUB2API_DEV_NO_PROXY:-127.0.0.1,localhost,::1,postgres,redis,sub2api,designkit-imgsvc,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,.local}
+      - NO_PROXY=${SUB2API_DEV_NO_PROXY:-127.0.0.1,localhost,::1,postgres,redis,sub2api,designkit-imgsvc,designkit-rembg,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,.local}
+      - no_proxy=${SUB2API_DEV_NO_PROXY:-127.0.0.1,localhost,::1,postgres,redis,sub2api,designkit-imgsvc,designkit-rembg,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,.local}
       # 后端用这三个变量找图像服务（走 os.Getenv，不进 config.Config）
       - DESIGNKIT_IMGSVC_URL=${DESIGNKIT_IMGSVC_URL:-http://designkit-imgsvc:8000}
       - DESIGNKIT_IMGSVC_TOKEN=${DESIGNKIT_IMGSVC_TOKEN:-}
       - DESIGNKIT_IMGSVC_TIMEOUT_SECONDS=${DESIGNKIT_IMGSVC_TIMEOUT_SECONDS:-60}
+      # 抠图服务（「生成白底图」）。也走 os.Getenv，不进 config.Config。
+      - DESIGNKIT_REMBG_URL=${DESIGNKIT_REMBG_URL:-http://designkit-rembg:7000}
       # 生成的图和上传的商品图落在哪。
       # 默认值 /app/data/designkit 正好在上面 dev.yml 挂进来的 ./data 里，
       # 所以容器重建也不会丢图。这里显式写出来是因为：
@@ -152,6 +196,9 @@ services:
       designkit-imgsvc:
         # 只等它起来，不等 healthcheck 变绿：出图链路第一次用到它的时候
         # 早就过去了，卡在这里只会让整套环境启动变慢。
+        condition: service_started
+      designkit-rembg:
+        # 同上：第一次点「生成白底图」离启动远得很。
         condition: service_started
 
 volumes:

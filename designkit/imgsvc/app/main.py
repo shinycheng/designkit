@@ -3,10 +3,13 @@
 契约见 `designkit/docs/设计定型.md` 第七节。要点：
 
 * 容器内监听 8000，**不映射宿主端口**，只挂在 sub2api 的 docker 网络上。
-* `GET  /healthz`       —— 报告 pillow / pillow-heif 是否可用。
+* `GET  /healthz`       —— 报告 pillow / pillow-heif / 放大模型是否可用。
 * `POST /v1/preprocess` —— multipart 上传，**成功直接返回图片字节**，
   元数据放响应头（不包 JSON base64：一张 2K 图 base64 之后要多占三分之一内存，
   而 Go 侧拿到还要再解一次）。
+* `POST /v1/upscale`    —— 高清放大（Real-ESRGAN ×4）。同样 multipart 进、
+  PNG 字节出。**同步阻塞**，一张要几十秒到两分钟——排队由 Go 侧的
+  UpscaleService 管（内存队列 + 单 worker），这里不需要也不做异步。
 * 失败一律 JSON，且**只有一种格式**：`{"error":{"code":"...","message":"中文"}}`。
 * **fail-closed**：任何异常都返 4xx/5xx，**绝不回吐原图**。
 
@@ -17,6 +20,7 @@ from __future__ import annotations
 
 import base64
 import hmac
+import io
 import json
 import logging
 import os
@@ -40,6 +44,7 @@ from .imaging import (
     parse_max_dimension,
     preprocess,
 )
+from . import upscale as upscale_mod
 
 logger = logging.getLogger("designkit.imgsvc")
 
@@ -181,6 +186,18 @@ async def healthz() -> JSONResponse:
         },
         "supported_ratios": list(SUPPORTED_RATIOS),
     }
+    # 「高清放大」的可用性。不可用**不算不健康**：预处理照常干活，
+    # 放大端点会返 503 upscale_unavailable，Go 侧翻成「还没准备好」。
+    upscale_ok, upscale_reason = upscale_mod.availability()
+    body["upscale"] = {
+        "available": upscale_ok,
+        "onnxruntime": upscale_mod.ORT_VERSION,
+        "scale": upscale_mod.SCALE,
+        "tile": upscale_mod.TILE_SIZE,
+        "max_input_pixels": upscale_mod.MAX_INPUT_PIXELS,
+    }
+    if not upscale_ok:
+        body["upscale"]["reason"] = upscale_reason
     if not HEIF_AVAILABLE:
         body["message"] = "pillow-heif 没装上，iPhone 拍的 HEIC 照片会被拒绝（422 heif_unsupported）。"
     return JSONResponse(status_code=200, content=body)
@@ -269,3 +286,60 @@ async def preprocess_endpoint(
         "Cache-Control": "no-store",
     }
     return Response(content=result.data, media_type=result.mime, headers=headers)
+
+
+# --------------------------------------------------------------------------
+# 高清放大（Real-ESRGAN ×4）
+# --------------------------------------------------------------------------
+@app.post("/v1/upscale")
+async def upscale_endpoint(
+    request: Request,
+    file: UploadFile = File(..., description="要放大的图"),
+    _auth: None = Depends(require_token),
+) -> Response:
+    """一张图进、放大 4 倍的 PNG 出。
+
+    - **同步阻塞**：一张 1254×1254 在 NAS 上要一两分钟。排队、超时、
+      去重都在 Go 侧的 UpscaleService 里，这里只管算。
+    - 推理内部自带串行锁（upscale.py 的 _infer_lock），
+      **不占** preprocess 那个并发闸门——放大慢，占了会把补边请求全堵住。
+    - 输出一律 PNG：放大的意义就是保细节，再走有损压缩是自相矛盾。
+    """
+    # 先看 Content-Length，超了就别费劲把 body 收完（跟 preprocess 同一道闸）。
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_UPLOAD_BYTES + 64 * 1024:
+        raise PayloadTooLarge(
+            "上传内容超过 %d 字节的上限。" % MAX_UPLOAD_BYTES, code="file_too_large"
+        )
+
+    raw = await file.read()
+    await file.close()
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise PayloadTooLarge(
+            "图片 %d 字节，超过 %d 字节的上限。" % (len(raw), MAX_UPLOAD_BYTES),
+            code="file_too_large",
+        )
+    if not raw:
+        raise BadRequest("上传的文件是空的。", code="empty_file")
+
+    def _work():
+        image = upscale_mod.decode_to_rgb(raw)
+        source_width, source_height = image.size
+        enlarged = upscale_mod.upscale_image(image)
+        buffer = io.BytesIO()
+        enlarged.save(buffer, "PNG")
+        return source_width, source_height, enlarged.size, buffer.getvalue()
+
+    source_width, source_height, (out_width, out_height), data = await run_in_threadpool(_work)
+
+    headers = {
+        "X-Dk-Width": str(out_width),
+        "X-Dk-Height": str(out_height),
+        "X-Dk-Source-Width": str(source_width),
+        "X-Dk-Source-Height": str(source_height),
+        "X-Dk-Scale": str(upscale_mod.SCALE),
+        "X-Dk-Bytes": str(len(data)),
+        "Content-Length": str(len(data)),
+        "Cache-Control": "no-store",
+    }
+    return Response(content=data, media_type="image/png", headers=headers)

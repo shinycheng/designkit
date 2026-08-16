@@ -450,6 +450,20 @@ git show <commit> -- <文件>                          # 逐个读
     - 路由双前缀照旧：浏览器 `/api/v1/designkit/chat/*`；ERP 读挂轻量 Key 鉴权、
       发送挂上游 apiKeyAuth（花钱的要过额度拦截）。
 
+39. **并入三个开源能力 + 试穿实测**（monica 2026-08-16 圈选，依据
+    `designkit/docs/调研-电商AI开源项目.md`，各项目许可证/硬件要求均实查过）：
+    - **抠图白底**：rembg（MIT）独立容器、CPU 镜像、`rembg s` HTTP 模式，
+      默认模型 `isnet-general-use`。⛔ **`bria-rmbg` 模型永久禁用**（权重
+      CC BY-NC，内部生产也算商用）；`birefnet` 完整版不给运营（CPU 分钟级）。
+    - **高清放大**：Real-ESRGAN 小模型 `realesr-general-x4v3.onnx`（BSD，4.9MB）
+      + onnxruntime 并入 imgsvc，512 tile 推理，异步交付（NAS 约 1~1.5 分钟/张）。
+      ⚠ CPU 必须 fp32；大模型 x4plus 在 NAS 上 20~30 分钟/张，**不引入**。
+    - **违禁词+标题规则**：sensitive-word 词库（Apache-2.0）+ 广告法极限词表，
+      Go 侧 Aho-Corasick 自写匹配（不引 Java）；平台标题字数做静态配置表。
+    - **虚拟试穿不自部署**（开源权重全是 NC 许可证）：灵感库加「模特上身」
+      模板实测 gpt-image-2；不够用再考虑 fal.ai Kolors API（$0.07/张）。
+    - 重打光（IC-Light）默认不做，触发条件与接入路径见调研文档。
+
 **下面三条是纯技术决定，我定的，记在这里防止以后反复：**
 
 - **接口挂两个前缀，handler 和 service 完全共用**（2026-08-12 核实后修正，

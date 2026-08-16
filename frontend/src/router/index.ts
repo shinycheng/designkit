@@ -476,6 +476,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    // 文案检查：违禁词 + 平台标题字数。纯本地接口毫秒级返回，页面边输边查。
+    path: '/content-check',
+    name: 'DesignkitContentCheck',
+    component: () => import('@/features/designkit/views/DesignkitContentCheckView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Copy Check',
+      titleKey: 'designkit.contentCheck.title',
+      descriptionKey: 'designkit.contentCheck.description'
+    }
+  },
+  {
     path: '/gallery',
     name: 'DesignkitGallery',
     component: () => import('@/features/designkit/views/DesignkitGalleryView.vue'),

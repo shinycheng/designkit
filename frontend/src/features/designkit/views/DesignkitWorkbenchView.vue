@@ -62,6 +62,7 @@
             @finished="onJobFinished"
             @balance-changed="refreshUsage"
             @continue-with-asset="onContinueWithAsset"
+            @upscaled-asset="onUpscaledAsset"
           />
 
           <!-- 还没提交过：画布上先摆一句话，别是一片空白 -->
@@ -330,6 +331,18 @@ function onContinueWithAsset(asset: DesignkitAsset): boolean {
       : t('designkit.gallery.continueAlreadyAdded'),
   )
   return added
+}
+
+/**
+ * 「高清放大」放完了：把产物（一条新的商品图）塞进第一步。
+ *
+ * **静默加**，不再弹提示：「放大完成，已存为新图」那条 toast 已经由
+ * 进度面板发过了，这里再弹一条就是同一件事说两遍。加不进去（重复 / 到上限）
+ * 也不吭声——重复恰恰说明它已经在列表里了，正是运营想要的状态。
+ * 走 addExistingAsset 而不是直接改数组的理由见 onContinueWithAsset 上面那段。
+ */
+function onUpscaledAsset(asset: DesignkitAsset): void {
+  assetUploader.value?.addExistingAsset(asset, t('designkit.upscale.name'))
 }
 
 // ---- 报价 ----

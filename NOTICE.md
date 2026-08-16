@@ -48,6 +48,9 @@ upstream repository does not ship it.
 |---|---|---|
 | `frontend/src/features/designkit/vendor/tagcloud/` | TagCloud 2.5.0（登录页平台标识旋转球）。jsDelivr 打好的 ESM 包，**原样保存，未作改动** | MIT，全文见同目录 `LICENSE` |
 | `frontend/public/designkit/platforms/*.svg` | 10 个电商平台标识 | Simple Icons，CC0-1.0，见同目录 `LICENSE-simple-icons.md` |
+| `designkit/imgsvc/models/realesr-general-x4v3.onnx` | Real-ESRGAN 小模型（高清放大），官方 pth 的 ONNX 转换 | BSD-3-Clause，见同目录 `LICENSE-realesrgan.md` |
+| `backend/internal/designkit/wordcheck/data/adlaw.txt` | 广告法违禁词表 305 词（文案检查） | 以 advertising_law_checker（MIT）为底整理，见同目录 `LICENSE-sources.md` |
+| （运行时容器）`danielgatis/rembg` 官方镜像 | 一键抠图（白底图功能），独立容器、HTTP 调用，不含其代码 | rembg MIT；所用模型权重 isnet Apache-2.0。⛔ `bria-rmbg` 模型非商用，客户端白名单已禁 |
 
 > ⚠ **京东 / 拼多多 / Amazon / Walmart 刻意不放图形标，用文字代替。**
 > Simple Icons 按商标权利人要求下架了这几条；从维基百科热链既是外部请求，

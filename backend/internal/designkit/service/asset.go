@@ -86,6 +86,10 @@ type AssetServiceDeps struct {
 	// 允许为 nil：没配置时 EnsureVariant 直接失败（fail-closed），
 	// 而不是把没补边的原图发出去。
 	Preprocessor dkdomain.ImagePreprocessor
+	// Rembg 抠图服务客户端（一键白底图，见 asset_whitebg.go）。
+	// 允许为 nil：没配置时 RemoveBackground 返回「白底图功能还没准备好」，
+	// 上传、预处理、出图全都不受影响。
+	Rembg BackgroundRemover
 	// Now 取当前时间，测试可以塞固定值。为 nil 用 time.Now。
 	Now func() time.Time
 	// NewUID 生成 26 位 ULID。为 nil 用内置实现。
@@ -98,6 +102,7 @@ type AssetService struct {
 	settings     dkdomain.SettingRepository
 	store        dkdomain.ObjectStore
 	preprocessor dkdomain.ImagePreprocessor
+	rembg        BackgroundRemover
 	now          func() time.Time
 	newUID       func() string
 }
@@ -126,6 +131,7 @@ func NewAssetService(deps AssetServiceDeps) (*AssetService, error) {
 		settings:     deps.Settings,
 		store:        deps.Store,
 		preprocessor: deps.Preprocessor,
+		rembg:        deps.Rembg,
 		now:          now,
 		newUID:       newUID,
 	}, nil
@@ -154,6 +160,11 @@ type UploadAssetInput struct {
 	DeclaredSize int64
 	// Data 图片字节流。
 	Data io.Reader
+	// MaxBytesOverride 大小上限覆盖，**只给服务端内部调用用**（高清放大的
+	// 结果入库：×4 之后一张照片级 PNG 就是几十 MB，天然超过给「运营上传」
+	// 定的 20MB）。<=0 = 用 designkit_settings 的 max_upload_bytes。
+	// handler 的 CreateAssetInput 没有这个字段，HTTP 上传碰不到它。
+	MaxBytesOverride int64
 }
 
 // UploadAssetResult 上传结果。
@@ -187,6 +198,9 @@ func (s *AssetService) UploadAsset(ctx context.Context, in UploadAssetInput) (*U
 	}
 
 	limit := s.MaxUploadBytes(ctx)
+	if in.MaxBytesOverride > 0 {
+		limit = in.MaxBytesOverride
+	}
 	if in.DeclaredSize > limit {
 		return nil, tooLargeError(limit)
 	}

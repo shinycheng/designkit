@@ -110,6 +110,11 @@ type Module struct {
 	// preprocessor Python 预处理服务客户端（补白边到目标比例）。
 	preprocessor dkdomain.ImagePreprocessor
 
+	// rembg 抠图服务客户端（一键白底图）。
+	// 允许为 nil：缺席时只有「生成白底图」按钮不可用（返回中文「还没准备好」），
+	// 上传、预处理、出图全都照常。
+	rembg dkservice.BackgroundRemover
+
 	// keys 每个运营用户一把「内部专用 API Key」。
 	// 出图必须有 Key：上游 Images() 第一件事就是从上下文取 API Key，取不到直接 401。
 	keys *dkservice.InternalKeyService
@@ -136,6 +141,13 @@ type Module struct {
 
 	// assets 商品图上传 / 预处理 / 比例白名单。
 	assets *dkservice.AssetService
+
+	// upscale 「高清放大」的内存队列（Real-ESRGAN ×4，跑在 imgsvc 里）。
+	//
+	// 允许为 nil：缺席时只有「高清放大」那两条路由不挂（前端显示「还没准备好」），
+	// 上传、预处理、出图全都照常。**单实例约定**：队列在内存里，重启丢任务
+	// 是接受过的代价（运营重点一次），跟 worker 的 Locker=nil 是同一份约束。
+	upscale *dkservice.UpscaleService
 
 	// jobs 批次的报价 / 提交 / 查询 / 停止排队 / 重试。
 	// 它是整条链路的入口：没有它，运营界面上没有任何按钮能让一张图开始出。
@@ -249,6 +261,19 @@ func NewModule(
 		m.preprocessor = pre
 	}
 
+	// ---- 4·b. 抠图服务（rembg，一键白底图）----
+	//
+	// 建不出来**只降级不报错**：抠图挂了只是「生成白底图」按钮不可用，
+	// 上传、预处理、出图全都照常。地址不填时用 compose 里的服务名默认值，
+	// 所以正常部署下这里不会失败；会失败的基本只有一种情况——环境变量填了个坏地址。
+	if rembg, rembgErr := dkservice.NewRembgClientFromEnv(); rembgErr != nil {
+		m.degrade("抠图服务地址不可用（检查环境变量 %s，默认 %s）：%v",
+			dkservice.EnvRembgURL, dkservice.DefaultRembgURL, rembgErr)
+	} else {
+		// 只在成功时赋值，理由同上面的对象存储：typed-nil 装进接口就判不出来了。
+		m.rembg = rembg
+	}
+
 	// ---- 5. 内部专用 API Key ----
 	if apiKeyService == nil {
 		m.degrade("拿不到上游的 API Key 服务，运营在界面上提交的批次没有 Key 可用，出图会被上游判 401")
@@ -295,6 +320,9 @@ func NewModule(
 			// 允许为 nil：没有预处理服务时 EnsureVariant 直接失败（fail-closed），
 			// 绝不把没补边的原图发出去 —— 那会让运营选 3:4 拿回 4:3、钱照扣。
 			Preprocessor: m.preprocessor,
+			// 同样允许为 nil：缺席时只有「生成白底图」返回「还没准备好」。
+			// m.rembg 本身就是接口类型、只在成功时赋值，这里不会踩 typed-nil。
+			Rembg: m.rembg,
 		})
 		if assetErr != nil {
 			m.degrade("商品图服务没建起来：%v", assetErr)
@@ -329,6 +357,25 @@ func NewModule(
 		} else {
 			m.suggest = suggest
 		}
+	}
+
+	// ---- 7·c. 高清放大 ----
+	//
+	// 两个前提：商品图服务（读原图 + 结果入库）、imgsvc 地址合法（跟预处理
+	// 共用 DESIGNKIT_IMGSVC_URL）。缺了**只记降级不报错**：放大挂了只是
+	// 那个按钮不可用，上传和出图照常。
+	if m.assets == nil {
+		m.degrade("没有商品图服务，高清放大不可用")
+	} else if upscaleBackend, backendErr := dkservice.NewUpscaleClientFromEnv(); backendErr != nil {
+		m.degrade("高清放大没建起来（检查环境变量 %s / %s）：%v",
+			dkservice.EnvImgsvcURL, dkservice.EnvUpscaleTimeoutSeconds, backendErr)
+	} else if up, upErr := dkservice.NewUpscaleService(dkservice.UpscaleServiceDeps{
+		Assets:  m.assets,
+		Backend: upscaleBackend,
+	}); upErr != nil {
+		m.degrade("高清放大没建起来：%v", upErr)
+	} else {
+		m.upscale = up
 	}
 
 	// ---- 7.5 「AI 对话」页（决策 38）----
@@ -540,6 +587,13 @@ func (m *Module) buildServices() dkhandler.Services {
 		// 理由同上：存储 / 网关坏掉的时候，管理员更需要能打开设置页去改东西。
 		svcs.Settings = settingsServiceAdapter{repo: m.repo, proxies: m.proxies}
 	}
+	// 高清放大：跟数据库无关，只要队列建起来了就挂。
+	// ⚠ typed-nil：m.upscale 的声明类型是 *UpscaleService，为 nil 时直接赋给
+	// 接口字段会让 register_business.go 的判空失效，路由挂上去返回 500，
+	// 而不是我们设计好的「裸 404 → 前端显示还没准备好」。
+	if m.upscale != nil {
+		svcs.Upscale = upscaleServiceAdapter{svc: m.upscale}
+	}
 	if !svcs.Ready() {
 		m.degrade("业务服务没配齐（素材 / 比例 / 批次 / 结果图 四缺一），业务接口整组未注册，只有健康检查可用")
 	}
@@ -560,9 +614,11 @@ func (m *Module) logStartupSummary() {
 		slog.Bool("database", m.pool != nil),
 		slog.Bool("object_store", m.store != nil),
 		slog.Bool("imgsvc", m.preprocessor != nil),
+		slog.Bool("rembg", m.rembg != nil),
 		slog.Bool("gateway", m.gateway != nil),
 		slog.Bool("worker", m.worker != nil),
 		slog.Bool("jobs", m.jobs != nil),
+		slog.Bool("upscale", m.upscale != nil),
 		// 灵感库两项：浏览只要数据库在就有；同步器还没装配时「立即同步」不可用，
 		// 但同步状态和代理设置照常给得出来（见 promptSyncAdapter）。
 		slog.Bool("prompt_library", m.services.Prompts != nil),
@@ -707,7 +763,14 @@ func (m *Module) Close() error {
 		m.closed = true
 		w := m.worker
 		inspiration := m.inspiration
+		upscale := m.upscale
 		m.mu.Unlock()
+
+		// 高清放大队列先停：cancel 之后在放的那张立刻中断。任务表在内存里，
+		// 反正重启就没了（设计好的代价），不值得为它占用 5 秒的关停预算。
+		if upscale != nil {
+			upscale.Close()
+		}
 
 		// 灵感库同步先停：它握着一把 PostgreSQL 咨询锁，
 		// 连接池一关那把锁只能等连接断开才释放，期间新起来的实例
@@ -958,6 +1021,45 @@ func (a chatConversationAdapter) GetSession(ctx context.Context, userID int64, u
 
 func (a chatConversationAdapter) DeleteSession(ctx context.Context, userID int64, uid string) error {
 	return a.svc.DeleteSession(ctx, userID, uid)
+}
+
+// upscaleServiceAdapter 把 service.UpscaleService 适配成 handler.UpscaleService。
+// 搬字段的理由同 suggestServiceAdapter（下）。
+type upscaleServiceAdapter struct {
+	svc *dkservice.UpscaleService
+}
+
+var _ dkhandler.UpscaleService = upscaleServiceAdapter{}
+
+func (a upscaleServiceAdapter) StartUpscale(ctx context.Context, userID int64, origin dkdomain.Origin, assetUID string) (*dkhandler.UpscaleTaskView, error) {
+	task, err := a.svc.Enqueue(ctx, userID, origin, assetUID)
+	if err != nil {
+		return nil, err
+	}
+	return newUpscaleTaskView(task), nil
+}
+
+func (a upscaleServiceAdapter) UpscaleStatus(ctx context.Context, userID int64, assetUID string) (*dkhandler.UpscaleTaskView, error) {
+	task, err := a.svc.Status(ctx, userID, assetUID)
+	if err != nil {
+		return nil, err
+	}
+	return newUpscaleTaskView(task), nil
+}
+
+func newUpscaleTaskView(task *dkservice.UpscaleTask) *dkhandler.UpscaleTaskView {
+	if task == nil {
+		return nil
+	}
+	return &dkhandler.UpscaleTaskView{
+		AssetUID:     task.AssetUID,
+		Status:       string(task.Status),
+		ResultAsset:  task.Result,
+		ErrorMessage: task.ErrorMessage,
+		ErrorCode:    task.ErrorCode,
+		CreatedAt:    task.CreatedAt,
+		UpdatedAt:    task.UpdatedAt,
+	}
 }
 
 // suggestServiceAdapter 把 service.PromptSuggestService 适配成 handler.SuggestService。
@@ -1257,6 +1359,11 @@ func (a assetServiceAdapter) OpenAssetContent(ctx context.Context, userID int64,
 		return nil, err
 	}
 	return &dkhandler.ContentBlob{Data: data, ContentType: contentType}, nil
+}
+
+// RemoveBackgroundAsset 一键白底图（抠背景 + 合成白底 → 一条新素材）。
+func (a assetServiceAdapter) RemoveBackgroundAsset(ctx context.Context, userID int64, uid string, origin dkdomain.Origin) (*dkdomain.Asset, error) {
+	return a.svc.RemoveBackground(ctx, userID, uid, origin)
 }
 
 // ratioCatalog 是「比例列表」需要的最小能力。

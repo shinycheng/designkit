@@ -86,6 +86,20 @@
             : t('designkit.gallery.continueFromImage') }}
         </button>
         <!--
+          「高清放大」：把这张出好的图放大 4 倍，存成一条新的商品图。
+          异步排队（一张约 1~2 分钟），这里只发事件、显示上层给的进度文案，
+          轮询在上层的 JobProgressPanel 里做。
+        -->
+        <button
+          v-if="thumbnailUrl && currentImageUID !== ''"
+          type="button"
+          class="dk-button dk-button--secondary dk-button--sm dk-button--block"
+          :disabled="upscaleState !== undefined && upscaleState !== ''"
+          @click="emit('upscale')"
+        >
+          {{ upscaleButtonText }}
+        </button>
+        <!--
           ⚠ 这个按钮点下去要重新收一次钱（决策 20）。这里只发事件，
           真正的二次确认（会写明「这次要花多少」）在上层的 RetryItemDialog 里。
         -->
@@ -119,6 +133,11 @@ const props = defineProps<{
   imageFailedText: string
   /** 「继续生成」正在准备中（上层在调接口）。 */
   continuing?: boolean
+  /**
+   * 「高清放大」这一张的进度：'' = 没在放，'queued' / 'running' = 在排 / 在放。
+   * 轮询在上层（JobProgressPanel），这里只把进度显示成按钮文案。
+   */
+  upscaleState?: '' | 'queued' | 'running'
 }>()
 
 const emit = defineEmits<{
@@ -126,9 +145,21 @@ const emit = defineEmits<{
   (e: 'download'): void
   (e: 'retry'): void
   (e: 'continue'): void
+  (e: 'upscale'): void
 }>()
 
 const { t } = useI18n()
+
+/** 放大按钮的文案就是进度：高清放大 → 排队中… → 放大中… */
+const upscaleButtonText = computed(() => {
+  if (props.upscaleState === 'queued') {
+    return t('designkit.upscale.queued')
+  }
+  if (props.upscaleState === 'running') {
+    return t('designkit.upscale.running')
+  }
+  return t('designkit.upscale.button')
+})
 
 const seqLabel = computed(() => t('designkit.job.seq', { seq: props.item.seq }))
 

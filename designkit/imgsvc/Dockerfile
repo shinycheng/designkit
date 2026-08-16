@@ -42,9 +42,13 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ─────────────────────────────────────────────────────────────────────────
-# 代码
+# 代码 + 模型
 # ─────────────────────────────────────────────────────────────────────────
 COPY app ./app
+# 「高清放大」的 Real-ESRGAN 小模型（4.9MB，BSD-3-Clause，来源见
+# models/LICENSE-realesrgan.md）。直接打进镜像：模型跟代码一起走版本，
+# 不需要挂卷、不需要启动时联网下载。
+COPY models ./models
 
 # 不用 root 跑。这个容器不写任何文件、不挂任何卷，用固定 uid 即可。
 RUN groupadd --gid 10001 imgsvc \

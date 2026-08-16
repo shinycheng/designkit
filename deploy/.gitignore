@@ -7,6 +7,10 @@ data/
 postgres_data/
 redis_data/
 
+# designkit：rembg 抠图模型缓存（运行时从 GitHub 下载的 .onnx 权重，几十 MB，
+# 不入库；删掉目录 = 下次用时重新下载）
+rembg_models/
+
 # Environment configuration (contains sensitive information)
 .env
 

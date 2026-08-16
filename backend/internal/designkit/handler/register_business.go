@@ -108,6 +108,18 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 		slog.Warn("designkit 对话服务未就绪：「AI 对话」页不可用，出图和灵感库照常")
 	}
 
+	// 文案检查：纯计算（词库编译期 embed），没有任何服务依赖，永远可用。
+	contentCheck := NewContentCheckHandler()
+
+	// 「高清放大」可缺席：缺席时那两条路由**整个不挂**（裸 404）。
+	// 前端跟「AI 推荐」同一套约定：裸 404 = 功能没上线，显示「还没准备好」。
+	var upscale *UpscaleHandler
+	if opts.Services.Upscale != nil {
+		upscale = NewUpscaleHandler(opts.Services.Upscale)
+	} else {
+		slog.Warn("designkit 高清放大服务未就绪：「高清放大」按钮不可用，上传和出图照常")
+	}
+
 	// ---- 浏览器（运营）----
 	//
 	// 面板限流**不会**自动继承（上游的 /api/v1 组是裸的，各模块自己 Use 才生效），
@@ -127,6 +139,10 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 		// 在上游计费链里做，这里不再单独分组。
 		mountChatReadRoutes(web, chat)
 		mountChatSendRoute(web, chat)
+		// 文案检查：不花钱、无依赖，跟查询同一组鉴权。
+		mountContentCheckRoutes(web, contentCheck)
+		// 高清放大：不花钱（本地推理），跟查询同一组鉴权。别挂 Heavy 限流。
+		mountUpscaleRoutes(web, upscale)
 		// 灵感库同步**只挂浏览器组**，见 mountPromptAdminRoutes 的注释。
 		mountPromptAdminRoutes(web, prompts, opts.Services.PromptSync)
 		// designkit 设置同理：只挂浏览器组、只放管理员。
@@ -145,6 +161,11 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 		mountCommonRoutes(erpRead, assets, catalog, jobs, images, prompts)
 		mountMeRoutes(erpRead, me)
 		mountChatReadRoutes(erpRead, chat)
+		// 文案检查对 ERP 也开放（决策 4：界面上每一步都有接口）。
+		// 挂读组：它不花钱，额度耗尽时照样能查。
+		mountContentCheckRoutes(erpRead, contentCheck)
+		// 高清放大对 ERP 也开放。挂读组：不花钱，额度耗尽时照样能放大和轮询。
+		mountUpscaleRoutes(erpRead, upscale)
 
 		// 真正花钱的那两个：走上游 apiKeyAuth，该拦的额度就得拦。
 		//
@@ -181,6 +202,30 @@ func mountChatSendRoute(g *gin.RouterGroup, chat *ChatHandler) {
 	g.POST("/chat/messages", chat.Send)
 }
 
+// mountUpscaleRoutes 高清放大的两个端点（排队 + 查状态）。
+//
+// 挂在 /assets/:uid 下：放大的输入和产出都是**商品图**（asset），
+// 结果编号直接能塞进 POST /jobs 的 asset_uids。
+// ⚠ 轮询端点绝不能挂 Heavy 限流（60 次/分且跟重查询共用桶，见 CLAUDE.md B8）。
+func mountUpscaleRoutes(g *gin.RouterGroup, h *UpscaleHandler) {
+	if g == nil || h == nil {
+		return
+	}
+	g.POST("/assets/:uid/upscale", h.Start)
+	g.GET("/assets/:uid/upscale", h.Status)
+}
+
+// mountContentCheckRoutes 文案检查（违禁词 + 标题字数）。
+//
+// 用 POST 而不是 GET：待检文案可能几千字，塞 query string 会撞 URL 长度限制，
+// 而且会整段进访问日志。POST body 两个问题都没有。
+func mountContentCheckRoutes(g *gin.RouterGroup, h *ContentCheckHandler) {
+	if g == nil || h == nil {
+		return
+	}
+	g.POST("/content/check", h.Check)
+}
+
 // mountCommonRoutes 挂**不花钱**的那些端点（见 mountBillableRoutes 是哪两个花钱）。
 //
 // 为什么 POST /assets、POST /jobs/estimate、POST /jobs/:uid/stop 也算在这里：
@@ -206,6 +251,12 @@ func mountCommonRoutes(g *gin.RouterGroup, assets *AssetHandler, catalog *Catalo
 		if assets.hasContinue() {
 			g.POST("/assets/from-image/:uid", assets.ContinueFromImage)
 		}
+
+		// 「生成白底图」：抠掉背景、合成白底，存成一条**新的**商品图。
+		// **不花钱**（走本地 rembg 容器，不经过出图网关），所以挂在这一组。
+		// 抠图服务没配置时路由照挂：service 会返回中文的「还没准备好」，
+		// 比裸 404 说得清楚（这条不像 AI 推荐那样有「按 404 判功能未上线」的前端约定）。
+		g.POST("/assets/:uid/remove-background", assets.RemoveBackground)
 		// TODO(designkit): DELETE /assets/:uid、POST /assets/:uid/preprocess
 	}
 

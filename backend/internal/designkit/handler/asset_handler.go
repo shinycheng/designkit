@@ -119,6 +119,39 @@ func (h *AssetHandler) ContinueFromImage(c *gin.Context) {
 	c.JSON(http.StatusCreated, newAssetDTO(mountPrefixOf(c), asset))
 }
 
+// RemoveBackground 处理 POST /assets/:uid/remove-background。
+//
+// 「生成白底图」：给一张已有的商品图抠掉背景、合成白底，存成一条**新的**商品图。
+// 抠图走本地 rembg 容器，**不花钱**（不经过出图网关），所以挂在不花钱那一组。
+//
+// 产出物跟「继续生成」一样是一条 asset：调用方拿到商品图编号，
+// 接着就能塞进 POST /jobs 的 asset_uids。重复点不会存重复的图
+// （service 走 sha256 去重，同一张原图拿到同一条 asset）。
+func (h *AssetHandler) RemoveBackground(c *gin.Context) {
+	userID, ok := userIDOf(c)
+	if !ok {
+		failCode(c, dkdomain.ErrCodeUnauthorized)
+		return
+	}
+	uid, ok := requireUID(c, "uid", dkdomain.ErrCodeAssetNotFound)
+	if !ok {
+		return
+	}
+
+	asset, err := h.assets.RemoveBackgroundAsset(c.Request.Context(), userID, uid, originOf(c))
+	if err != nil {
+		failService(c, err, dkdomain.ErrCodeAssetNotFound)
+		return
+	}
+	if asset == nil {
+		failCode(c, dkdomain.ErrCodeInternal)
+		return
+	}
+	// 201：跟 ContinueFromImage 一个口径 —— 去重命中时也返回 201，
+	// 调用方只关心「拿到一个能用的商品图编号」。
+	c.JSON(http.StatusCreated, newAssetDTO(mountPrefixOf(c), asset))
+}
+
 // extensionForContentType 给个扩展名，只为让文件名好看，语义不重要。
 func extensionForContentType(contentType string) string {
 	switch strings.ToLower(strings.TrimSpace(contentType)) {

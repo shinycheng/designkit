@@ -73,6 +73,44 @@ type Services struct {
 	// **同样刻意不算进 Ready()**：缺席时只关掉对话那四个端点，
 	// 前端对话页显示「还没准备好」，出图和灵感库照常。
 	Chat ChatConversationService
+
+	// Upscale 「高清放大」（Real-ESRGAN ×4，跑在本地 imgsvc，不花钱）。
+	//
+	// **同样刻意不算进 Ready()**：缺席时只关掉放大那两个端点（裸 404，
+	// 前端据此显示「放大功能还没准备好，请联系管理员」），上传和出图照常。
+	Upscale UpscaleService
+}
+
+// ---- 高清放大 ----
+
+// UpscaleTaskView 一次放大任务的状态快照。
+type UpscaleTaskView struct {
+	// AssetUID 被放大的那张商品图（任务按它去重）。
+	AssetUID string
+	// Status queued / running / done / failed，字面量即对外契约。
+	Status string
+	// ResultAsset done 时的产物：一条新的商品图（sha256 去重）。
+	ResultAsset *dkdomain.Asset
+	// ErrorMessage failed 时给运营看的中文。
+	ErrorMessage string
+	// ErrorCode failed 时的我方错误码（DK_ 前缀）。
+	ErrorCode string
+	// CreatedAt / UpdatedAt 入队时间和最近一次状态变化时间。
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// UpscaleService 「高清放大」的排队与状态查询。
+//
+// 队列在内存里（CLAUDE.md 已知约束：只能跑一个后端实例），重启丢任务是
+// 接受过的代价——运营重新点一次即可，结果入库按 sha256 去重，不会重复占盘。
+type UpscaleService interface {
+	// StartUpscale 排一张进队列。同一张图已在排队/在放/放完时**不重复入队**，
+	// 直接返回现有任务；failed 的可以重新排。队列满返回 DK_UPSCALE_QUEUE_FULL。
+	StartUpscale(ctx context.Context, userID int64, origin dkdomain.Origin, assetUID string) (*UpscaleTaskView, error)
+
+	// UpscaleStatus 查一张图的放大任务。没有（或不是他的）返回 DK_UPSCALE_NOT_FOUND。
+	UpscaleStatus(ctx context.Context, userID int64, assetUID string) (*UpscaleTaskView, error)
 }
 
 // ChatSendInput 发一条对话消息。
@@ -152,6 +190,11 @@ type AssetService interface {
 
 	// OpenAssetContent 取原图字节，校验归属。
 	OpenAssetContent(ctx context.Context, userID int64, uid string) (*ContentBlob, error)
+
+	// RemoveBackgroundAsset 一键白底图：抠掉背景、合成白底，存成一条**新的**商品图。
+	// 不花钱（走本地 rembg，不经过出图网关）。抠图服务没配置时返回带中文文案的
+	// *DesignkitError（「白底图功能还没准备好，请联系管理员。」）。
+	RemoveBackgroundAsset(ctx context.Context, userID int64, uid string, origin dkdomain.Origin) (*dkdomain.Asset, error)
 }
 
 // ---- 配置 / 报价 ----

@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PIL import Image  # noqa: E402
 
 from app import imaging  # noqa: E402
+from app import upscale as upscale_mod  # noqa: E402
 from app.errors import ImgSvcError  # noqa: E402
 
 BASE = os.getenv("DK_SELFCHECK_BASE", "http://127.0.0.1:8099").rstrip("/")
@@ -160,6 +161,57 @@ def run_local() -> None:
     except ImgSvcError as exc:
         check("1:10000 → 400 %s" % exc.code, exc.status_code == 400)
 
+    print("\n[4b] 高清放大（Real-ESRGAN ×4）—— 小图往返")
+    run_local_upscale()
+
+
+def run_local_upscale() -> None:
+    """放大的本地往返测试。
+
+    onnxruntime 是容器里才装的重依赖，开发机（Mac）上多半没有——
+    没装时**跳过并明说**，不算失败；但设了 DK_SELFCHECK_REQUIRE_UPSCALE=1
+    （CI / 容器里应该设）就必须可用，缺了直接判失败——否则模型文件
+    忘了 COPY 进镜像这种事会被「跳过」悄悄盖住。
+    """
+    require = os.getenv("DK_SELFCHECK_REQUIRE_UPSCALE", "").strip() == "1"
+    ok, reason = upscale_mod.availability()
+    if not ok:
+        if require:
+            check("放大必须可用（DK_SELFCHECK_REQUIRE_UPSCALE=1）", False, reason or "")
+        else:
+            print("      （%s 跳过——本机没装推理依赖不算失败，容器里会测到）" % (reason or ""))
+        return
+
+    # 尺寸故意选 520×30：宽度跨过 512 的 tile 边界，切块拼接那条路才会被走到。
+    # 高度压到 30，让两块推理在笔记本上也只要几秒。
+    source = Image.open(io.BytesIO(make_jpeg(520, 30))).convert("RGB")
+    result = upscale_mod.upscale_image(source)
+    check("520x30 → 2080x120（×4，跨 tile 边界）", result.size == (2080, 120), str(result.size))
+    check("输出是 RGB", result.mode == "RGB", result.mode)
+
+    # 放大结果必须还是「同一张图」：跟双线性放大比，逐像素差的均值应该很小。
+    # 阈值放宽到 12/255——模型会锐化细节，本来就不该逐像素相等。
+    import numpy as np  # noqa: PLC0415 - 可用性检查过了才 import
+
+    baseline = np.asarray(source.resize(result.size, Image.BILINEAR), dtype=np.float32)
+    got = np.asarray(result, dtype=np.float32)
+    diff = float(np.abs(got - baseline).mean())
+    check("放大结果与原图内容一致（均差 %.1f ≤ 12）" % diff, diff <= 12.0)
+
+    # 透明 PNG：decode_to_rgb 必须合成白底，不能给模型喂 RGBA。
+    flattened = upscale_mod.decode_to_rgb(make_png_with_alpha(64, 48))
+    check("透明 PNG → RGB（合成白底）", flattened.mode == "RGB", flattened.mode)
+    check("原透明区变白", flattened.getpixel((2, 2)) == (255, 255, 255),
+          str(flattened.getpixel((2, 2))))
+
+    # 像素上限是放大自己的那套（默认 2048×2048），超了必须 413。
+    try:
+        upscale_mod.decode_to_rgb(make_jpeg(3000, 1500))
+        check("超过放大像素上限必须被拒", upscale_mod.MAX_INPUT_PIXELS > 3000 * 1500,
+              "居然通过了")
+    except ImgSvcError as exc:
+        check("3000x1500 → 413 %s" % exc.code, exc.status_code == 413)
+
 
 # --------------------------------------------------------------------------
 # 第二段：HTTP
@@ -172,6 +224,7 @@ def post(
     filename: str = "photo.jpg",
     token: str = "",
     omit_file: bool = False,
+    path: str = "/v1/preprocess",
 ):
     """返回 (status, headers, body_bytes)。
 
@@ -203,7 +256,7 @@ def post(
     chunks.append(("--%s--\r\n" % boundary).encode())
     body = b"".join(chunks)
 
-    request = urllib.request.Request(BASE + "/v1/preprocess", data=body, method="POST")
+    request = urllib.request.Request(BASE + path, data=body, method="POST")
     request.add_header("Content-Type", "multipart/form-data; boundary=" + boundary)
     effective = token if token else TOKEN
     if effective and token != "-":
@@ -390,6 +443,40 @@ def run_http() -> None:
         check("token 正确 → 200", status == 200, str(status))
     else:
         print("      （没设 DESIGNKIT_IMGSVC_TOKEN，跳过；服务此时不校验鉴权）")
+
+    print("\n[15] 高清放大 /v1/upscale")
+    upscale_health = health.get("upscale", {})
+    if not upscale_health.get("available"):
+        # 服务端明说不可用时，端点必须 fail-closed 地返 503，不能吞图。
+        status, headers, body = post(make_jpeg(64, 48), path="/v1/upscale", filename="up.jpg")
+        check("放大不可用时 → 503 upscale_unavailable", status == 503,
+              "得到 %s %s" % (status, body[:160]))
+        print("      （healthz 报告放大不可用：%s）" % upscale_health.get("reason", ""))
+    else:
+        # 小图往返：120×90 → 480×360 的 PNG。选小图是因为这是真推理，
+        # 大图在笔记本上要跑几分钟，自检不该那么久。
+        status, headers, body = post(make_jpeg(120, 90), path="/v1/upscale", filename="up.jpg")
+        check("120x90 → 200", status == 200, "得到 %s %s" % (status, body[:200]))
+        if status == 200:
+            image = open_result(body)
+            check("输出 480x360（×4）", image.size == (480, 360), str(image.size))
+            check("输出是 PNG", (headers.get("Content-Type") or "").startswith("image/png"),
+                  headers.get("Content-Type", ""))
+            check("响应头 X-Dk-Scale=4", headers.get("X-Dk-Scale") == "4",
+                  headers.get("X-Dk-Scale", ""))
+            check("响应头宽高与图片一致",
+                  headers.get("X-Dk-Width") == "480" and headers.get("X-Dk-Height") == "360",
+                  "%s x %s" % (headers.get("X-Dk-Width"), headers.get("X-Dk-Height")))
+            check("响应头源尺寸 120x90",
+                  headers.get("X-Dk-Source-Width") == "120"
+                  and headers.get("X-Dk-Source-Height") == "90",
+                  "%s x %s" % (headers.get("X-Dk-Source-Width"), headers.get("X-Dk-Source-Height")))
+
+        # 垃圾文件必须 4xx，绝不回吐字节。
+        status, headers, body = post(b"not an image at all" * 10, path="/v1/upscale")
+        check("垃圾文件 → 415", status == 415, "得到 %s %s" % (status, body[:160]))
+        status, headers, body = post(b"", path="/v1/upscale")
+        check("空文件 → 400", status == 400, str(status))
 
 
 def main() -> int:

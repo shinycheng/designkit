@@ -20,6 +20,7 @@ export default {
       workbench: 'Workbench',
       inspiration: 'Prompt Library',
       chat: 'AI Chat',
+      contentCheck: 'Copy Check',
       gallery: 'My Images',
       settings: 'Image Settings',
     },
@@ -112,6 +113,28 @@ export default {
       countLimit: 'Up to {max} images at a time. Upload in batches.',
       preview: 'Preview',
       previewFailed: 'Preview failed. The file was uploaded and still works.',
+    },
+
+    // HD upscale (Real-ESRGAN ×4, async queue, free). Keys mirror zh/designkit.ts.
+    upscale: {
+      button: 'Upscale',
+      queued: 'Queued…',
+      running: 'Upscaling, about 1–2 minutes…',
+      done: 'Upscaled and saved as a new image.',
+      failed: 'Upscale failed. Try once more.',
+      queueFull: 'Queue is full. Try again later.',
+      unavailable: 'Upscaling is not ready yet. Contact the admin.',
+      name: 'Upscaled image',
+    },
+
+    // One-click white background (cutout + white compositing → a new product photo).
+    whitebg: {
+      button: 'Make white background',
+      running: 'Cutting out…',
+      done: 'White-background image added to the list.',
+      failed: 'Cutout failed. Try again.',
+      unavailable: 'White background is not ready yet. Contact the admin.',
+      name: 'White background',
     },
 
     ratio: {
@@ -382,6 +405,22 @@ export default {
       untitled: 'New chat',
       loadFailed: 'History failed to load. Refresh the page.',
       emptySessions: 'No chats yet.',
+    },
+
+    // Copy check (banned words + platform title length). Keys mirror zh/designkit.ts exactly.
+    contentCheck: {
+      title: 'Copy Check',
+      description: 'Paste a title or copy to check banned words and the platform length limit.',
+      placeholder: 'Paste the text to check',
+      platformLabel: 'Platform',
+      platformNone: 'Any platform',
+      check: 'Check',
+      hits: '{count} banned words found',
+      noHits: 'No banned words found.',
+      titleLen: 'Title {len} / {max} chars',
+      titleOver: '{n} over the limit',
+      lenOnly: '{len} chars',
+      note: 'The word list follows Chinese Advertising Law extreme-word lists. A match is not necessarily a violation — the platform review is final.',
     },
 
     usage: {

@@ -110,9 +110,39 @@
 
         <div class="dk-thumb__body">
           <p class="dk-thumb__name" :title="entry.name">{{ entry.name }}</p>
-          <p v-if="entry.status === 'done'" class="dk-note dk-note--success">
-            {{ t('designkit.upload.done') }}
-          </p>
+          <template v-if="entry.status === 'done'">
+            <p class="dk-note dk-note--success">
+              {{ t('designkit.upload.done') }}
+            </p>
+            <!--
+              生成白底图：抠掉背景 + 合成白底，产出一条新的商品图并自动加进列表。
+              一次只抠一张（whitebgUid 非 null 时全部禁用）：接口要等几十秒，
+              并发点一排只会把抠图容器打挂。
+            -->
+            <button
+              v-if="entry.asset"
+              type="button"
+              class="dk-button dk-button--secondary dk-button--sm dk-button--block"
+              :disabled="whitebgUid !== null"
+              @click="makeWhiteBackground(entry)"
+            >
+              {{ whitebgUid === entry.asset?.uid ? t('designkit.whitebg.running') : t('designkit.whitebg.button') }}
+            </button>
+            <!--
+              高清放大：×4，**异步排队**（一张约 1~2 分钟），完成后新图自动加进列表。
+              跟白底图不同，可以几张同时排——排队和串行都在后端管着（队列封顶 10），
+              这里只是各自轮询状态。按钮文案就是进度：排队中… → 放大中… → 恢复原名。
+            -->
+            <button
+              v-if="entry.asset"
+              type="button"
+              class="dk-button dk-button--secondary dk-button--sm dk-button--block"
+              :disabled="!!upscaleStates[entry.asset.uid]"
+              @click="upscaleEntry(entry)"
+            >
+              {{ upscaleLabelOf(entry.asset?.uid) }}
+            </button>
+          </template>
           <template v-else-if="entry.status === 'failed'">
             <p class="dk-note dk-note--danger">{{ entry.error }}</p>
             <button
@@ -136,13 +166,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAppStore } from '@/stores/app'
 import {
   ACCEPT_ATTRIBUTE,
   checkUploadFile,
   errorText,
   fetchContentBlob,
   isCanceledError,
+  isTerminalUpscaleStatus,
+  isUpscaleQueueFullError,
+  isUpscaleUnavailableError,
+  removeBackground,
+  startUpscale,
+  toFriendlyError,
   uploadAsset,
+  waitForUpscale,
 } from '../../api'
 import type { DesignkitAsset } from '../../api'
 
@@ -187,6 +225,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const appStore = useAppStore()
 
 const entries = ref<UploadEntry[]>([])
 const inputEl = ref<HTMLInputElement | null>(null)
@@ -300,6 +339,161 @@ async function loadRemotePreview(asset: DesignkitAsset): Promise<void> {
 }
 
 defineExpose({ addExistingAsset })
+
+/** 正在抠图的那张（asset uid）。null = 没有在抠。一次只允许一张。 */
+const whitebgUid = ref<string | null>(null)
+
+/**
+ * 「生成白底图」：调后端抠掉背景、合成白底，产出一条**新的**商品图。
+ *
+ * ⚠ 成功后必须走 addExistingAsset 把新图加进列表（组件是单向的，
+ * 理由见 addExistingAsset 的注释）。它自带按 uid 去重：重复点同一张，
+ * 后端按 sha256 返回同一条 asset，列表里也只有一条。
+ *
+ * 抠图在服务端要等几十秒（首次还可能在下模型），接口超时 90 秒
+ * （api 的 removeBackground），期间按钮全部禁用、这一张显示「抠图中…」。
+ */
+async function makeWhiteBackground(entry: UploadEntry): Promise<void> {
+  const uid = entry.asset?.uid
+  if (!uid || whitebgUid.value !== null) {
+    return
+  }
+  whitebgUid.value = uid
+  try {
+    const asset = await removeBackground(uid)
+    const added = addExistingAsset(asset, t('designkit.whitebg.name'))
+    if (added || entries.value.some((e) => e.asset?.uid === asset.uid)) {
+      // 加进去了，或者本来就在列表里（重复点同一张）——两种情况都属实。
+      appStore.showToast('success', t('designkit.whitebg.done'))
+    } else {
+      // 没加进去只剩一种可能：到了张数上限（countLimitHit 已经在页面上说了原因）。
+      appStore.showToast('error', t('designkit.upload.countLimit', { max: MAX_ASSETS }))
+    }
+  } catch (err) {
+    appStore.showToast('error', whitebgErrorMessage(err))
+  } finally {
+    whitebgUid.value = null
+  }
+}
+
+/**
+ * 失败时给运营看什么：
+ *   - 后端的 DK_ 错误信封：message 已经是中文（含「还没准备好」那句），原样用；
+ *   - 裸 404（后端还没这个接口）：显示「还没准备好」；
+ *   - 其余（超时、断网）：显示「没抠出来，重试一次。」
+ */
+function whitebgErrorMessage(err: unknown): string {
+  const friendly = toFriendlyError(err)
+  if (typeof friendly.code === 'string' && friendly.code.startsWith('DK_')) {
+    return friendly.message
+  }
+  if (friendly.status === 404) {
+    return t('designkit.whitebg.unavailable')
+  }
+  return t('designkit.whitebg.failed')
+}
+
+// ---------------------------------------------------------------------------
+// 高清放大（异步排队 + 每 5 秒轮询）
+// ---------------------------------------------------------------------------
+
+/** 每张图的放大进度（asset uid → queued/running）。不在表里 = 没在放。 */
+const upscaleStates = ref<Record<string, 'queued' | 'running'>>({})
+
+/** 每张在轮询的图一只取消器，页面关掉时全部叫停（别让轮询打一晚上后端）。 */
+const upscaleControllers = new Map<string, AbortController>()
+
+/** 按钮文案就是进度：排队中… → 放大中… → （结束后恢复）高清放大。 */
+function upscaleLabelOf(uid: string | undefined): string {
+  const state = uid ? upscaleStates.value[uid] : undefined
+  if (state === 'queued') {
+    return t('designkit.upscale.queued')
+  }
+  if (state === 'running') {
+    return t('designkit.upscale.running')
+  }
+  return t('designkit.upscale.button')
+}
+
+function setUpscaleState(uid: string, status: string): void {
+  if (status === 'queued' || status === 'running') {
+    upscaleStates.value = { ...upscaleStates.value, [uid]: status }
+  }
+}
+
+function clearUpscaleState(uid: string): void {
+  const next = { ...upscaleStates.value }
+  delete next[uid]
+  upscaleStates.value = next
+}
+
+/**
+ * 「高清放大」：排进后端队列（立刻返回），然后每 5 秒问一次，直到 done/failed。
+ *
+ * ⚠ 成功后必须走 addExistingAsset 把新图加进列表（组件是单向的，
+ * 理由见 addExistingAsset 的注释）。重复点安全：后端按任务去重、
+ * 结果按 sha256 去重，列表里也按 uid 去重，怎么点都只有一份。
+ */
+async function upscaleEntry(entry: UploadEntry): Promise<void> {
+  const uid = entry.asset?.uid
+  if (!uid || upscaleStates.value[uid]) {
+    return
+  }
+  const controller = new AbortController()
+  upscaleControllers.set(uid, controller)
+  upscaleStates.value = { ...upscaleStates.value, [uid]: 'queued' }
+  try {
+    let task = await startUpscale(uid)
+    setUpscaleState(uid, task.status)
+    if (!isTerminalUpscaleStatus(task.status)) {
+      task = await waitForUpscale(uid, {
+        signal: controller.signal,
+        onStatus: (latest) => setUpscaleState(uid, latest.status),
+      })
+    }
+    if (task.status === 'done' && task.result) {
+      const result = task.result
+      const added = addExistingAsset(result, t('designkit.upscale.name'))
+      if (added || entries.value.some((e) => e.asset?.uid === result.uid)) {
+        appStore.showToast('success', t('designkit.upscale.done'))
+      } else {
+        // 没加进去只剩一种可能：到了张数上限。
+        appStore.showToast('error', t('designkit.upload.countLimit', { max: MAX_ASSETS }))
+      }
+    } else {
+      // failed：后端的 error_message 已经是中文（「放大超时了…」这类），原样显示。
+      appStore.showToast('error', task.error_message || t('designkit.upscale.failed'))
+    }
+  } catch (err) {
+    if (!isCanceledError(err)) {
+      appStore.showToast('error', upscaleErrorMessage(err))
+    }
+  } finally {
+    upscaleControllers.delete(uid)
+    clearUpscaleState(uid)
+  }
+}
+
+/**
+ * 放大没排进去（或轮询出错）时给运营看什么：
+ *   - 排队满了 → 「排队满了，等会儿再试。」
+ *   - 裸 404（后端还没上这个功能）→ 「还没准备好」；
+ *   - 带 DK_ 码的业务错误（图没了 / 任务丢了）→ 后端的中文原样显示；
+ *   - 其余（断网之类）→ 「放大失败，重试一次。」
+ */
+function upscaleErrorMessage(err: unknown): string {
+  if (isUpscaleQueueFullError(err)) {
+    return t('designkit.upscale.queueFull')
+  }
+  if (isUpscaleUnavailableError(err)) {
+    return t('designkit.upscale.unavailable')
+  }
+  const friendly = toFriendlyError(err)
+  if (typeof friendly.code === 'string' && friendly.code.startsWith('DK_')) {
+    return friendly.message
+  }
+  return t('designkit.upscale.failed')
+}
 
 function openPicker(): void {
   inputEl.value?.click()
@@ -472,6 +666,7 @@ function clearAll(): void {
 }
 
 // 不回收 objectURL 就是内存泄漏：几十张几 MB 的图能占掉几百 MB。
+// 放大的轮询也要一起叫停：不停的话页面关了它还每 5 秒打一次后端。
 onBeforeUnmount(() => {
   for (const entry of entries.value) {
     entry.controller?.abort()
@@ -479,5 +674,9 @@ onBeforeUnmount(() => {
       URL.revokeObjectURL(entry.previewUrl)
     }
   }
+  for (const controller of upscaleControllers.values()) {
+    controller.abort()
+  }
+  upscaleControllers.clear()
 })
 </script>

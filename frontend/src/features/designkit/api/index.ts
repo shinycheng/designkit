@@ -41,6 +41,8 @@ import {
   listChatSessions,
   sendChatMessage,
 } from './chat'
+import { checkContent } from './contentcheck'
+import { getUpscaleStatus, startUpscale } from './upscale'
 import type {
   CreateJobInput,
   DesignkitApiError,
@@ -86,6 +88,9 @@ export const ACCEPT_ATTRIBUTE = '.jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,im
 
 /** 上传一张 20MB 的图在内网也可能要十几秒，用比默认 30 秒宽的超时。 */
 const UPLOAD_TIMEOUT_MS = 180_000
+
+/** 「生成白底图」抠一张大图要几十秒（首次还可能在下模型），超时放宽到 90 秒。 */
+const REMOVE_BACKGROUND_TIMEOUT_MS = 90_000
 
 // ============================================================================
 // 健康检查
@@ -134,6 +139,23 @@ export interface UploadAssetOptions {
 export async function continueFromImage(imageUID: string): Promise<DesignkitAsset> {
   const { data } = await apiClient.post<DesignkitAsset>(
     `${DESIGNKIT_API_BASE_PATH}/assets/from-image/${encodeURIComponent(imageUID)}`,
+  )
+  return data
+}
+
+/**
+ * 「生成白底图」：给一张已有的商品图抠掉背景、合成白底，存成一条**新的**商品图。
+ *
+ * ⚠ 图片字节不经过浏览器：抠图和合白底都在服务端做，返回的只是新素材的信息。
+ * ⚠ 重复点不会存重复的图：后端按 sha256 去重，同一张原图拿到同一条素材。
+ * ⚠ 这一步**不花钱**（走本地抠图服务，不经过出图网关），但要等几十秒，
+ *   调用方要给「抠图中…」的状态并禁掉按钮。
+ */
+export async function removeBackground(assetUID: string): Promise<DesignkitAsset> {
+  const { data } = await apiClient.post<DesignkitAsset>(
+    `${DESIGNKIT_API_BASE_PATH}/assets/${encodeURIComponent(assetUID)}/remove-background`,
+    undefined,
+    { timeout: REMOVE_BACKGROUND_TIMEOUT_MS },
   )
   return data
 }
@@ -574,6 +596,10 @@ export * from './errors'
 export * from './inspiration'
 // AI 对话。
 export * from './chat'
+// 文案检查（违禁词 + 标题字数）。
+export * from './contentcheck'
+// 高清放大（异步排队 + 轮询）。
+export * from './upscale'
 // 「商品图设置」（仅管理员）。放在这里一起导出，页面只 import 一处。
 export * from './settings'
 
@@ -581,6 +607,8 @@ export const designkitAPI = {
   getHealth,
   uploadAsset,
   getAsset,
+  // 一键白底图。**会等几十秒**，调用方要给「抠图中…」的状态并禁掉按钮。
+  removeBackground,
   listRatios,
   estimateJob,
   createJob,
@@ -609,6 +637,11 @@ export const designkitAPI = {
   listChatSessions,
   getChatSession,
   deleteChatSession,
+  // 文案检查。毫秒级纯计算，页面可以边输边查。
+  checkContent,
+  // 高清放大。**异步**：start 立刻返回，之后每 5 秒轮询一次状态。
+  startUpscale,
+  getUpscaleStatus,
 }
 
 export default designkitAPI

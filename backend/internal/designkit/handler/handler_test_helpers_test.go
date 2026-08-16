@@ -26,13 +26,14 @@ import (
 // ---- 假的素材服务 ----
 
 type fakeAssetService struct {
-	lastInput  CreateAssetInput
-	createCall int
-	asset      *dkdomain.Asset
-	createErr  error
-	getErr     error
-	blob       *ContentBlob
-	contentErr error
+	lastInput   CreateAssetInput
+	createCall  int
+	asset       *dkdomain.Asset
+	createErr   error
+	getErr      error
+	blob        *ContentBlob
+	contentErr  error
+	removeBgErr error
 }
 
 func (f *fakeAssetService) CreateAsset(_ context.Context, in CreateAssetInput) (*dkdomain.Asset, error) {
@@ -56,6 +57,13 @@ func (f *fakeAssetService) OpenAssetContent(_ context.Context, _ int64, _ string
 		return nil, f.contentErr
 	}
 	return f.blob, nil
+}
+
+func (f *fakeAssetService) RemoveBackgroundAsset(_ context.Context, _ int64, _ string, _ dkdomain.Origin) (*dkdomain.Asset, error) {
+	if f.removeBgErr != nil {
+		return nil, f.removeBgErr
+	}
+	return f.asset, nil
 }
 
 // ---- 假的配置服务 ----
