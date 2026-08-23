@@ -850,7 +850,7 @@ CI（`.github/workflows/backend-ci.yml`）在**每次 push**（任意分支）�
 | ~~`billing_mode` 巡检~~ | **2026-08-23 已做**：`billing_watch.go` 启动 + 每 6 小时巡检，命中打「配置冲突」日志告警 |
 | **没有命令能完整预演 CI** | 见第六节末尾 |
 | **开发镜像嵌入陈旧前端 chunk** | 2026-08-15 实测：NAS 开发镜像的二进制里嵌着 255 个 js 资产，其中 112 个是上次构建残留的死文件（index.html 引用图谱只覆盖 143 个）。**服务的内容是对的**，只是镜像变大、排查时会在二进制里 grep 到旧文案造成误判。判定「线上是什么」必须走 index.html 引用图谱，不能 grep 二进制 |
-| **Security Scan 长期红灯** | 自 8-16 起两个 job 都挂：前端 `pnpm audit` 有豁免表外的新告警、后端 `govulncheck` 有命中。与功能无关的依赖漏洞类失败，需要专门一轮升级依赖/更新豁免表 | CI 页面常年一个红叉，真出新漏洞时没人会注意 |
+| ~~Security Scan 长期红灯~~ | **2026-08-24 清零**：Go 1.26.6（stdlib 10 CVE）+ x/image v0.45（webp 可达路径）+ mermaid/nanoid override + 豁免表清理。⚠ xlsx 两条豁免 **2026-11-21 到期**，届时续期或换库 |
 | **`imgsvc` 无 CI 覆盖** | 不构建镜像、不跑 `selfcheck.py`。而补边是保证产品不被裁的唯一手段 |
 | **邮箱白名单对第三方 OAuth 注册不生效** | 2026-08-23 核实绕过面是**六个提供方**（含 GitHub/Google 自动注册），已加启动断言：白名单+任一 OAuth 同开时日志告警（`oauth_whitelist_warning.go`）。根修（补校验调用）仍待做 |
 | **NOTICE.md 与 designkit-guard.yml** | NOTICE.md 声明「除 6 个文件外不修改上游文件」，实际改了 12 个；它还写「CI 会断言未修改」——而 `check-upstream-touch.sh` 退出码恒 0，那个 job 是**永远绿灯的空转**。这是许可证义务，不是可选文档 |
