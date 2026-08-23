@@ -62,18 +62,18 @@ func (e *DesignkitError) Error() string {
 		return "<nil designkit error>"
 	}
 	var b strings.Builder
-	b.WriteString(e.Code)
-	b.WriteString(": ")
-	b.WriteString(e.Message)
+	_, _ = b.WriteString(e.Code)
+	_, _ = b.WriteString(": ")
+	_, _ = b.WriteString(e.Message)
 	if e.Upstream != "" {
-		b.WriteString(" (upstream: ")
-		b.WriteString(e.Upstream)
-		b.WriteString(")")
+		_, _ = b.WriteString(" (upstream: ")
+		_, _ = b.WriteString(e.Upstream)
+		_, _ = b.WriteString(")")
 	}
 	if e.Cause != nil {
-		b.WriteString(" (cause: ")
-		b.WriteString(e.Cause.Error())
-		b.WriteString(")")
+		_, _ = b.WriteString(" (cause: ")
+		_, _ = b.WriteString(e.Cause.Error())
+		_, _ = b.WriteString(")")
 	}
 	return b.String()
 }

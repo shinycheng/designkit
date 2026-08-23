@@ -207,11 +207,11 @@ func foldFullWidth(s string) string {
 	for _, r := range s {
 		switch {
 		case r >= 0xFF01 && r <= 0xFF5E:
-			b.WriteRune(r - 0xFEE0)
+			_, _ = b.WriteRune(r - 0xFEE0)
 		case r == 0x3000:
-			b.WriteRune(' ')
+			_, _ = b.WriteRune(' ')
 		default:
-			b.WriteRune(r)
+			_, _ = b.WriteRune(r)
 		}
 	}
 	return b.String()
@@ -254,7 +254,7 @@ func ConvertPrompt(content string) (string, []dkdomain.PromptVariable) {
 
 	for _, m := range matches {
 		// m[0]/m[1] 是整个 {argument ...} 的起止；先把它前面那段原样抄过去。
-		body.WriteString(content[cursor:m[0]])
+		_, _ = body.WriteString(content[cursor:m[0]])
 		cursor = m[1]
 
 		label := unescapeArgument(content[m[2]:m[3]])
@@ -275,9 +275,9 @@ func ConvertPrompt(content string) (string, []dkdomain.PromptVariable) {
 				Example: def,
 			})
 		}
-		body.WriteString("{" + key + "}")
+		_, _ = body.WriteString("{" + key + "}")
 	}
-	body.WriteString(content[cursor:])
+	_, _ = body.WriteString(content[cursor:])
 
 	return strings.TrimSpace(body.String()), variables
 }

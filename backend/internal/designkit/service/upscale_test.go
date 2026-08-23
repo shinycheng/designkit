@@ -143,7 +143,10 @@ func (f *upscaleFixture) waitStatus(t *testing.T, userID int64, uid string, want
 		}
 		got = task
 		return task.Status == want
-	}, 5*time.Second, 10*time.Millisecond,
+		// 30 秒不是「预期要等这么久」——Eventually 条件一满足立刻返回。
+		// 5 秒在双核 CI/忙碌 NAS 上真实超过过（排队场景 A、B 串行跑完要 7 秒+），
+		// 定这么宽只是给慢机器留余量，健康路径不多花一毫秒。
+	}, 30*time.Second, 10*time.Millisecond,
 		"任务 %s 没有在期限内变成 %s（最后见到 %+v）", uid, want, got)
 	return got
 }

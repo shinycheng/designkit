@@ -26,9 +26,10 @@ assert_count() {
 test -s backend/resources/model-pricing/model_prices_and_context_window.json || \
   fail 'fallback pricing data is missing or empty'
 
-assert_line Dockerfile.goreleaser 'COPY --chown=sub2api:sub2api backend/resources /app/resources'
+# 2026-08-23 改：Dockerfile.goreleaser / .goreleaser*.yaml 已随 GitHub 独立化删除
+# （上游的发布产线，本项目不用，见 NOTICE.md），相应断言一并移除。
+# 保留的两条守的是「离线兜底价目表要进镜像」——真正在用的两个 Dockerfile。
 assert_line deploy/Dockerfile 'COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources'
-assert_count .goreleaser.yaml '      - backend/resources' 4
-assert_count .goreleaser.simple.yaml '      - backend/resources' 1
+assert_line Dockerfile 'COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources'
 
 printf 'docker runtime resources test passed\n'

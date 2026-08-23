@@ -227,7 +227,7 @@ func (w *envelopeWriter) flushRewritten(requestID string) {
 		status = http.StatusInternalServerError
 	}
 
-	header := w.ResponseWriter.Header()
+	header := w.Header()
 	// 原响应可能已经写过 Content-Length（长度对不上会让客户端读到一半就断），
 	// 一律删掉让 net/http 重算。
 	header.Del("Content-Length")

@@ -253,7 +253,7 @@ func (h *PromptHandler) SuggestPrompt(c *gin.Context) {
 
 	candidates := make([]suggestCandidateDTO, 0, len(result.Candidates))
 	for _, one := range result.Candidates {
-		candidates = append(candidates, suggestCandidateDTO{UID: one.UID, Title: one.Title})
+		candidates = append(candidates, suggestCandidateDTO(one))
 	}
 	c.JSON(http.StatusOK, suggestResponseDTO{
 		Prompt: result.Prompt,

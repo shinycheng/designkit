@@ -12,3 +12,6 @@ dist/
 # 忽略缓存
 .cache/
 .vite/
+# vendored 第三方（TagCloud，MIT，按 NOTICE 承诺原样保存不改动）——
+# 压缩产物过不了 no-this-alias 等规则，也不该为它改第三方代码
+src/features/designkit/vendor/
