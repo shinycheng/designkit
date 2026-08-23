@@ -835,6 +835,7 @@ CI（`.github/workflows/backend-ci.yml`）在**每次 push**（任意分支）�
 | **`billing_mode` 巡检没做** | 二·五节 B2 点名要的那条断言。现在靠配置手册一句「渠道定价一条都不要建」的人工约定顶着 |
 | **没有命令能完整预演 CI** | 见第六节末尾 |
 | **开发镜像嵌入陈旧前端 chunk** | 2026-08-15 实测：NAS 开发镜像的二进制里嵌着 255 个 js 资产，其中 112 个是上次构建残留的死文件（index.html 引用图谱只覆盖 143 个）。**服务的内容是对的**，只是镜像变大、排查时会在二进制里 grep 到旧文案造成误判。判定「线上是什么」必须走 index.html 引用图谱，不能 grep 二进制 |
+| **Security Scan 长期红灯** | 自 8-16 起两个 job 都挂：前端 `pnpm audit` 有豁免表外的新告警、后端 `govulncheck` 有命中。与功能无关的依赖漏洞类失败，需要专门一轮升级依赖/更新豁免表 | CI 页面常年一个红叉，真出新漏洞时没人会注意 |
 | **`imgsvc` 无 CI 覆盖** | 不构建镜像、不跑 `selfcheck.py`。而补边是保证产品不被裁的唯一手段 |
 | **邮箱白名单对第三方 OAuth 注册不生效** | `validateRegistrationEmailQuota` 只在三条邮箱注册路径上调用，`loginOrRegisterOAuthWithTokenPair` 全程不调。任一第三方登录打开 = 白名单被绕过（邀请码仍拦得住） |
 | **NOTICE.md 与 designkit-guard.yml** | NOTICE.md 声明「除 6 个文件外不修改上游文件」，实际改了 12 个；它还写「CI 会断言未修改」——而 `check-upstream-touch.sh` 退出码恒 0，那个 job 是**永远绿灯的空转**。这是许可证义务，不是可选文档 |

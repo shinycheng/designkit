@@ -76,7 +76,7 @@ BUILD_ENV="BIND_HOST=0.0.0.0 VITE_DEV_PORT=13000 SERVER_PORT=18080 DOCKER_BUILDK
 
 # 构建要用到的基础镜像。缺了 BuildKit 会去联网解析，然后撞上那个 IPv6 超时，
 # 报出来的错跟「镜像没拉」八竿子打不着，所以在这里先自己查一遍。
-BASE_IMAGES="docker/dockerfile:1.7 node:24-alpine golang:1.26.5-alpine alpine:3.21 postgres:18-alpine"
+BASE_IMAGES="docker/dockerfile:1.7 node:24-alpine golang:1.26.5-alpine alpine:3.21 postgres:18-alpine python:3.12-slim-bookworm"
 
 cd "$(git rev-parse --show-toplevel)"
 
