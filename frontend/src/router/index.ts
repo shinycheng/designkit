@@ -529,6 +529,20 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'designkit.quotaAdmin.description'
     }
   },
+  {
+    // 用户记录：**仅管理员**。所有账户的对话记录和出图记录，只读。
+    // 后端整组端点也只放管理员过，requiresAdmin 的理由同「商品图设置」。
+    path: '/admin/user-records',
+    name: 'DesignkitAdminRecords',
+    component: () => import('@/features/designkit/views/DesignkitAdminRecordsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'User Records',
+      titleKey: 'designkit.adminRecords.title',
+      descriptionKey: 'designkit.adminRecords.description'
+    }
+  },
   // 老路径 → 新路径。2026-08-13 之前用的是 /designkit/* 这层前缀，
   // monica 的浏览器书签、我写的 designkit/docs/ 里都引用过，留着跳转不让它们死掉。
   { path: '/designkit/workbench', redirect: '/workbench' },

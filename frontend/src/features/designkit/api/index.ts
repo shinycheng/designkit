@@ -624,6 +624,8 @@ export * from './upscale'
 export * from './settings'
 // 「额度申请」管理端（仅管理员）。
 export * from './quotaAdmin'
+// 「用户记录」管理端（仅管理员：所有账户的对话与出图记录）。
+export * from './adminRecords'
 
 export const designkitAPI = {
   getHealth,

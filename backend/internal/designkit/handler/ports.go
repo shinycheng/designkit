@@ -81,6 +81,12 @@ type Services struct {
 	// 运营提交申请（Me）和出图都照常。
 	QuotaAdmin QuotaAdminService
 
+	// AdminRecords 「用户记录」管理端（跨用户查看对话与出图批次）。**只有管理员能用。**
+	//
+	// **同样刻意不算进 Ready()**：缺席时只有那几条 /admin/records/* 不挂（裸 404），
+	// 其余照常。
+	AdminRecords AdminRecordsService
+
 	// Chat 「AI 对话」页（决策 38：会话保存 / 能发图 / 所有运营可用）。
 	//
 	// **同样刻意不算进 Ready()**：缺席时只关掉对话那四个端点，
@@ -518,6 +524,40 @@ type QuotaAdminService interface {
 	//   - 标记成功但加余额失败 → 带中文 message 的 DesignkitError，
 	//     实现内部已尽力把行退回 pending，文案里写清楚了还能不能直接重试
 	HandleQuotaRequest(ctx context.Context, in HandleQuotaRequestInput) (*dkdomain.QuotaRequest, error)
+}
+
+// ---- 用户记录（管理端）----
+
+// AdminRecordsService 「用户记录」：管理员跨用户查看对话会话与出图批次。
+//
+// **只有管理员路由挂它**（register_business.go 的 RequireAdmin），
+// 所以实现侧**刻意不做归属校验** —— 这是本模块里唯一一组
+// 「不带 userID 也能按 uid 取记录」的接口，绝不能挂到非管理员的路由上。
+//
+// 软删口径跟用户自己看到的一致：会话 deleted_at、批次 user_deleted_at
+// 打了软删标记的**一律不出现**（列表和详情都是），不把人家删掉的翻出来。
+type AdminRecordsService interface {
+	// ListRecordUsers 有记录的账户（会话或批次至少一条未删记录），给筛选下拉用。
+	ListRecordUsers(ctx context.Context) ([]*dkdomain.RecordUser, error)
+
+	// ListChatSessionRecords 会话列表，**按 updated_at 降序**（仓储 SQL 定死）。
+	// userID=0 看全部账户。
+	ListChatSessionRecords(ctx context.Context, userID int64, limit, offset int) ([]*dkdomain.ChatSessionAdminView, error)
+
+	// GetChatSessionRecord 一个会话 + 全部消息（**按 id 升序**，就是对话顺序）。
+	// 不存在或已被用户删掉一律 domain.ErrNotFound 形态（DK_CHAT_SESSION_NOT_FOUND）。
+	GetChatSessionRecord(ctx context.Context, uid string) (*dkdomain.ChatSessionAdminView, []*dkdomain.ChatMessage, error)
+
+	// ListJobRecords 批次列表，**按 created_at 降序**（仓储 SQL 定死）。
+	// userID=0 看全部账户。
+	ListJobRecords(ctx context.Context, userID int64, limit, offset int) ([]*dkdomain.JobAdminView, error)
+
+	// GetJobRecord 一个批次 + 每一张（**按 seq 升序**，带 has_image）。
+	GetJobRecord(ctx context.Context, uid string) (*dkdomain.JobAdminView, []*dkdomain.JobItemAdminView, error)
+
+	// OpenJobRecordItemContent 取某一张当前版本第一张结果图的字节（缩略图用）。
+	// seq 从 1 开始。
+	OpenJobRecordItemContent(ctx context.Context, jobUID string, seq int) (*ContentBlob, error)
 }
 
 // ---- 灵感库 ----

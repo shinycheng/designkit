@@ -150,6 +150,8 @@ func RegisterBusinessRoutes(opts BusinessRouteOptions) {
 		mountSettingsAdminRoutes(web, opts.Services.Settings)
 		// 额度申请管理同理：只挂浏览器组、只放管理员。
 		mountQuotaAdminRoutes(web, opts.Services.QuotaAdmin)
+		// 用户记录同理：只挂浏览器组、只放管理员。
+		mountAdminRecordsRoutes(web, opts.Services.AdminRecords)
 	}
 
 	// ---- 机器（ERP）----
@@ -406,6 +408,34 @@ func mountQuotaAdminRoutes(g *gin.RouterGroup, svc QuotaAdminService) {
 	admin.Use(RequireAdmin("额度申请只有管理员能处理，需要加额请联系管理员。"))
 	admin.GET("/admin/quota-requests", handler.List)
 	admin.POST("/admin/quota-requests/:id/handle", handler.Handle)
+}
+
+// mountAdminRecordsRoutes 挂「用户记录」的六个管理端点。**仅管理员**。
+//
+// 为什么只挂浏览器组、不挂 ERP 组：这是管理员跨用户看记录的通道，
+// service 侧**刻意不做归属校验** —— 给外部系统那把 Key 一个
+// 「翻任意账号的对话和出图记录」的入口，是纯粹的隐私敞口。
+//
+// svc 为 nil 时整块不挂（裸 404）：前端据此显示「还没准备好」，其余功能照常。
+//
+// ⚠ RequireAdmin 必须挂在 RequireAuthenticated 后面：它从上下文取角色，
+// 而角色是鉴权中间件塞进去的。
+func mountAdminRecordsRoutes(g *gin.RouterGroup, svc AdminRecordsService) {
+	if svc == nil {
+		slog.Warn("designkit 用户记录服务未就绪：管理员看不到「用户记录」那一页，" +
+			"对话、出图和其余管理页照常")
+		return
+	}
+
+	handler := NewAdminRecordsHandler(svc)
+	admin := g.Group("")
+	admin.Use(RequireAdmin("用户记录只有管理员能看。"))
+	admin.GET("/admin/records/users", handler.ListUsers)
+	admin.GET("/admin/records/chat/sessions", handler.ListChatSessions)
+	admin.GET("/admin/records/chat/sessions/:uid", handler.GetChatSession)
+	admin.GET("/admin/records/jobs", handler.ListJobs)
+	admin.GET("/admin/records/jobs/:uid", handler.GetJob)
+	admin.GET("/admin/records/jobs/:uid/items/:seq/content", handler.ItemContent)
 }
 
 // mountMeRoutes 挂「我的消费」。me 为 nil 时整块不挂，其余端点照常。

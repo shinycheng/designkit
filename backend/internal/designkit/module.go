@@ -136,6 +136,9 @@ type Module struct {
 	// chatRepo 「AI 对话」的会话与消息持久层（决策 38）。
 	chatRepo *dkrepository.ChatRepo
 
+	// adminRecordsRepo 「用户记录」（管理端跨用户查看会话 / 批次）的持久层。
+	adminRecordsRepo *dkrepository.AdminRecordsRepo
+
 	// conversation 「AI 对话」页的业务编排。允许为 nil：缺席时只关对话端点。
 	conversation *dkservice.ConversationService
 
@@ -247,6 +250,7 @@ func NewModule(
 	m.repo = dkrepository.NewRepository(db)
 	m.healthRepo = dkrepository.NewHealthRepository(db)
 	m.chatRepo = dkrepository.NewChatRepo(db)
+	m.adminRecordsRepo = dkrepository.NewAdminRecordsRepo(db)
 	m.health = dkservice.NewHealthService(moduleHealthRepo{m: m}).
 		WithModuleStatus(m.healthModuleStatus)
 
@@ -629,6 +633,21 @@ func (m *Module) buildServices() dkhandler.Services {
 		// 比整页 404 让管理员猜强。m.adminBalance 本身就是接口类型、
 		// 只在成功时赋值，这里不会踩 typed-nil。
 		svcs.QuotaAdmin = quotaAdminServiceAdapter{repo: m.repo, balance: m.adminBalance}
+	}
+	// 「用户记录」管理端：列表和详情只吃数据库；取缩略图字节还要对象存储。
+	// Store 允许为 nil（存储目录建不出来时列表照常，只有取图返回中文的存储错误），
+	// m.store 本身就是接口类型、只在成功时赋值，这里不会踩 typed-nil。
+	// ⚠ m.adminRecordsRepo 是 *AdminRecordsRepo（具体指针类型），必须判空后再装，
+	// 直接塞进接口字段会变 typed-nil，service 里的判空就失效了。
+	if m.adminRecordsRepo != nil {
+		if records, recErr := dkservice.NewAdminRecordsService(dkservice.AdminRecordsDeps{
+			Records: m.adminRecordsRepo,
+			Store:   m.store,
+		}); recErr != nil {
+			m.degrade("「用户记录」管理端没建起来：%v", recErr)
+		} else {
+			svcs.AdminRecords = adminRecordsServiceAdapter{svc: records}
+		}
 	}
 	// 高清放大：跟数据库无关，只要队列建起来了就挂。
 	// ⚠ typed-nil：m.upscale 的声明类型是 *UpscaleService，为 nil 时直接赋给
@@ -1825,6 +1844,48 @@ func (a quotaAdminServiceAdapter) HandleQuotaRequest(ctx context.Context, in dkh
 			WithCause(balanceErr)
 	}
 	return claimed, nil
+}
+
+// adminRecordsServiceAdapter 把 service.AdminRecordsService 适配成
+// handler.AdminRecordsService。搬字段的理由同 suggestServiceAdapter：
+// ports.go 的类型在 handler 包，service 反过来 import handler 就是循环依赖。
+type adminRecordsServiceAdapter struct {
+	svc *dkservice.AdminRecordsService
+}
+
+var _ dkhandler.AdminRecordsService = adminRecordsServiceAdapter{}
+
+func (a adminRecordsServiceAdapter) ListRecordUsers(ctx context.Context) ([]*dkdomain.RecordUser, error) {
+	return a.svc.ListUsers(ctx)
+}
+
+func (a adminRecordsServiceAdapter) ListChatSessionRecords(ctx context.Context, userID int64, limit, offset int) ([]*dkdomain.ChatSessionAdminView, error) {
+	return a.svc.ListChatSessions(ctx, userID, limit, offset)
+}
+
+func (a adminRecordsServiceAdapter) GetChatSessionRecord(ctx context.Context, uid string) (*dkdomain.ChatSessionAdminView, []*dkdomain.ChatMessage, error) {
+	return a.svc.GetChatSession(ctx, uid)
+}
+
+func (a adminRecordsServiceAdapter) ListJobRecords(ctx context.Context, userID int64, limit, offset int) ([]*dkdomain.JobAdminView, error) {
+	return a.svc.ListJobs(ctx, userID, limit, offset)
+}
+
+func (a adminRecordsServiceAdapter) GetJobRecord(ctx context.Context, uid string) (*dkdomain.JobAdminView, []*dkdomain.JobItemAdminView, error) {
+	return a.svc.GetJob(ctx, uid)
+}
+
+func (a adminRecordsServiceAdapter) OpenJobRecordItemContent(ctx context.Context, jobUID string, seq int) (*dkhandler.ContentBlob, error) {
+	data, contentType, err := a.svc.OpenJobItemContent(ctx, jobUID, seq)
+	if err != nil {
+		return nil, err
+	}
+	return &dkhandler.ContentBlob{
+		Data:        data,
+		ContentType: contentType,
+		// 建议文件名：任务号 + 序号（跟运营侧取图同一个拼法）。
+		Filename: fmt.Sprintf("%s-%d.png", jobUID, seq),
+	}, nil
 }
 
 // imageServiceAdapter 把 repository + 对象存储适配成 handler.ImageService。

@@ -23,6 +23,7 @@ export default {
       contentCheck: 'Copy Check',
       gallery: 'My Images',
       settings: 'Image Settings',
+      adminRecords: 'User Records',
     },
 
     common: {
@@ -646,6 +647,26 @@ export default {
       unavailable: 'Not available yet',
       unavailableHint: 'The quota request service is not ready. Submitted requests are kept and will show up once it is. Screenshot this for the technical owner.',
       loadFailed: 'Failed to load the list.',
+    },
+
+    adminRecords: {
+      title: 'User Records',
+      description: 'View chat records and image jobs across all accounts.',
+      tabChat: 'Chat Records',
+      tabJobs: 'Image Jobs',
+      userFilter: 'Filter by account',
+      allUsers: 'All accounts',
+      empty: 'No records.',
+      user: 'Account',
+      messages: '{count} messages',
+      imagesCount: '{success} succeeded / {total} total',
+      cost: 'Cost {amount}',
+      open: 'View',
+      back: 'Back to list',
+      promptOfThis: 'Prompt used',
+      loadFailed: 'Failed to load records. Refresh the page and try again.',
+      userOption: '{email} (chats {sessions} · jobs {jobs})',
+      attachment: '[Image]',
     },
 
     health: {

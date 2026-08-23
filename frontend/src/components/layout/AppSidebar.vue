@@ -196,6 +196,7 @@ import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 // designkit: 自建菜单项 + 「上游菜单对普通用户隐藏」的名单（细节见该文件注释）
 import {
+  DESIGNKIT_ADMIN_RECORDS_PATH,
   DESIGNKIT_CHAT_PATH,
   DESIGNKIT_CONTENT_CHECK_PATH,
   DESIGNKIT_GALLERY_PATH,
@@ -208,6 +209,7 @@ import {
   DesignkitGalleryIcon,
   DesignkitInspirationIcon,
   DesignkitQuotaIcon,
+  DesignkitRecordsIcon,
   DesignkitSettingsIcon,
   DesignkitWorkbenchIcon,
   isUpstreamNavHiddenFromUser,
@@ -832,7 +834,9 @@ const adminNavItems = computed((): NavItem[] => {
       label: t('designkit.quotaAdmin.title'),
       icon: DesignkitQuotaIcon,
       dot: designkitQuotaPendingCount.value > 0
-    }
+    },
+    // designkit: 用户记录（所有账户的对话/出图记录，只读），排在「额度申请」旁边。
+    { path: DESIGNKIT_ADMIN_RECORDS_PATH, label: t('designkit.nav.adminRecords'), icon: DesignkitRecordsIcon }
   ]
 
   const visible = applyFeatureFlags(baseItems)
