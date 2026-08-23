@@ -156,3 +156,8 @@ output/
 !designkit/
 !designkit/**
 !CLAUDE.md
+# frontend 里 vendored 的第三方（TagCloud）不是 Go 的 vendor 目录，
+# 上面第 26 行的 `vendor/` 规则会把它吞掉——8-15 历史重置时 git add -A
+# 因此漏掉了它，CI 上 typecheck 连红一周（本地和 NAS 靠磁盘/rsync 掩盖了）。
+!frontend/src/features/designkit/vendor/
+!frontend/src/features/designkit/vendor/**

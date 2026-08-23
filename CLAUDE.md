@@ -38,7 +38,9 @@ designkit：面向电商运营的 AI 商品图生成平台。
 | 界面文案 | `frontend/src/i18n/locales/<语言>/designkit.ts` |
 | 脚本、我们的文档 | `designkit/bin/`、`designkit/docs/` |
 
-**⚠ 建目录时避开 `scripts` 和 `tests` 这两个名字。**
+**⚠ 建目录时避开 `scripts`、`tests`、`vendor` 这三个名字。**
+（`vendor` 是 2026-08-23 实测补的：TagCloud 目录被 `vendor/` 规则吞掉，
+历史重置时随 `git add -A` 静默丢失，CI 连红一周才发现。）
 上游 `.gitignore` 里这两条规则**不带斜杠**，会在任意层级命中同名目录，
 把文件悄悄吞掉——不报错、不提示，等 CI 找不到文件时才发现。
 `docs/*` 和 `CLAUDE.md` 同理。新建文件后先确认一下：
