@@ -24,7 +24,10 @@ if [ ! -f .env ]; then
     echo "ADMIN_EMAIL=admin@designkit.local"
     echo "# 管理员密码留空的话，容器启动日志里会打印一个随机初始密码"
     echo "ADMIN_PASSWORD="
-    echo "BIND_HOST=127.0.0.1"
+    echo "# 绑定地址是两个变量（2026-08-23 拆分，旧的 BIND_HOST 已不再被读取）："
+    echo "# SERVER_BIND 管后端入口，DEV_BIND 管 vite 开发服务器。本机开发都留回环。"
+    echo "SERVER_BIND=127.0.0.1"
+    echo "DEV_BIND=127.0.0.1"
   } > .env
   echo "已生成 deploy/.env（已被 .gitignore 忽略，不会提交）"
   echo

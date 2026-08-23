@@ -1,37 +1,23 @@
 version: 1
+# 说明（给维护者，CI 只读结构化字段）：
+# - 这里只保留「确实无法升级」的漏洞豁免；能升级的一律升级，不进这个文件。
+# - lodash / lodash-es / axios 的旧条目已删除：锁定版本已不受对应 advisory 影响
+#   （lodash 系列 >=4.18.0 已修 GHSA-r5fr-rjxr-66jc；axios 1.18.1 已包含
+#   GHSA-3p68-rc4w-qgx5 与 GHSA-pmwg-cvhr-8vh7 的修复）。
+# - xlsx 两条保留：npm 渠道最新就是 0.18.5，修复版（0.19.3 / 0.20.2）只发布在
+#   cdn.sheetjs.com，无法通过 pnpm 正常升级，属于上游锁死。
 exceptions:
   - package: xlsx
     advisory: "GHSA-4r6h-8v6p-xvw6"
     severity: high
-    reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2023-30533)"
+    reason: "No fixed release on npm (latest is 0.18.5; fix 0.19.3 only on cdn.sheetjs.com). Admin export only, loaded via dynamic import (CVE-2023-30533)"
     mitigation: "Load only on export; restrict export permissions and data scope"
-    expires_on: "2026-10-06"
-    owner: "security@your-domain"
+    expires_on: "2026-11-21"
+    owner: "designkit"
   - package: xlsx
     advisory: "GHSA-5pgg-2g8v-p4x9"
     severity: high
-    reason: "Admin export only; switched to dynamic import to reduce exposure (CVE-2024-22363)"
+    reason: "No fixed release on npm (fix 0.20.2 only on cdn.sheetjs.com). Admin export only, loaded via dynamic import (CVE-2024-22363)"
     mitigation: "Load only on export; restrict export permissions and data scope"
-    expires_on: "2026-10-06"
-    owner: "security@your-domain"
-  - package: lodash
-    advisory: "GHSA-r5fr-rjxr-66jc"
-    severity: high
-    reason: "lodash _.template not used with untrusted input; only internal admin UI templates"
-    mitigation: "No user-controlled template strings; plan to migrate to lodash-es tree-shaken imports"
-    expires_on: "2026-07-02"
-    owner: "security@your-domain"
-  - package: lodash-es
-    advisory: "GHSA-r5fr-rjxr-66jc"
-    severity: high
-    reason: "lodash-es _.template not used with untrusted input; only internal admin UI templates"
-    mitigation: "No user-controlled template strings; plan to migrate to native JS alternatives"
-    expires_on: "2026-07-02"
-    owner: "security@your-domain"
-  - package: axios
-    advisory: "GHSA-3p68-rc4w-qgx5"
-    severity: critical
-    reason: "NO_PROXY bypass not exploitable; all API calls go to known endpoints via server-side proxy"
-    mitigation: "Proxy configuration not user-controlled; upgrade when axios releases fix"
-    expires_on: "2026-07-10"
-    owner: "security@your-domain"
+    expires_on: "2026-11-21"
+    owner: "designkit"

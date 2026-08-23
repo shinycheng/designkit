@@ -20,9 +20,23 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "${BIND_HOST:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
+      # 2026-08-23 起绑定地址拆成两个变量（原来共用一个 BIND_HOST，改哪个都会牵连另一个）：
+      #   SERVER_BIND  管这里的正式入口（NAS 上是 18080，要对局域网开放 → 0.0.0.0）
+      #   DEV_BIND     管 designkit-dev.yml 里 13000 那个 vite 开发服务器
+      #               （它的 /@fs/ 能读项目目录下任意文件，必须只绑回环）
+      # 旧变量 BIND_HOST 已不再被读取。
+      - "${SERVER_BIND:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     volumes:
       - ./data:/app/data:Z
+    # 内存上限 + 日志轮转（2026-08-23 运维加固，只加不减）：
+    # 不设上限的话，哪个服务泄漏内存都会把整台 NAS 拖死；
+    # 不轮转的话，容器日志会无限长大（单文件 50MB × 3 份封顶）。
+    mem_limit: 4g
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       - AUTO_SETUP=true
       - SERVER_HOST=0.0.0.0
@@ -97,6 +111,13 @@ services:
     image: postgres:18-alpine
     container_name: sub2api-postgres-dev
     restart: unless-stopped
+    # 内存上限 + 日志轮转（2026-08-23 运维加固，只加不减）
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     volumes:
       - ./postgres_data:/var/lib/postgresql/data:Z
     environment:
@@ -118,6 +139,13 @@ services:
     image: redis:8-alpine
     container_name: sub2api-redis-dev
     restart: unless-stopped
+    # 内存上限 + 日志轮转（2026-08-23 运维加固，只加不减）
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     volumes:
       - ./redis_data:/data:Z
     # The command is one quoted script for the inner `sh -c`. Compose keeps

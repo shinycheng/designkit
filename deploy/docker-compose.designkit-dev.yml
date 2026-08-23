@@ -23,7 +23,12 @@ services:
     container_name: designkit-frontend-dev
     working_dir: /app/frontend
     ports:
-      - "${BIND_HOST:-127.0.0.1}:${VITE_DEV_PORT:-3000}:3000"
+      # ⚠ DEV_BIND 保持 127.0.0.1（默认值就是），**不要**改成 0.0.0.0：
+      #   vite 开发服务器的 /@fs/ 能读项目目录下的任意文件，绑到局域网等于
+      #   把整个源码目录敞开。要在 Mac 上看热更新页面，走 SSH 隧道：
+      #     ssh -L 13000:127.0.0.1:13000 dk-nas    然后开 http://localhost:13000
+      #   正式入口 18080 用的是另一个变量 SERVER_BIND（见 docker-compose.dev.yml）。
+      - "${DEV_BIND:-127.0.0.1}:${VITE_DEV_PORT:-3000}:3000"
     volumes:
       - ../frontend:/app/frontend
       # ⚠ 必须把仓库根的 docs/ 也挂进来（只读）。
@@ -51,6 +56,13 @@ services:
       # 绑定挂载在 macOS/Windows 上收不到 inotify 事件，必须轮询才有热更新
       - CHOKIDAR_USEPOLLING=true
       - TZ=${TZ:-Asia/Shanghai}
+    # 内存上限 + 日志轮转（2026-08-23 运维加固）
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     # pnpm 版本跟 Dockerfile 里钉的一致（pnpm@9），避免锁文件被改写
     command: >
       sh -c '
@@ -100,6 +112,24 @@ services:
       # 同时处理几张。群晖内存小就调到 2。
       - DESIGNKIT_IMGSVC_MAX_CONCURRENCY=${DESIGNKIT_IMGSVC_MAX_CONCURRENCY:-4}
       - TZ=${TZ:-Asia/Shanghai}
+    # 探活。镜像的 Dockerfile 里本来就有同款 HEALTHCHECK，这里再写一遍是让它
+    # 在 compose 层可见可改（docker ps 的 healthy/unhealthy 就来自这条）。
+    # slim 镜像里没有 curl/wget，用 python 自带的 urllib；端口钉 8000
+    # （跟 DESIGNKIT_IMGSVC_URL 默认值一致，改端口两处要一起改）。
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    # 内存上限 + 日志轮转（2026-08-23 运维加固）。3g 是给「高清放大」留的峰值：
+    # CPU 上放大一张会吃掉一大块内存，2g 不够。
+    mem_limit: 3g
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     networks:
       - sub2api-network
 
@@ -141,6 +171,23 @@ services:
       # - HTTP_PROXY=${SUB2API_DEV_HTTP_PROXY:-}
       # - HTTPS_PROXY=${SUB2API_DEV_HTTPS_PROXY:-}
       - TZ=${TZ:-Asia/Shanghai}
+    # 探活。rembg 镜像没有自带 HEALTHCHECK，也没有专门的健康端点，
+    # 镜像里 curl/wget 都不保证有——但它本身是个 Python 应用，python 一定在，
+    # 所以用 python 的 socket 探 7000 端口通不通（只证明服务在听，够用了：
+    # 第一次抠图还要下载/加载模型，那种慢不算「不健康」）。
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 7000), timeout=3).close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # 内存上限 + 日志轮转（2026-08-23 运维加固）。抠图模型加载后常驻内存，2g 够。
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     networks:
       - sub2api-network
 

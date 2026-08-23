@@ -32,7 +32,9 @@
 #     3. 交互式提示（不回显）
 #
 # 端口（刻意避开 NAS 上已占用的）：
-#   前端 http://192.168.31.235:13000     后端 http://192.168.31.235:18080
+#   正式入口 http://192.168.31.235:18080（前端和后端都在这个端口，对局域网开放）
+#   热更新开发服务器 13000 只绑 NAS 回环（2026-08-23 收口，理由见 NAS_ENV 注释），
+#   要在 Mac 上看它：ssh -L 13000:127.0.0.1:13000 dk-nas → 浏览器开 http://localhost:13000
 #   注意 3000 被 moviepilot 占了、8090 是 sub2api、8787 是老 designkit，都不能碰。
 
 set -euo pipefail
@@ -51,13 +53,17 @@ DOCKER="/usr/local/bin/docker"
 COMPOSE_FILES="-f deploy/docker-compose.dev.yml -f deploy/docker-compose.designkit-dev.yml"
 
 # NAS 上的端口和绑定地址。
-# ⚠ BIND_HOST 默认是 127.0.0.1——不改成 0.0.0.0 的话，端口号对了也连不上，
-#   因为它只绑在 NAS 自己的回环地址上。
+# ⚠ 绑定地址是**两个**变量，2026-08-23 从一个 BIND_HOST 拆开的（两个端口原来共用它，
+#   为了 18080 能被局域网访问只好连 13000 一起绑 0.0.0.0）：
+#   - SERVER_BIND=0.0.0.0     18080 正式入口，运营要从局域网访问，必须对外
+#   - DEV_BIND=127.0.0.1      13000 vite 开发服务器，**必须只绑回环**：
+#     它的 /@fs/ 能读项目目录下任意文件，对局域网开放等于把源码整个敞开。
+#     要在 Mac 上看热更新页面，开个隧道：ssh -L 13000:127.0.0.1:13000 dk-nas
 # ⚠ DOCKER_BUILDKIT=0 只用在**不构建**的命令上（up / down / logs / config）。
 #   这台 NAS 上 BuildKit 拉基础镜像的元数据时会走 IPv6 连 auth.docker.io 然后
 #   超时（i/o timeout），而 `docker pull` 走守护进程自己的路径是好的。
 #   现象很有迷惑性——同一台机器上 pull 能成、build 不能成。
-NAS_ENV="BIND_HOST=0.0.0.0 VITE_DEV_PORT=13000 SERVER_PORT=18080 DOCKER_BUILDKIT=0"
+NAS_ENV="DEV_BIND=127.0.0.1 SERVER_BIND=0.0.0.0 VITE_DEV_PORT=13000 SERVER_PORT=18080 DOCKER_BUILDKIT=0"
 
 # ⚠⚠ 但**构建必须用 BuildKit**（DOCKER_BUILDKIT=1）。根目录的 Dockerfile 从头到尾
 #   都是 BuildKit 专属语法，经典构建器一行都跑不了：
@@ -72,11 +78,11 @@ NAS_ENV="BIND_HOST=0.0.0.0 VITE_DEV_PORT=13000 SERVER_PORT=18080 DOCKER_BUILDKIT
 #
 #   前提：基础镜像必须已经在本地（见下面 require_base_images 的清单）。
 #   都在的话 BuildKit 不需要联网解析，那个 IPv6 超时就不会发生。
-BUILD_ENV="BIND_HOST=0.0.0.0 VITE_DEV_PORT=13000 SERVER_PORT=18080 DOCKER_BUILDKIT=1"
+BUILD_ENV="DEV_BIND=127.0.0.1 SERVER_BIND=0.0.0.0 VITE_DEV_PORT=13000 SERVER_PORT=18080 DOCKER_BUILDKIT=1"
 
 # 构建要用到的基础镜像。缺了 BuildKit 会去联网解析，然后撞上那个 IPv6 超时，
 # 报出来的错跟「镜像没拉」八竿子打不着，所以在这里先自己查一遍。
-BASE_IMAGES="docker/dockerfile:1.7 node:24-alpine golang:1.26.5-alpine alpine:3.21 postgres:18-alpine python:3.12-slim-bookworm"
+BASE_IMAGES="docker/dockerfile:1.7 node:24-alpine golang:1.26.6-alpine alpine:3.21 postgres:18-alpine python:3.12-slim-bookworm"
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -141,7 +147,7 @@ do_sync() {
 
 # 在 NAS 上用一次性 Go 容器跑命令（本机没有 Go）。
 #
-# ⚠ 用 Debian 版 golang:1.26.5，不要用 -alpine。
+# ⚠ 用 Debian 版 golang:1.26.6，不要用 -alpine。
 #   alpine 版要先 `apk add git build-base`，而这一步在这台 NAS 上会**挂死**
 #   （实测跑了 12 分钟没动静，容器停在 apk 上）。Debian 版自带 git 和 gcc，
 #   一个包都不用装，直接开编。镜像大 ~600MB，但只拉一次。
@@ -162,7 +168,7 @@ go_in_container() {
     -v /volume3/docker/designkit-dev/gocache:/root/.cache/go-build \
     -v /volume3/docker/designkit-dev/gomod:/go/pkg/mod \
     $goflags \
-    golang:1.26.5 bash -c '$1'"
+    golang:1.26.6 bash -c '$1'"
 }
 
 case "${1:-up}" in
@@ -232,9 +238,10 @@ case "${1:-up}" in
     echo "→ 起开发环境"
     nas_sudo "cd $REMOTE_DIR && $NAS_ENV $DOCKER compose $COMPOSE_FILES up -d"
     echo
-    echo "前端  http://$NAS_HOST:13000"
-    echo "后端  http://$NAS_HOST:18080"
+    echo "入口  http://$NAS_HOST:18080   （前端和后端都在这个端口）"
     echo "日志  designkit/bin/dk-nas.sh logs"
+    echo "热更新开发服务器 13000 只绑 NAS 回环，要看它先开隧道："
+    echo "  ssh -L 13000:127.0.0.1:13000 dk-nas    然后浏览器开 http://localhost:13000"
     ;;
 
   # 改了**代码**之后用这个（up 不行）。

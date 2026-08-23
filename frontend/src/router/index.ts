@@ -1030,6 +1030,21 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
+  // designkit（决策 10 收尾，monica 2026-08-23 拍板「藏」）：
+  // 非管理员访问上游用户仪表盘，一律送去生成工作台。
+  //
+  // 仪表盘不只是「多余的页面」：它的「快捷操作」四个按钮直通
+  // /keys、/usage、/batch-image、/redeem——全是决策 10 对运营隐藏的菜单。
+  // 菜单藏了、这个页面还留着，就是绕过隐藏名单的后门。
+  //
+  // 管理员不受影响：快捷操作他自己还要用（UserDashboardQuickActions.vue 原样保留）。
+  // 另外守卫里散落的 next('/dashboard') 兜底（权限不足、功能被关时的回退）
+  // 不用逐个改：非管理员落到 /dashboard 后会再进一次守卫，从这里转去工作台。
+  if (to.path === '/dashboard' && !authStore.isAdmin) {
+    next(DESIGNKIT_WORKBENCH_PATH)
+    return
+  }
+
   // Check admin requirement
   if (requiresAdmin && !authStore.isAdmin) {
     // User is authenticated but not admin, redirect to user dashboard

@@ -901,6 +901,30 @@ func RegisterRoutes(
 		slog.Error("designkit 出图队列启动失败：已提交的批次会一直停在排队中", slog.Any("error", startErr))
 	}
 
+	// 启动期保险（CLAUDE.md 第七节点名的缺口）：邮箱后缀白名单只拦邮箱注册，
+	// 第三方 OAuth 注册不走它。白名单和任一第三方登录同时开着时，
+	// 在启动日志里打一条显眼提醒——只提醒、不拦截。详见 oauth_whitelist_warning.go。
+	if settingService != nil {
+		warnCtx, warnCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		warnEmailWhitelistOAuthBypass(warnCtx, settingService)
+		warnCancel()
+	}
+
+	// B2 巡检：出图模型不许被渠道定价拖进 token 计价（billing_watch.go）。
+	// 用配置里的当前模型名；管理员改了模型要重启才换巡检目标——可接受，
+	// 改模型本来就在「重启才完全生效」清单里。
+	if m.pool != nil {
+		// 模型名照 settingsServiceAdapter.readString 的同一条路读：
+		// 配置里改过用改过的，读不到用默认值——巡检目标宁可稍旧也别没有。
+		model := dkdomain.DefaultModel
+		if m.repo != nil {
+			mctx, mcancel := context.WithTimeout(context.Background(), 3*time.Second)
+			model = settingsServiceAdapter{repo: m.repo}.readString(mctx, dkdomain.SettingKeyModel, dkdomain.DefaultModel)
+			mcancel()
+		}
+		watchBillingMode(context.Background(), m.pool.DB(), model)
+	}
+
 	m.RegisterRoutes(RouteDeps{
 		Engine:         r,
 		V1:             v1,

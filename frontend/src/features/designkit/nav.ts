@@ -58,8 +58,15 @@ export const DESIGNKIT_ADMIN_RECORDS_PATH = '/admin/user-records'
  * 注意：**只隐藏菜单入口，不动路由、不删上游代码**。
  * 直接输入 URL 仍然打得开——这是有意的：决策 9 说这些功能「页面关掉但代码不删」，
  * 哪天要对外收费，把这份名单清空即可恢复。
+ *
+ * **唯一的例外是 `/dashboard`**（决策 10 收尾，monica 2026-08-23 拍板「藏」）：
+ * 它的「快捷操作」四个按钮直通本名单里的 /keys、/usage、/batch-image、/redeem，
+ * 光藏菜单等于留了个后门。所以它除了列在这里，router/index.ts 的守卫还会把
+ * 非管理员访问 /dashboard 重定向到生成工作台。管理员照常使用仪表盘。
  */
 export const DESIGNKIT_UPSTREAM_NAV_HIDDEN_FROM_USER: readonly string[] = [
+  // 仪表盘：唯一一条「菜单隐藏 + 路由重定向」双管的（原因见上面的例外说明）。
+  '/dashboard',
   '/keys', // 我的密钥
   '/batch-image', // 批量生图（上游的 BatchImage，跟我们的批量出图不是一回事）
   '/usage', // 用量

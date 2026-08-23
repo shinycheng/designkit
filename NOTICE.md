@@ -73,6 +73,12 @@ only to indicate supported channels; no affiliation or endorsement is implied.
 `assets/`（上游 logo 与赞助商标识）、`.github/workflows/release.yml` 与
 `cla.yml`、GoReleaser 配置。上游 README 的重要提醒原文已移入本文件末尾保留。
 
+**②·b 安全与工程加固（2026-08-23）**：Go 1.26.5→1.26.6（`backend/go.mod`、
+三个 Dockerfile、CI 断言改为从 go.mod 推导）；`frontend/package.json` 加
+pnpm overrides 修 mermaid/lodash 漏洞（lockfile 随之重生成）；
+`.github/audit-exceptions.yml` 清理僵尸豁免；`deploy/docker-compose.dev.yml`
+补内存上限与日志限额、端口绑定变量拆分；`backend-ci.yml` 加 imgsvc job。
+
 **② 品牌字样替换（17 个文件，2026-08-15）**：站点名未配置时的兜底
 「Sub2API」→「DesignKit」（前端 12 个文件、后端
 `setting_features.go`/`content_moderation.go`/`config.go`/`main.go`/

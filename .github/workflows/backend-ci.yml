@@ -32,7 +32,8 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.5'
+          want="$(sed -n 's/^go //p' backend/go.mod)"
+          go version | grep -qF "go${want} "
       - name: Unit tests
         working-directory: backend
         run: make test-unit
@@ -60,6 +61,29 @@ jobs:
       - name: Frontend typecheck and critical vitest
         run: make test-frontend
 
+  # designkit 图像预处理服务（Python）。跑 selfcheck.py 的「本地」段：
+  # 不起 HTTP、不联网、不花钱，验的是 fail-closed、五个比例的画布计算、
+  # 以及高清放大的推理往返（模型文件在仓库里，忘了提交这里会当场红）。
+  # DK_SELFCHECK_REQUIRE_UPSCALE=1：CI 上放大依赖必须可用，
+  # 缺了直接判失败，不允许被「跳过」悄悄盖住（selfcheck.py 文档里点名要求）。
+  imgsvc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: designkit/imgsvc/requirements.txt
+      - name: Install imgsvc dependencies
+        working-directory: designkit/imgsvc
+        run: pip install -r requirements.txt
+      - name: imgsvc selfcheck (local segment)
+        working-directory: designkit/imgsvc
+        env:
+          DK_SELFCHECK_REQUIRE_UPSCALE: '1'
+        run: python3 selfcheck.py --local-only
+
   golangci-lint:
     runs-on: ubuntu-latest
     steps:
@@ -72,7 +96,8 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.5'
+          want="$(sed -n 's/^go //p' backend/go.mod)"
+          go version | grep -qF "go${want} "
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:

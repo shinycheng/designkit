@@ -25,5 +25,5 @@ jobs:
             "+refs/tags/*:refs/tags/*" --depth=1 2>/dev/null \
             || git fetch upstream --tags
 
-      - name: 断言未改动白名单外的上游文件
+      - name: 清点改过的上游文件（只列清单，不拦截）
         run: bash designkit/bin/check-upstream-touch.sh
