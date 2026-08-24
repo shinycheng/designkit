@@ -22,6 +22,8 @@ import (
 
 // ---- 列清单 ----
 
+// jobColumns 末尾的 keep_transparency 来自 9004 的 ALTER（物理列序就是追加在
+// 最后），parity 测试按「9001 建表列 + 9004 追加列」比对。
 const jobColumns = `id, uid, user_id, api_key_id, origin, name, status, ratio, model, ` +
 	`item_count, success_count, fail_count, cancelled_count, ` +
 	`idempotency_key, callback_url, currency, estimated_cost, actual_cost, ` +
@@ -29,7 +31,8 @@ const jobColumns = `id, uid, user_id, api_key_id, origin, name, status, ratio, m
 	`billing_mode, pricing_tier, price_source, pricing_snapshot_version, ` +
 	`revision, last_error_code, last_error_message, ` +
 	`heartbeat_at, cancel_requested_at, expires_at, ` +
-	`created_at, updated_at, started_at, finished_at, settled_at, user_deleted_at`
+	`created_at, updated_at, started_at, finished_at, settled_at, user_deleted_at, ` +
+	`keep_transparency`
 
 const jobItemColumns = `id, job_id, seq, asset_id, variant_id, prompt_id, prompt_text, status, ` +
 	`attempt_count, max_attempts, last_error_code, last_error_message, ` +
@@ -79,6 +82,7 @@ func scanJob(row rowScanner) (*dkdomain.Job, error) {
 		&job.Revision, &lastErrorCode, &lastErrorMessage,
 		&heartbeatAt, &cancelRequestedAt, &expiresAt,
 		&job.CreatedAt, &job.UpdatedAt, &startedAt, &finishedAt, &settledAt, &userDeletedAt,
+		&job.KeepTransparency,
 	); err != nil {
 		return nil, err
 	}

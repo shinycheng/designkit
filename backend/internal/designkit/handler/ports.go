@@ -121,8 +121,9 @@ type UpscaleTaskView struct {
 
 // UpscaleService 「高清放大」的排队与状态查询。
 //
-// 队列在内存里（CLAUDE.md 已知约束：只能跑一个后端实例），重启丢任务是
-// 接受过的代价——运营重新点一次即可，结果入库按 sha256 去重，不会重复占盘。
+// 任务落库（designkit_upscale_tasks，9004）：重启后没放完的自动续跑，
+// 运营不用重点。队列信道仍在内存里（单实例约束不变），
+// 结果入库按 sha256 去重，不会重复占盘。
 type UpscaleService interface {
 	// StartUpscale 排一张进队列。同一张图已在排队/在放/放完时**不重复入队**，
 	// 直接返回现有任务；failed 的可以重新排。队列满返回 DK_UPSCALE_QUEUE_FULL。
@@ -155,6 +156,10 @@ type ChatSendResult struct {
 type ChatConversationService interface {
 	// Send 发一条消息并等 AI 回复。这一步**花钱**（按 token 计费）。
 	Send(ctx context.Context, in ChatSendInput) (*ChatSendResult, error)
+	// SendStream 同 Send，但回复**边生成边**通过 onDelta 逐段回调
+	//（同一 goroutine、按顺序）。返回值与 Send 相同：流完且拿到全文才落库，
+	// 中途失败什么都不留。同样**花钱**。
+	SendStream(ctx context.Context, in ChatSendInput, onDelta func(text string)) (*ChatSendResult, error)
 	// ListSessions 会话列表（最近的在前）。
 	ListSessions(ctx context.Context, userID int64) ([]*dkdomain.ChatSession, error)
 	// GetSession 一个会话和它的全部消息（按发生顺序）。
@@ -276,7 +281,9 @@ type JobSpec struct {
 	PromptTexts []string
 	// Model 出图模型；空串表示用 designkit_settings.model。
 	Model string
-	// KeepTransparency 预处理时是否保留透明底（默认 false = 合成白底）。
+	// KeepTransparency 预处理时是否保留透明底（false = 合成白底）。
+	// 已是定值：「请求没传用默认」在 buildSpec 里 ResolveKeepTransparency 落定过。
+	// 9004 起随批落库（designkit_jobs.keep_transparency），出图按批生效。
 	KeepTransparency bool
 }
 
@@ -558,6 +565,10 @@ type AdminRecordsService interface {
 	// OpenJobRecordItemContent 取某一张当前版本第一张结果图的字节（缩略图用）。
 	// seq 从 1 开始。
 	OpenJobRecordItemContent(ctx context.Context, jobUID string, seq int) (*ContentBlob, error)
+
+	// OpenAssetRecordContent 跨用户取一张商品图的字节（对话附图的缩略图用）。
+	// 素材被主人删掉时同「找不到」；记录在、文件不在报存储错误。
+	OpenAssetRecordContent(ctx context.Context, uid string) (*ContentBlob, error)
 }
 
 // ---- 灵感库 ----
@@ -683,6 +694,8 @@ type SuggestPromptInput struct {
 	CategorySlug string
 	// Features 运营填的「商品特点」，可空。
 	Features string
+	// Force 跳过缓存、强制重新推荐（「重新推荐」按钮）。新结果照样回写缓存。
+	Force bool
 }
 
 // SuggestedCategory 这次实际按哪个分类挑的。
@@ -707,6 +720,9 @@ type SuggestPromptResult struct {
 	Candidates []SuggestedCandidate
 	// Note 给运营的一句中文说明，可空（比如「没能自动判断分类，按 XX 推荐的」）。
 	Note string
+	// CachedAt 非零 = 这条来自缓存（值是它最初生成的时间），没调模型、没计费。
+	// 零值 = 本次现算的。
+	CachedAt time.Time
 }
 
 // SuggestService 是「AI 挑提示词」这一个能力。

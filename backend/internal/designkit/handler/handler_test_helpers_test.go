@@ -108,6 +108,10 @@ type fakeJobService struct {
 
 	blob       *ContentBlob
 	contentErr error
+	// blobBySeq 按 seq 给不同的图（打包下载的单测用）；nil 时统一返回 blob。
+	blobBySeq map[int]*ContentBlob
+	// contentSeqs 按调用顺序记下每次取图的 seq（断言「只取成功的那几张」用）。
+	contentSeqs []int
 
 	stop      *StopJobResult
 	stopErr   error
@@ -166,9 +170,13 @@ func (f *fakeJobService) GetJobItem(_ context.Context, _ int64, _ string, _ int)
 	return f.item, nil
 }
 
-func (f *fakeJobService) OpenJobItemContent(_ context.Context, _ int64, _ string, _, _ int) (*ContentBlob, error) {
+func (f *fakeJobService) OpenJobItemContent(_ context.Context, _ int64, _ string, seq, _ int) (*ContentBlob, error) {
+	f.contentSeqs = append(f.contentSeqs, seq)
 	if f.contentErr != nil {
 		return nil, f.contentErr
+	}
+	if f.blobBySeq != nil {
+		return f.blobBySeq[seq], nil
 	}
 	return f.blob, nil
 }

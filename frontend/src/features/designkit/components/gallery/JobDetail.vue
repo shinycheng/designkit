@@ -111,12 +111,22 @@
     </div>
 
     <!--
-      TODO（本轮不做）：「打包下载这一批」。
-      单张下载已经有了（每张图下面那个按钮）。整批打包要么前端引一个打包库，
-      要么后端出一个「整批打成一个压缩包」的下载地址，两条路都还没定。
-      **先不画按钮**——画一个点不动的按钮，运营会以为系统坏了，比没有更糟。
-      文案键已经备好：`designkit.gallery.downloadJob`。
+      「打包下载这一批」：后端 GET /jobs/:uid/images.zip 把出成功的每一张
+      打成一个 zip（包内文件名「第{seq}张.png」，跟界面上的序号严格对应）。
+      地址要带登录凭证，不能 window.open（不带凭证头，拿到的是 401）——
+      跟单张下载同一个做法：downloadContent 用 axios 取成 blob 再触发保存。
+      没有出成功的图时不显示按钮（后端对空批次会 404，画一个必失败的按钮更糟）。
     -->
+    <div v-if="canDownloadZip" class="dk-mt-3">
+      <button
+        type="button"
+        class="dk-button dk-button--secondary dk-button--sm"
+        :disabled="zipDownloading"
+        @click="downloadZip()"
+      >
+        {{ zipDownloading ? t('designkit.common.loading') : t('designkit.gallery.downloadJob') }}
+      </button>
+    </div>
 
     <!--
       「删除这一批记录」的二次确认。文案的两句都跟后端语义核对过：
@@ -144,8 +154,10 @@ import { formatDateTimeToMinute } from '@/utils/format'
 import { useAppStore } from '@/stores/app'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import {
+  DESIGNKIT_API_BASE_PATH,
   PRICE_UNCONFIRMED,
   deleteJob,
+  downloadContent,
   errorText,
   formatMoney,
   getJob,
@@ -233,6 +245,45 @@ const showCancelledCostNote = computed(() => {
   }
   return current.status === 'cancelled' || current.cancel_requested_at !== null
 })
+
+// ---------------------------------------------------------------------------
+// 打包下载这一批
+// ---------------------------------------------------------------------------
+
+/** 打包下载在途。期间按钮禁用，防连点重复打整包。 */
+const zipDownloading = ref(false)
+
+/** 有出成功的图才给打包入口（空批次后端会 404）。 */
+const canDownloadZip = computed(() => (job.value?.success_count ?? 0) > 0)
+
+/** Windows 上文件名里这几个字符会被拒绝，换成下划线（同 JobProgressPanel）。 */
+function safeFileName(raw: string): string {
+  return raw.replace(/[\\/:*?"<>|]/g, '_').trim()
+}
+
+/**
+ * 打包下载：整批 zip 由后端现拼现流，前端只负责带凭证取回并触发保存。
+ * 保存的文件名用批次名（后端的 Content-Disposition 也带同一个名字，
+ * 但 downloadContent 走 blob 链接，浏览器只认 anchor 上的 download 属性）。
+ */
+async function downloadZip(): Promise<void> {
+  if (zipDownloading.value) {
+    return
+  }
+  zipDownloading.value = true
+  try {
+    await downloadContent(
+      `${DESIGNKIT_API_BASE_PATH}/jobs/${encodeURIComponent(props.jobUid)}/images.zip`,
+      `${safeFileName(displayName.value)}.zip`,
+    )
+  } catch (error) {
+    if (!isCanceledError(error)) {
+      appStore.showError(errorText(error))
+    }
+  } finally {
+    zipDownloading.value = false
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 删除这一批记录（软删）

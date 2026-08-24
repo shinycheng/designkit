@@ -187,6 +187,70 @@ func TestHandleItem_ReusesExistingVariant(t *testing.T) {
 	require.Equal(t, []byte("padded:CACHED"), f.gw.requests[0].ImageData)
 }
 
+// TestHandleItem_KeepTransparencyPerJob keep_transparency 按批生效（9004 起）。
+//
+// true 那一支同时守两件事：① 预处理请求里带的是**批次行**的值，不是全局配置
+//（全局配置字段已删，这条测试就是防它被加回来）；② 已有的 keep=false 产物
+// **不能**被 keep=true 的批次复用——variant 唯一键里有 keep_transparency 这一维，
+// 复用了运营要透明底拿到的就是白底，钱照扣。
+func TestHandleItem_KeepTransparencyPerJob(t *testing.T) {
+	t.Run("true", func(t *testing.T) {
+		f := newFixture(t, 1, nil)
+		ctx := context.Background()
+
+		f.repo.mu.Lock()
+		f.repo.jobs[1].KeepTransparency = true
+		// 预先放一个 keep=false 的产物：参数差一维就不许复用。
+		key := "designkit/variants/2026/08/13/asset-1-3x4-o-2048.png"
+		f.store.objects[key] = storedObject{data: []byte("padded:OPAQUE"), contentType: "image/png"}
+		f.repo.variants[variantKey(101, dkdomain.Ratio3x4, false, dkdomain.DefaultMaxDimension)] = &dkdomain.AssetVariant{
+			ID:           41,
+			AssetID:      101,
+			Ratio:        dkdomain.Ratio3x4,
+			MaxDimension: dkdomain.DefaultMaxDimension,
+			ObjectKey:    key,
+			ContentType:  "image/png",
+		}
+		f.repo.mu.Unlock()
+
+		item, err := f.repo.ClaimNextItem(ctx, dkdomain.ClaimItemParams{WorkerID: "w1", LeaseFor: 3 * time.Second})
+		require.NoError(t, err)
+		f.pool.handleItem(ctx, "w1", item)
+
+		require.Equal(t, dkdomain.ItemStatusSucceeded, f.repo.item(item.ID).Status)
+		require.Equal(t, 1, f.pre.callCount(), "keep=false 的产物不许被 keep=true 的批次复用")
+		req, ok := f.pre.lastRequest()
+		require.True(t, ok)
+		require.True(t, req.KeepTransparency, "发给 Python 的必须是批次行的 keep_transparency")
+
+		// 新产物落在 keep=true 的键位上（object_key 里是 -t- 不是 -o-）。
+		f.repo.mu.Lock()
+		v, cached := f.repo.variants[variantKey(101, dkdomain.Ratio3x4, true, dkdomain.DefaultMaxDimension)]
+		f.repo.mu.Unlock()
+		require.True(t, cached, "keep=true 的产物要以 keep=true 入缓存")
+		require.True(t, v.KeepTransparency)
+		require.Contains(t, v.ObjectKey, "-t-")
+	})
+
+	t.Run("false", func(t *testing.T) {
+		f := newFixture(t, 1, nil) // fixture 里 job.KeepTransparency 默认 false
+		ctx := context.Background()
+
+		item, err := f.repo.ClaimNextItem(ctx, dkdomain.ClaimItemParams{WorkerID: "w1", LeaseFor: 3 * time.Second})
+		require.NoError(t, err)
+		f.pool.handleItem(ctx, "w1", item)
+
+		require.Equal(t, dkdomain.ItemStatusSucceeded, f.repo.item(item.ID).Status)
+		req, ok := f.pre.lastRequest()
+		require.True(t, ok)
+		require.False(t, req.KeepTransparency)
+		f.repo.mu.Lock()
+		_, cached := f.repo.variants[variantKey(101, dkdomain.Ratio3x4, false, dkdomain.DefaultMaxDimension)]
+		f.repo.mu.Unlock()
+		require.True(t, cached, "keep=false 的产物要以 keep=false 入缓存")
+	})
+}
+
 // TestHandleItem_LeaseLostOnWriteBackDiscardsResult 写回时 worker_id 对不上就丢弃结果。
 //
 // 这是「同一张图被两个 worker 各出一遍」时唯一的止损点：

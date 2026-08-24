@@ -177,6 +177,9 @@ type suggestRequestBody struct {
 	CategorySlug string `json:"category_slug"`
 	// Features 运营填的商品特点，可空。
 	Features string `json:"features"`
+	// Force 跳过缓存、强制重新推荐（前端在「重新推荐」按钮上传 true）。
+	// 不带它时，输入完全相同的重复请求直接返回上次的结果，不再调模型、不产生新计费。
+	Force bool `json:"force"`
 }
 
 type suggestCategoryDTO struct {
@@ -197,6 +200,9 @@ type suggestResponseDTO struct {
 	Category   suggestCategoryDTO    `json:"category"`
 	Candidates []suggestCandidateDTO `json:"candidates"`
 	Note       string                `json:"note"`
+	// CachedAt 非空 = 这条来自缓存（RFC3339 UTC，值是它最初生成的时间），
+	// 没调模型、没计费。前端据此在结果框顶部显示 designkit.suggest.cachedNote。
+	CachedAt string `json:"cached_at,omitempty"`
 }
 
 // SuggestPrompt 处理 POST /prompts/suggest。
@@ -241,6 +247,7 @@ func (h *PromptHandler) SuggestPrompt(c *gin.Context) {
 		ExtraAssetUIDs: req.ExtraAssetUIDs,
 		CategorySlug:   strings.TrimSpace(req.CategorySlug),
 		Features:       features,
+		Force:          req.Force,
 	})
 	if err != nil {
 		failService(c, err, dkdomain.ErrCodeAssetNotFound)
@@ -255,6 +262,10 @@ func (h *PromptHandler) SuggestPrompt(c *gin.Context) {
 	for _, one := range result.Candidates {
 		candidates = append(candidates, suggestCandidateDTO(one))
 	}
+	cachedAt := ""
+	if !result.CachedAt.IsZero() {
+		cachedAt = timeString(result.CachedAt)
+	}
 	c.JSON(http.StatusOK, suggestResponseDTO{
 		Prompt: result.Prompt,
 		Category: suggestCategoryDTO{
@@ -263,6 +274,7 @@ func (h *PromptHandler) SuggestPrompt(c *gin.Context) {
 		},
 		Candidates: candidates,
 		Note:       result.Note,
+		CachedAt:   cachedAt,
 	})
 }
 

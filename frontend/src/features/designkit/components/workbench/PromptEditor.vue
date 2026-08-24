@@ -91,6 +91,13 @@
     <!-- ── 结果 ───────────────────────────────────── -->
     <template v-if="hasResult">
       <label class="dk-label dk-mt-4" :for="promptId">{{ t('designkit.suggest.resultTitle') }}</label>
+      <!--
+        命中后端缓存时必须说明来源和时间：不说的话，运营会以为「怎么点都一样」是坏了。
+        这行也顺带交代了两件事：命中不重复计费；想要新答案就改输入或点「重新推荐」。
+      -->
+      <p v-if="cachedAt !== ''" class="dk-note dk-mt-1">
+        {{ t('designkit.suggest.cachedNote', { time: cachedAtLabel }) }}
+      </p>
       <textarea
         :id="promptId"
         v-model="finalPrompt"
@@ -146,6 +153,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
+import { formatRelativeTime } from '@/utils/format'
 import {
   createMyPrompt,
   isEmptySuggestion,
@@ -198,6 +206,20 @@ const usedCategoryName = ref('')
 const guessedCategory = ref(false)
 const serverNote = ref('')
 const hasResult = ref(false)
+/** 非空 = 这次显示的是后端缓存的结果（值是它最初生成的时间，RFC3339）。 */
+const cachedAt = ref('')
+
+/**
+ * 缓存时间的相对描述（「5分钟前」）。
+ *
+ * ⚠ formatRelativeTime 对**未来时间**返回「从未」，而服务器和浏览器的钟差几秒
+ * 就能触发（命中缓存往往发生在生成后的几秒内）。「这是 从未 的推荐结果」是句
+ * 胡话，所以把这种情况归一成「刚刚」。
+ */
+const cachedAtLabel = computed(() => {
+  const text = formatRelativeTime(cachedAt.value)
+  return text === t('common.time.never') ? t('common.time.justNow') : text
+})
 
 const featuresTooLong = computed(() => features.value.length > FEATURES_MAX)
 
@@ -229,6 +251,7 @@ watch(
       candidates.value = []
       usedCategoryName.value = ''
       serverNote.value = ''
+      cachedAt.value = ''
     }
   },
 )
@@ -283,6 +306,9 @@ async function runSuggest() {
       extra_asset_uids: props.extraAssetUids,
       category_slug: categorySlug.value,
       features: features.value.trim(),
+      // 按钮此刻显示「重新推荐」（已有结果）= 运营明确要新答案 → 跳过缓存。
+      // 第一次点（包括刷新页面后再点）不带 force：输入没变时命中缓存，一分钱不花。
+      force: hasResult.value,
     })
     if (isEmptySuggestion(result)) {
       errorText.value = t('designkit.suggest.empty')
@@ -294,6 +320,7 @@ async function runSuggest() {
     // 运营选的是「全部」而后端回了一个具体分类 = 这是 AI 判的。
     guessedCategory.value = categorySlug.value === ''
     serverNote.value = (result.note ?? '').trim()
+    cachedAt.value = (result.cached_at ?? '').trim()
     hasResult.value = true
   } catch (error) {
     errorText.value = isSuggestUnavailableError(error)

@@ -46,6 +46,10 @@ type fakeAdminRecordsStore struct {
 
 	images     []*dkdomain.Image
 	lastItemID int64
+
+	asset        *dkdomain.Asset
+	assetErr     error
+	lastAssetUID string
 }
 
 func (f *fakeAdminRecordsStore) ListRecordUsers(_ context.Context) ([]*dkdomain.RecordUser, error) {
@@ -97,6 +101,14 @@ func (f *fakeAdminRecordsStore) GetJobItemBySeq(_ context.Context, jobID int64, 
 func (f *fakeAdminRecordsStore) ListCurrentImagesByItem(_ context.Context, itemID int64) ([]*dkdomain.Image, error) {
 	f.lastItemID = itemID
 	return f.images, nil
+}
+
+func (f *fakeAdminRecordsStore) GetAssetByUID(_ context.Context, uid string) (*dkdomain.Asset, error) {
+	f.lastAssetUID = uid
+	if f.assetErr != nil {
+		return nil, f.assetErr
+	}
+	return f.asset, nil
 }
 
 // ---- 假对象存储 ----
@@ -289,6 +301,49 @@ func TestOpenJobItemContentStorageFailures(t *testing.T) {
 	// 库里有记录、盘上没文件。
 	svc = newRecordsService(t, store, &fakeRecordsObjectStore{getErr: errors.New("no such file")})
 	_, _, err = svc.OpenJobItemContent(context.Background(), "01J8ZK7Q9X2M4N6P8R0T2V4W6Y", 1)
+	assertRecordsErrCode(t, err, dkdomain.ErrCodeStorageError)
+}
+
+// ---- 对话附图字节 ----
+
+// 正常路：uid → asset → store.Get(object_key)；contentType 缺失时用记录里的兜底。
+func TestOpenAssetContentReadsStore(t *testing.T) {
+	store := &fakeAdminRecordsStore{
+		asset: &dkdomain.Asset{ID: 51, UID: "01J8ZK7Q9X2M4N6P8R0T2V4W6Z",
+			ObjectKey: "designkit/assets/2026/08/23/a.png", ContentType: "image/png"},
+	}
+	objects := &fakeRecordsObjectStore{data: []byte{0x89, 'P', 'N', 'G'}, contentType: ""}
+	svc := newRecordsService(t, store, objects)
+
+	data, contentType, err := svc.OpenAssetContent(context.Background(), "01J8ZK7Q9X2M4N6P8R0T2V4W6Z")
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0x89, 'P', 'N', 'G'}, data)
+	assert.Equal(t, "image/png", contentType, "store 没回 contentType 时用记录里的兜底")
+	assert.Equal(t, "01J8ZK7Q9X2M4N6P8R0T2V4W6Z", store.lastAssetUID)
+	assert.Equal(t, "designkit/assets/2026/08/23/a.png", objects.lastKey)
+}
+
+// 素材不存在（或已被主人删掉）→ DK_ASSET_NOT_FOUND。
+func TestOpenAssetContentTranslatesNotFound(t *testing.T) {
+	store := &fakeAdminRecordsStore{assetErr: dkdomain.ErrNotFound}
+	svc := newRecordsService(t, store, &fakeRecordsObjectStore{})
+
+	_, _, err := svc.OpenAssetContent(context.Background(), "01J8ZK7Q9X2M4N6P8R0T2V4W6Z")
+	assertRecordsErrCode(t, err, dkdomain.ErrCodeAssetNotFound)
+}
+
+// 对象存储缺席 / 读失败 → DK_STORAGE_ERROR（口径同批次缩略图，不误报 404）。
+func TestOpenAssetContentStorageFailures(t *testing.T) {
+	store := &fakeAdminRecordsStore{
+		asset: &dkdomain.Asset{ID: 51, UID: "01J8ZK7Q9X2M4N6P8R0T2V4W6Z", ObjectKey: "k"},
+	}
+
+	svc := newRecordsService(t, store, nil)
+	_, _, err := svc.OpenAssetContent(context.Background(), "01J8ZK7Q9X2M4N6P8R0T2V4W6Z")
+	assertRecordsErrCode(t, err, dkdomain.ErrCodeStorageError)
+
+	svc = newRecordsService(t, store, &fakeRecordsObjectStore{getErr: errors.New("no such file")})
+	_, _, err = svc.OpenAssetContent(context.Background(), "01J8ZK7Q9X2M4N6P8R0T2V4W6Z")
 	assertRecordsErrCode(t, err, dkdomain.ErrCodeStorageError)
 }
 

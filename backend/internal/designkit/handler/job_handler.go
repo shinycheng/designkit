@@ -73,8 +73,10 @@ type jobSpecRequest struct {
 	Prompts []string `json:"prompts"`
 	// Model 出图模型；不填用系统默认。
 	Model string `json:"model"`
-	// KeepTransparency 预处理时保留透明底；不填 = 合成白底。
-	KeepTransparency bool `json:"keep_transparency"`
+	// KeepTransparency 预处理时保留透明底。指针是为了区分「没传」和「传了 false」：
+	// 没传用系统默认（domain.DefaultKeepTransparency，即合成白底），传了按传的来。
+	// 9004 起按批落库、真实生效（在此之前是收下但忽略）。
+	KeepTransparency *bool `json:"keep_transparency"`
 }
 
 // createJobRequest 是 POST /jobs 的请求体。
@@ -93,15 +95,18 @@ type createJobRequest struct {
 // key 是唯一键的一半，user 已经揉进 scope，指纹只该表示「这一单要出什么」。
 // 同 key 同内容 → 返回原结果；同 key 不同内容 → 409。
 type idempotencyPayload struct {
-	Ratio            string   `json:"ratio"`
-	AssetUIDs        []string `json:"asset_uids"`
-	PromptUIDs       []string `json:"prompt_uids"`
-	Prompts          []string `json:"prompts"`
-	Model            string   `json:"model"`
-	KeepTransparency bool     `json:"keep_transparency"`
-	Name             string   `json:"name"`
-	CallbackURL      string   `json:"callback_url"`
-	Origin           string   `json:"origin"`
+	Ratio      string   `json:"ratio"`
+	AssetUIDs  []string `json:"asset_uids"`
+	PromptUIDs []string `json:"prompt_uids"`
+	Prompts    []string `json:"prompts"`
+	Model      string   `json:"model"`
+	// KeepTransparency 放的是 ResolveKeepTransparency 之后的**定值**，不是
+	// 请求里的三态：「没传」和「传了跟默认一样的值」出的是同一批图，
+	// 指纹就该相同（同 key 重发返回原结果，而不是 409）。
+	KeepTransparency bool   `json:"keep_transparency"`
+	Name             string `json:"name"`
+	CallbackURL      string `json:"callback_url"`
+	Origin           string `json:"origin"`
 }
 
 // retryIdempotencyPayload 是重试的内容快照：哪个批次的第几张。
@@ -564,14 +569,15 @@ func (h *JobHandler) buildSpec(c *gin.Context, userID int64, req jobSpecRequest)
 	}
 
 	return JobSpec{
-		UserID:           userID,
-		Origin:           originOf(c),
-		Ratio:            ratio,
-		AssetUIDs:        assetUIDs,
-		PromptUIDs:       promptUIDs,
-		PromptTexts:      promptTexts,
-		Model:            strings.TrimSpace(req.Model),
-		KeepTransparency: req.KeepTransparency,
+		UserID:      userID,
+		Origin:      originOf(c),
+		Ratio:       ratio,
+		AssetUIDs:   assetUIDs,
+		PromptUIDs:  promptUIDs,
+		PromptTexts: promptTexts,
+		Model:       strings.TrimSpace(req.Model),
+		// 「没传用默认」在这里落定，往后（service → 落库 → worker）全是定值。
+		KeepTransparency: dkdomain.ResolveKeepTransparency(req.KeepTransparency),
 	}, true
 }
 

@@ -10,6 +10,7 @@
  *   GET /designkit/admin/records/jobs                         批次列表（created_at 倒序）
  *   GET /designkit/admin/records/jobs/:uid                    一个批次 + 全部单张（seq 升序）
  *   GET /designkit/admin/records/jobs/:uid/items/:seq/content 单张图的字节（image/png）
+ *   GET /designkit/admin/records/assets/:uid/content          对话附图的字节（跨用户，仅管理员）
  *
  * 两件事，改这个文件前先读一遍：
  *
@@ -225,4 +226,15 @@ export async function getAdminJob(
  */
 export function adminJobItemContentUrl(jobUid: string, seq: number): string {
   return `/api/v1${ADMIN_RECORDS_PATH}/jobs/${encodeURIComponent(jobUid)}/items/${seq}/content`
+}
+
+/**
+ * 对话附图（商品图）的取图地址（管理员专用通道）。
+ *
+ * 用户态的 `/designkit/assets/:uid/content` 只放素材主人过，管理员的登录态
+ * 去取别人的图会 404 —— 回放别人的对话要看附图只能走这条。
+ * 同样**不能直接塞 `<img src>`**，原样交给 `useAuthedImages()`。
+ */
+export function adminAssetContentUrl(assetUid: string): string {
+  return `/api/v1${ADMIN_RECORDS_PATH}/assets/${encodeURIComponent(assetUid)}/content`
 }

@@ -80,16 +80,17 @@ func (s *JobService) CreateJob(ctx context.Context, in CreateJobInput) (*dkdomai
 	}
 
 	result, err := s.repo.CreateJobWithItemsAndHold(ctx, dkdomain.CreateJobParams{
-		UserID:         in.UserID,
-		APIKeyID:       apiKeyID,
-		Origin:         origin,
-		JobUID:         s.newUID(),
-		Name:           strings.TrimSpace(in.Name),
-		Ratio:          in.Ratio,
-		Model:          plan.Model,
-		IdempotencyKey: optionalString(in.IdempotencyKey),
-		CallbackURL:    optionalString(in.CallbackURL),
-		EstimatedCost:  estimated,
+		UserID:           in.UserID,
+		APIKeyID:         apiKeyID,
+		Origin:           origin,
+		JobUID:           s.newUID(),
+		Name:             strings.TrimSpace(in.Name),
+		Ratio:            in.Ratio,
+		Model:            plan.Model,
+		KeepTransparency: in.KeepTransparency,
+		IdempotencyKey:   optionalString(in.IdempotencyKey),
+		CallbackURL:      optionalString(in.CallbackURL),
+		EstimatedCost:    estimated,
 		Pricing: dkdomain.PricingSnapshot{
 			BaseUnitPrice:       dkdomain.MoneyOrZero(plan.Pricing.UnitPrice),
 			GroupRateMultiplier: plan.Pricing.Multiplier,

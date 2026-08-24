@@ -339,9 +339,9 @@ export interface DesignkitImage {
 /**
  * `GET /designkit/me/usage/summary` 的返回。
  *
- * ⚠ **后端还没实现这个端点**（register_business.go 里是 TODO）。
- * `getUsageSummary()` 遇到 404 会返回 null，界面据此把这块整个藏起来即可，
- * 不要显示成 0 —— 「本月花费 $0」和「还不知道花了多少」是两回事。
+ * ⚠ 「我的消费」服务缺席时这条路由整个不挂（裸 404，见 register_business.go 的
+ * mountMeRoutes）。`getUsageSummary()` 遇到 404 会返回 null，界面据此把这块
+ * 整个藏起来即可，不要显示成 0 —— 「本月花费 $0」和「还不知道花了多少」是两回事。
  *
  * ⚠ 张数和花费是**两套口径，刻意不统一**（设计定型 5.2）：
  *   张数来自图片表（删掉的图不算），花费来自账单（出图失败但已计费的也算）。

@@ -187,6 +187,7 @@ Idempotency-Key: <你生成的唯一标识>
 | `GET /jobs/:uid/items` | 全部单张明细（按 seq 升序） |
 | `GET /jobs/:uid/items/:seq` | 单张明细 |
 | `GET /jobs/:uid/items/:seq/content` | 单张结果图字节 |
+| 🆕 `GET /jobs/:uid/images.zip` | 整批打包下载（zip，只含出成功的） |
 | `POST /jobs/:uid/stop` | 停止排队（不花钱，止损用） |
 | 💰 `POST /jobs/:uid/items/:seq/retry` | 重试一张（重新收一次费） |
 | 🆕 `DELETE /jobs/:uid` | 删除任务记录（软删，不停止生成、不退费） |
@@ -296,8 +297,9 @@ Idempotency-Key: <你生成的唯一标识>
 #### GET /assets/:uid/upscale —— 放大进度
 
 `200` 返回同上的 `{task: …}`。
-404 `DK_UPSCALE_NOT_FOUND` = 没有这张的任务（**服务重启后队列会清空**，
-这是设计好的代价：重新 POST 一次即可）。
+404 `DK_UPSCALE_NOT_FOUND` = 这张图从来没排过放大（或不是本账号的图）。
+放大任务存在数据库里：**服务重启后没放完的会自动接着放**，不用重新 POST，
+继续轮询即可。
 
 #### 🆕 DELETE /assets/:uid —— 删除商品图
 
@@ -396,8 +398,9 @@ Idempotency-Key: <你生成的唯一标识>
 `DK_BATCH_TOO_LARGE`）；`callback_url` 要么不填、要么是完整 http/https
 网址（≤1024 字符）。
 
-`keep_transparency`：字段已接收并入库，**当前版本出图时固定合成白底，
-传 `true` 暂不生效**（不报错）。以后生效时另行更新本文档。
+`keep_transparency`：按批生效。`true` = 预处理补边时保留透明底，
+`false` = 合成白底；**不传 = 合成白底**（系统默认）。整批统一，
+提交后不可改；重试的那张沿用本批的值。
 
 提交成功即**冻结** `estimated_cost`，出完按实际张数结算多退少不补；
 可用额不够直接 402 拒绝，**不允许透支**。
@@ -516,6 +519,16 @@ jobItemDTO 字段：
 查询参数 `image_index` 默认 1。`200` 返回图片二进制。
 图还没出来时 404 `DK_IMAGE_NOT_FOUND`——轮询 item 的 `status` 变成
 `succeeded` 之后再取图。
+
+#### 🆕 GET /jobs/:uid/images.zip —— 整批打包下载
+
+把这一批**出成功的每一张**打进一个 zip 返回（`Content-Type: application/zip`）。
+包内文件名 `第{seq}张.png`，`{seq}` 与 `GET /jobs/:uid/items` 里的 seq 严格对应；
+失败、停止、还没出的不进包。`Content-Disposition` 带批次名
+（中文按 RFC 5987 编码在 `filename*` 里）。
+
+一张成功的图都没有时 404 `DK_IMAGE_NOT_FOUND`——**不会返回空 zip**。
+其余错误：404 `DK_JOB_NOT_FOUND`（含不是这把 Key 的任务）、`DK_STORAGE_ERROR`。
 
 #### POST /jobs/:uid/stop —— 停止排队
 
@@ -660,7 +673,8 @@ promptDTO：
   "asset_uid": "01J8…A",              // 必填，主商品图
   "extra_asset_uids": ["01J8…B"],     // 选填，同批其余图
   "category_slug": "",                // 空串 = 全部分类，由 AI 自己判
-  "features": "米白色针织开衫，秋冬新品"   // 选填，≤500 字
+  "features": "米白色针织开衫，秋冬新品",  // 选填，≤500 字
+  "force": false                      // 选填，true = 跳过缓存强制重新推荐
 }
 ```
 
@@ -670,9 +684,15 @@ promptDTO：
   "prompt": "合成出来的最终提示词全文",
   "category": { "slug": "ecommerce-hero", "name": "电商主图" },
   "candidates": [ { "uid": "01J8…P", "title": "…" } ],   // 参考过的 5 条
-  "note": ""                          // 可空的中文说明
+  "note": "",                         // 可空的中文说明
+  "cached_at": "2026-08-24T02:03:04Z" // 只在命中缓存时出现，见下
 }
 ```
+
+**结果有缓存**：输入完全相同（同一批 `asset_uid` + 同分类 + 同一句 `features`）的
+重复请求，24 小时内直接返回上次的结果 —— 秒回、不再产生对话费，响应里多一个
+`cached_at`（那次结果生成的时间，RFC3339 UTC）。要强制重新推荐就传 `"force": true`，
+新结果会顶掉缓存。缓存在后端进程内，服务重启后自然失效。
 
 **裸 404 = 该功能在此部署未上线**（见第 3 节），不是业务错误。
 业务错误照常走错误信封（如 404 `DK_ASSET_NOT_FOUND`）。
@@ -704,6 +724,17 @@ promptDTO：
   "assistant_message": { "id": 2, "role": "assistant", "content": "…", "asset_uids": [],          "created_at": "…" }
 }
 ```
+
+**流式模式（可选，2026-08-24 加入）**：请求体加 `"stream": true`，响应变为
+`text/event-stream`（SSE）。帧格式（对外契约）：
+
+| 帧 | data 内容 |
+|---|---|
+| `event: delta` | `{"text":"…"}`，回复正文的一段，按序推送 |
+| `event: done` | 与非流式成功响应同构的完整 JSON（成功收尾，随后关流） |
+| `event: error` | 标准错误信封 JSON（仅流开始后出错才用；流开始前的失败仍是普通 JSON 错误 + 状态码） |
+
+计费与非流式一致（按 token，一次发送计一次）；中途断开连接不影响服务端完成与落库。
 
 #### GET /chat/sessions —— 会话列表
 

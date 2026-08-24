@@ -30,6 +30,8 @@ func allStaticSQL() []string {
 		listSettingsSQL,
 		latestSyncRunSQL,
 		upsertSyncedPromptSQL,
+		latestUpscaleTaskSQL,
+		listQueuedUpscaleSQL,
 		buildClaimItemSQL(true),
 		buildClaimItemSQL(false),
 		buildInsertJobItemsSQL(3),

@@ -33,6 +33,10 @@ type AdminRecordsStore interface {
 	ListJobItemsWithImageFlag(ctx context.Context, jobID int64) ([]*dkdomain.JobItemAdminView, error)
 	GetJobItemBySeq(ctx context.Context, jobID int64, seq int) (*dkdomain.JobItem, error)
 	ListCurrentImagesByItem(ctx context.Context, itemID int64) ([]*dkdomain.Image, error)
+
+	// GetAssetByUID 跨用户取一张商品图（对话附图的缩略图那条路用）。
+	// 被主人软删的一律 ErrNotFound —— 管理员看到的跟用户自己看到的一致。
+	GetAssetByUID(ctx context.Context, uid string) (*dkdomain.Asset, error)
 }
 
 // AdminRecordsDeps 装配 AdminRecordsService 要的东西。
@@ -173,6 +177,34 @@ func (s *AdminRecordsService) OpenJobItemContent(ctx context.Context, jobUID str
 	}
 	if contentType == "" {
 		contentType = target.ContentType
+	}
+	return data, contentType, nil
+}
+
+// OpenAssetContent 跨用户取一张商品图的字节（对话附图的缩略图用）。
+//
+// **同样不做归属校验**（本服务的口径，见文件头）：这一组的门就是路由层的
+// RequireAdmin。素材被主人删了走「找不到」；记录在、文件不在报存储错误，
+// 口径同 OpenJobItemContent。
+func (s *AdminRecordsService) OpenAssetContent(ctx context.Context, uid string) ([]byte, string, error) {
+	asset, err := s.records.GetAssetByUID(ctx, uid)
+	if err != nil {
+		return nil, "", mapJobRepoError(err, dkdomain.ErrCodeAssetNotFound)
+	}
+	if asset == nil {
+		return nil, "", dkdomain.NewError(dkdomain.ErrCodeAssetNotFound)
+	}
+
+	if s.store == nil {
+		return nil, "", dkdomain.NewError(dkdomain.ErrCodeStorageError).
+			WithMessage("图片存储没有配置好，暂时取不到图，请联系管理员。")
+	}
+	data, contentType, err := s.store.Get(ctx, asset.ObjectKey)
+	if err != nil {
+		return nil, "", dkdomain.NewError(dkdomain.ErrCodeStorageError).WithCause(err)
+	}
+	if contentType == "" {
+		contentType = asset.ContentType
 	}
 	return data, contentType, nil
 }

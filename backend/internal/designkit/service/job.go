@@ -222,11 +222,11 @@ type JobSpec struct {
 	PromptTexts []string
 	// Model 出图模型；空串表示用 designkit_settings.model。
 	Model string
-	// KeepTransparency 预处理时是否保留透明底。
+	// KeepTransparency 预处理时是否保留透明底（false = 合成白底）。
 	//
-	// ⚠ **当前不落库**：9001 的 designkit_jobs 没有这一列（那个文件跑过、永不可改），
-	// 出图 worker 用的是它自己的全局配置 worker.Config.KeepTransparency。
-	// 想做到「每批可选」得先加一条 9xxx 迁移加列。见 contract 说明。
+	// 9004 起随批落库（designkit_jobs.keep_transparency），worker 按批取值。
+	// 到这一层已经是定值：「请求没传用默认」由 handler 侧
+	// dkdomain.ResolveKeepTransparency 落定过了。
 	KeepTransparency bool
 }
 

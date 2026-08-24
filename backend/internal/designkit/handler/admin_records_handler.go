@@ -14,7 +14,7 @@ import (
 // 用户记录（管理端）
 // ============================================================================
 //
-// 六个端点，只挂浏览器组、只放管理员（挂载见 register_business.go 的
+// 七个端点，只挂浏览器组、只放管理员（挂载见 register_business.go 的
 // mountAdminRecordsRoutes）：
 //
 //	GET /admin/records/users                          有记录的账户（筛选下拉）
@@ -23,6 +23,7 @@ import (
 //	GET /admin/records/jobs                           批次列表（?user_id=&limit=&offset=）
 //	GET /admin/records/jobs/:uid                      一个批次 + 每一张
 //	GET /admin/records/jobs/:uid/items/:seq/content   某一张的图片字节（缩略图）
+//	GET /admin/records/assets/:uid/content            对话附图的图片字节（缩略图）
 //
 // 全部只读。service 侧不做归属校验（管理员通道），所以 RequireAdmin
 // 是这一组唯一的门 —— 单测守着「非管理员 403、service 一次都不被调到」。
@@ -367,4 +368,20 @@ func (h *AdminRecordsHandler) ItemContent(c *gin.Context) {
 		return
 	}
 	writeContent(c, blob, dkdomain.ErrCodeImageNotFound)
+}
+
+// AssetContent 处理 GET /admin/records/assets/:uid/content。
+// 返回对话附图（商品图）的字节，供前端带凭证加载缩略图。
+// 跨用户读，service 侧不做归属校验 —— 这一组的门就是 RequireAdmin。
+func (h *AdminRecordsHandler) AssetContent(c *gin.Context) {
+	uid, ok := requireUID(c, "uid", dkdomain.ErrCodeAssetNotFound)
+	if !ok {
+		return
+	}
+	blob, err := h.svc.OpenAssetRecordContent(c.Request.Context(), uid)
+	if err != nil {
+		failService(c, err, dkdomain.ErrCodeAssetNotFound)
+		return
+	}
+	writeContent(c, blob, dkdomain.ErrCodeAssetNotFound)
 }

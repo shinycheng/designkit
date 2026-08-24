@@ -21,13 +21,26 @@ import (
 
 const initMigrationRelPath = "../../../migrations/9001_designkit_init.sql"
 
-func loadInitMigration(t *testing.T) string {
+// p1MigrationRelPath 9004 给 designkit_jobs ALTER 追加了 keep_transparency，
+// 物理列序排在 9001 建表列之后。比对 jobColumns 时两份都要看。
+//
+// ⚠ 不是所有 ALTER 加的列都进 xxxColumns：9003 给 designkit_quota_requests
+// 加的两列**刻意不在** quotaRequestColumns 里（管理端查询单独列列名，
+// 见那份迁移的文件头）。所以「追加哪个文件的列」按表逐个声明，不做全量扫描。
+const p1MigrationRelPath = "../../../migrations/9004_designkit_p1.sql"
+
+func loadMigrationFile(t *testing.T, relPath string) string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Clean(initMigrationRelPath))
+	raw, err := os.ReadFile(filepath.Clean(relPath))
 	if err != nil {
-		t.Fatalf("读不到建表 SQL: %v", err)
+		t.Fatalf("读不到迁移 SQL %s: %v", relPath, err)
 	}
 	return string(raw)
+}
+
+func loadInitMigration(t *testing.T) string {
+	t.Helper()
+	return loadMigrationFile(t, initMigrationRelPath)
 }
 
 // parseTableColumns 从建表 SQL 里按顺序抠出列名。
@@ -68,6 +81,35 @@ func parseTableColumns(t *testing.T, migration, table string) []string {
 	return columns
 }
 
+// parseAlterAddColumns 按出现顺序抠出「ALTER TABLE <table> ADD COLUMN
+// IF NOT EXISTS <name> …」加的列名。9004 就是这么写的，且跑过后永不可改，
+// 所以跟 parseTableColumns 一样不需要真正的 SQL 解析器。
+func parseAlterAddColumns(t *testing.T, migration, table string) []string {
+	t.Helper()
+	var columns []string
+	rest := migration
+	marker := "ALTER TABLE " + table
+	for {
+		idx := strings.Index(rest, marker)
+		if idx < 0 {
+			break
+		}
+		rest = rest[idx+len(marker):]
+		const add = "ADD COLUMN IF NOT EXISTS "
+		addIdx := strings.Index(rest, add)
+		if addIdx < 0 {
+			break
+		}
+		rest = rest[addIdx+len(add):]
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			t.Fatalf("表 %s 的 ALTER ADD COLUMN 后面没有列名，解析器可能坏了", table)
+		}
+		columns = append(columns, strings.Trim(fields[0], ",;"))
+	}
+	return columns
+}
+
 // splitColumns 把 scan.go 里的列清单常量拆成列名切片。
 func splitColumns(list string) []string {
 	parts := strings.Split(list, ",")
@@ -83,16 +125,20 @@ func splitColumns(list string) []string {
 
 func TestColumnListsMatchMigration(t *testing.T) {
 	migration := loadInitMigration(t)
+	p1 := loadMigrationFile(t, p1MigrationRelPath)
 
 	cases := []struct {
 		table   string
 		columns string
+		// alterFrom 非空时，把这份迁移里 ALTER 追加的列接在 9001 建表列之后
+		//（物理列序就是这样）。只有 jobs 这么干，理由见 p1MigrationRelPath 注释。
+		alterFrom string
 	}{
 		{table: "designkit_assets", columns: assetColumns},
 		{table: "designkit_asset_variants", columns: assetVariantColumns},
 		{table: "designkit_prompt_categories", columns: promptCategoryColumns},
 		{table: "designkit_prompts", columns: promptColumns},
-		{table: "designkit_jobs", columns: jobColumns},
+		{table: "designkit_jobs", columns: jobColumns, alterFrom: p1},
 		{table: "designkit_job_items", columns: jobItemColumns},
 		{table: "designkit_images", columns: imageColumns},
 		{table: "designkit_quota_requests", columns: quotaRequestColumns},
@@ -103,6 +149,13 @@ func TestColumnListsMatchMigration(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.table, func(t *testing.T) {
 			want := parseTableColumns(t, migration, c.table)
+			if c.alterFrom != "" {
+				extra := parseAlterAddColumns(t, c.alterFrom, c.table)
+				if len(extra) == 0 {
+					t.Fatalf("表 %s 声明了 ALTER 来源却一列都没解析出来，解析器可能坏了", c.table)
+				}
+				want = append(want, extra...)
+			}
 			got := splitColumns(c.columns)
 			if len(got) != len(want) {
 				t.Fatalf("列数对不上: 代码里 %d 列 %v，迁移里 %d 列 %v",

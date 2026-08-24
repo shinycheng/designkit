@@ -101,11 +101,10 @@ type Config struct {
 	// MaxDimension 预处理最长边。0 = 读 designkit_settings.max_dimension。
 	MaxDimension int
 
-	// KeepTransparency 预处理时是否保留透明底。默认 false = 合成白底。
-	//
-	// ⚠ 它是 variant 唯一键的一部分（asset_id, ratio, keep_transparency, max_dimension），
-	// 改了这个值等于换一套预处理产物，老的不会被复用。
-	KeepTransparency bool
+	// （这里原来有个 KeepTransparency 字段——9004 起它按批落库
+	// （designkit_jobs.keep_transparency），process.go 改从批次行取值，
+	// 全局默认值收敛到 domain.DefaultKeepTransparency（提交侧「没传用默认」）。
+	// 字段删掉而不是留着：留一个设了也没效果的开关，比没有更害人。）
 
 	// LeaseFor 租约时长。默认 domain.DefaultLeaseSeconds（180 秒）。
 	LeaseFor time.Duration

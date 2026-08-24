@@ -8,13 +8,16 @@
  *
  * 端点一共四个，全部只对登录用户开放（浏览器路径，跟 ERP 无关）：
  *
- *   POST   /designkit/chat/messages          发一条消息，等 AI 回复（**慢，见下**）
+ *   POST   /designkit/chat/messages          发一条消息，等 AI 回复（**慢，见下**；
+ *                                            带 "stream": true 时变成 SSE 打字机，
+ *                                            见 sendChatMessageStream）
  *   GET    /designkit/chat/sessions          会话列表
  *   GET    /designkit/chat/sessions/:uid     一个会话的全部消息（按 id 升序）
  *   DELETE /designkit/chat/sessions/:uid     删除一个会话
  */
 
-import { apiClient } from '@/api/client'
+import { apiClient, buildApiUrl } from '@/api/client'
+import { getLocale } from '@/i18n'
 import { DESIGNKIT_API_BASE_PATH } from './paths'
 
 // ============================================================================
@@ -143,6 +146,257 @@ export async function sendChatMessage(
     title: data.title ?? '',
     user_message: normalizeMessage(data.user_message),
     assistant_message: normalizeMessage(data.assistant_message),
+  }
+}
+
+/** `sendChatMessageStream` 的三个回调。 */
+export interface SendChatMessageStreamCallbacks {
+  /** 每收到一段正文调一次（按顺序）。把它接到气泡上就是打字机。 */
+  onDelta: (text: string) => void
+  /**
+   * 成功收尾：服务端定稿（与非流式响应同构）。调用方用它**替换**打字机攒出来的
+   * 内容——两边理论上一样，但以服务端落库的为准。
+   */
+  onDone: (result: SendChatMessageResult) => void
+  /**
+   * 失败收尾：err 交给 `toFriendlyError()` 翻译。已收到的 delta 不撤回——
+   * 界面把半截回复留着显示（标失败），是「AI 回复中断」该有的样子。
+   */
+  onError: (err: unknown) => void
+}
+
+/**
+ * 发一条消息，AI 回复**边生成边**回调（SSE 打字机）。
+ *
+ * 与 `sendChatMessage` 打的是同一个端点，只是请求体多带 `"stream": true`，
+ * 响应变成 text/event-stream 三种帧：
+ *
+ *   event: delta   data: {"text":"…"}            → onDelta
+ *   event: done    data: {与非流式相同的响应 JSON} → onDone（此后流结束）
+ *   event: error   data: {标准错误信封}           → onError（此后流结束）
+ *
+ * 为什么用 fetch 手工解析而不是 EventSource：EventSource 只能发 GET，
+ * 而消息体（文字 + 图）必须走 POST。
+ *
+ * 兼容旧后端（还不认识 stream 字段的部署）：
+ *   - 端点整个 404 → 自动改发一次非流式 `sendChatMessage`；
+ *   - 200 但回的是 application/json（stream 字段被忽略）→ 直接当非流式结果用。
+ * 两种情况 onDelta 一次都不来、onDone 直接到——调用方不需要写第二套处理。
+ *
+ * 超时 120 秒（同 SEND_CHAT_TIMEOUT_MS 的理由），计的是**整条流**：
+ * 到点还没收尾就断开并报超时。外部取消传 `signal`（比如页面卸载）。
+ *
+ * 三个回调恰好触发一个收尾（onDone 或 onError），绝不都触发、绝不都不触发。
+ */
+export async function sendChatMessageStream(
+  input: SendChatMessageInput,
+  callbacks: SendChatMessageStreamCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, SEND_CHAT_TIMEOUT_MS)
+  const onOuterAbort = () => controller.abort()
+  signal?.addEventListener('abort', onOuterAbort)
+
+  let finished = false
+  const finishDone = (result: SendChatMessageResult) => {
+    if (finished) return
+    finished = true
+    callbacks.onDone(result)
+  }
+  const finishError = (err: unknown) => {
+    if (finished) return
+    finished = true
+    // 超时导致的 abort 不能报成「已取消」——运营要知道是等太久了。
+    if (timedOut) {
+      callbacks.onError({ code: 'ECONNABORTED', message: 'designkit chat stream timeout' })
+      return
+    }
+    callbacks.onError(err)
+  }
+
+  try {
+    const token = localStorage.getItem('auth_token')
+    const response = await fetch(buildApiUrl(`${DESIGNKIT_API_BASE_PATH}/chat/messages`), {
+      method: 'POST',
+      credentials: 'include',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        'Accept-Language': getLocale(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        session_uid: (input.session_uid ?? '').trim(),
+        text: input.text,
+        asset_uids: input.asset_uids ?? [],
+        stream: true,
+      }),
+    })
+
+    // 旧后端没有这个端点：整个 404 时回落非流式（一次），别让功能随后端版本消失。
+    // 401 同样回落：fetch 不经过 axios 的令牌续期拦截器，登录态刚过期时
+    // 让非流式那条路去续期重试；真的没登录时它也会给出正确的中文提示。
+    if (response.status === 404 || response.status === 401) {
+      finishDone(await sendChatMessage(input, signal))
+      return
+    }
+
+    if (!response.ok) {
+      finishError(await readStreamHTTPError(response))
+      return
+    }
+
+    const contentType = response.headers.get('Content-Type') ?? ''
+    if (!contentType.includes('text/event-stream')) {
+      // 旧后端忽略了 stream 字段，回的就是非流式 JSON——直接当结果用。
+      const data = (await response.json()) as Partial<SendChatMessageResult>
+      finishDone(normalizeSendResult(data))
+      return
+    }
+
+    if (!response.body) {
+      finishError({ status: 0 })
+      return
+    }
+
+    await parseChatSSE(response.body, {
+      onDelta: (text) => {
+        if (!finished) callbacks.onDelta(text)
+      },
+      onDone: (raw) => finishDone(normalizeSendResult(raw as Partial<SendChatMessageResult>)),
+      onError: (raw) => finishError(raw),
+    })
+    // 流断了却没等到 done/error 帧：按网络断线报（半截回复由调用方留着显示）。
+    finishError({ status: 0 })
+  } catch (err) {
+    finishError(err)
+  } finally {
+    window.clearTimeout(timer)
+    signal?.removeEventListener('abort', onOuterAbort)
+  }
+}
+
+/** 把非 2xx 的流式响应体读成 `toFriendlyError()` 认得的形状。 */
+async function readStreamHTTPError(response: Response): Promise<unknown> {
+  let parsed: unknown = null
+  try {
+    parsed = await response.json()
+  } catch {
+    parsed = null
+  }
+  const body = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>
+  const errorBody =
+    body.error && typeof body.error === 'object' ? (body.error as Record<string, unknown>) : null
+  return {
+    status: response.status,
+    error: errorBody ?? undefined,
+    message: typeof errorBody?.message === 'string' ? errorBody.message : undefined,
+  }
+}
+
+/** 归一化 done 帧 / 非流式响应，兜掉 null（形状同 `sendChatMessage` 的收尾）。 */
+function normalizeSendResult(data: Partial<SendChatMessageResult>): SendChatMessageResult {
+  return {
+    session_uid: data.session_uid ?? '',
+    title: data.title ?? '',
+    user_message: normalizeMessage(data.user_message),
+    assistant_message: normalizeMessage(data.assistant_message),
+  }
+}
+
+/**
+ * 手工解析 SSE 流。只认后端承诺的三种帧；认不出的行一律跳过
+ * （后端以后加新帧型不该把旧前端弄坏）。
+ *
+ * onDone / onError 收到的是 data 解出来的对象；error 帧的对象就是标准错误信封
+ * `{"error":{...}}`，恰好是 `toFriendlyError()` 认得的形状之一。
+ */
+async function parseChatSSE(
+  body: ReadableStream<Uint8Array>,
+  handlers: {
+    onDelta: (text: string) => void
+    onDone: (raw: unknown) => void
+    onError: (raw: unknown) => void
+  },
+): Promise<void> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  const handleFrame = (frame: string): boolean => {
+    let event = ''
+    const dataLines: string[] = []
+    for (const rawLine of frame.split('\n')) {
+      const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+      if (line.startsWith('event:')) {
+        event = line.slice('event:'.length).trim()
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice('data:'.length).replace(/^ /, ''))
+      }
+    }
+    if (event === '' || dataLines.length === 0) {
+      return false
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(dataLines.join('\n'))
+    } catch {
+      return false
+    }
+    switch (event) {
+      case 'delta': {
+        const text = (parsed as { text?: unknown }).text
+        if (typeof text === 'string' && text !== '') {
+          handlers.onDelta(text)
+        }
+        return false
+      }
+      case 'done':
+        handlers.onDone(parsed)
+        return true
+      case 'error':
+        handlers.onError(parsed)
+        return true
+      default:
+        return false
+    }
+  }
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (value) {
+        buffer += decoder.decode(value, { stream: true })
+        // 帧以空行分隔。统一把 CRLF 归一成 LF 再切：\r\n\r\n 里没有连续的
+        // 两个 \n，不归一的话整条流会攒到结束才一次吐出来。
+        buffer = buffer.replace(/\r\n/g, '\n')
+        for (;;) {
+          const splitAt = buffer.indexOf('\n\n')
+          if (splitAt < 0) break
+          const frame = buffer.slice(0, splitAt)
+          buffer = buffer.slice(splitAt + 2)
+          if (handleFrame(frame)) {
+            return
+          }
+        }
+      }
+      if (done) {
+        // 冲掉解码器攒着的半个多字节字符，再处理没带空行的残帧。
+        buffer += decoder.decode()
+        if (buffer.trim() !== '') {
+          handleFrame(buffer)
+        }
+        return
+      }
+    }
+  } finally {
+    reader.releaseLock()
   }
 }
 

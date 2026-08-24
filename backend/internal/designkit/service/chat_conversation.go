@@ -160,8 +160,39 @@ type SendResult struct {
 	AssistantMessage *dkdomain.ChatMessage
 }
 
-// Send 发一条消息并等 AI 回复。
+// Send 发一条消息并等 AI 回复（一次拿全文）。
 func (s *ConversationService) Send(ctx context.Context, in SendInput) (*SendResult, error) {
+	return s.send(ctx, in, func(req ChatRequest) (*ChatResult, error) {
+		return s.chat.Chat(ctx, req)
+	})
+}
+
+// SendStream 发一条消息并把 AI 回复**边生成边**通过 onDelta 回调出去。
+//
+// 编排跟 Send 完全一致（历史窗口、图片、上限、计费纪律、落库顺序）——
+// 两条路走的就是同一个 send()，只是模型调用换成流式那一条。
+// **流完且拿到全文才落库**：中途断流（上游 error 帧、超时）什么都不留，
+// 运营点「重发」即可，跟 Send 失败时的语义一模一样。
+//
+// onDelta 在模型生成期间被逐段调用（同一 goroutine、按顺序）；
+// 调用器不支持流式时回落成非流式：全文一次性作为唯一一段回调出去，
+// 调用方不需要为这种情况写第二套处理。
+func (s *ConversationService) SendStream(ctx context.Context, in SendInput, onDelta func(text string)) (*SendResult, error) {
+	return s.send(ctx, in, func(req ChatRequest) (*ChatResult, error) {
+		if streamer, ok := s.chat.(ChatStreamInvoker); ok {
+			return streamer.StreamChat(ctx, req, onDelta)
+		}
+		result, err := s.chat.Chat(ctx, req)
+		if err == nil && result != nil && onDelta != nil && result.Text != "" {
+			onDelta(result.Text)
+		}
+		return result, err
+	})
+}
+
+// send Send / SendStream 共用的编排。invoke 是「怎么调模型」的那一步，
+// 其余每一行对两条路都生效——流式若单独抄一份，迟早会跟这份漂移。
+func (s *ConversationService) send(ctx context.Context, in SendInput, invoke func(req ChatRequest) (*ChatResult, error)) (*SendResult, error) {
 	text := strings.TrimSpace(in.Text)
 	if text == "" {
 		return nil, dkdomain.NewError(dkdomain.ErrCodeInvalidRequest).
@@ -219,7 +250,7 @@ func (s *ConversationService) Send(ctx context.Context, in SendInput) (*SendResu
 	// 计费 id：每次发送现生成 ULID（纪律 1，见文件头）。
 	requestID := BuildConversationBillingRequestID(newAssetULID())
 
-	result, err := s.chat.Chat(ctx, ChatRequest{
+	result, err := invoke(ChatRequest{
 		UserID:    in.UserID,
 		APIKeyID:  apiKey.ID,
 		System:    conversationSystemPrompt,

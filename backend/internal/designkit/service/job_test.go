@@ -432,6 +432,27 @@ func TestJobService_CreateJob_SnapshotsPromptText(t *testing.T) {
 	}
 }
 
+// keep_transparency 随批落库（9004）：spec 里的值要原样进 CreateJobParams，
+// worker 按批取值。丢了不会报错，只会让「要透明底」的批次拿到白底、钱照扣。
+func TestJobService_CreateJob_PropagatesKeepTransparency(t *testing.T) {
+	for _, keep := range []bool{true, false} {
+		svc, repo, _ := newJobFixture(t)
+		jobSeedAsset(repo, "asset-1", 11, 7)
+		jobSeedPrompt(repo, "prompt-1", 101, "词")
+
+		in := jobBaseInput(7)
+		in.AssetUIDs = []string{"asset-1"}
+		in.KeepTransparency = keep
+		if _, err := svc.CreateJob(context.Background(), in); err != nil {
+			t.Fatalf("提交不该失败（keep=%t）：%v", keep, err)
+		}
+		if repo.createParams.KeepTransparency != keep {
+			t.Fatalf("CreateJobParams.KeepTransparency 应该是 %t，实际 %t（这一批落库就落错了）",
+				keep, repo.createParams.KeepTransparency)
+		}
+	}
+}
+
 // ============================================================================
 // 校验
 // ============================================================================

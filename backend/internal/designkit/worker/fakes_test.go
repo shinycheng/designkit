@@ -649,6 +649,8 @@ type fakePreprocessor struct {
 	mu    sync.Mutex
 	calls int
 	err   error
+	// reqs 记下每次收到的请求，断言 keep_transparency / max_dimension 是否按批传对。
+	reqs []dkdomain.PreprocessRequest
 }
 
 var _ dkdomain.ImagePreprocessor = (*fakePreprocessor)(nil)
@@ -656,6 +658,7 @@ var _ dkdomain.ImagePreprocessor = (*fakePreprocessor)(nil)
 func (p *fakePreprocessor) Preprocess(_ context.Context, req dkdomain.PreprocessRequest) (*dkdomain.PreprocessResult, error) {
 	p.mu.Lock()
 	p.calls++
+	p.reqs = append(p.reqs, req)
 	err := p.err
 	p.mu.Unlock()
 	if err != nil {
@@ -678,6 +681,16 @@ func (p *fakePreprocessor) callCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.calls
+}
+
+// lastRequest 返回最近一次预处理请求；一次都没调过时 ok=false。
+func (p *fakePreprocessor) lastRequest() (dkdomain.PreprocessRequest, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.reqs) == 0 {
+		return dkdomain.PreprocessRequest{}, false
+	}
+	return p.reqs[len(p.reqs)-1], true
 }
 
 // ----------------------------------------------------------------------------

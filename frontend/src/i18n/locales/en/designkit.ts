@@ -195,6 +195,8 @@ export default {
 
       resultTitle: 'Suggested prompt',
       resultHint: 'Edit freely. This prompt generates one image.',
+      cachedNote:
+        'This is the suggestion from {time}. Identical inputs are not billed again; change the product details or category for a fresh suggestion.',
       usedCategory: 'Picked from "{name}"',
       guessedCategory: 'AI read the photo as "{name}" and picked from that category. Wrong? Choose one and ask again.',
       candidatesTitle: 'The 5 references',
@@ -432,6 +434,7 @@ export default {
       attachTooLarge: 'Image over 2MB. Compress it and send again.',
       failed: 'Not sent. Press "Resend".',
       resend: 'Resend',
+      interrupted: 'Reply interrupted and incomplete. Resend the question to regenerate.',
       untitled: 'New chat',
       loadFailed: 'History failed to load. Refresh the page.',
       emptySessions: 'No chats yet.',

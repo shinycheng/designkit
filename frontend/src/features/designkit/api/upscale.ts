@@ -8,8 +8,9 @@
  *   1. **不花钱**：放大跑在本地图像服务里，不经过出图网关。
  *   2. **重复点安全**：同一张图在排队/在放/放完时再点，拿到的是同一个任务；
  *      放大结果按 sha256 去重入库，磁盘上永远只有一份。
- *   3. **后端重启任务会丢**（内存队列，接受过的代价）：轮询会拿到 404
- *      `DK_UPSCALE_NOT_FOUND`，这时按「失败」处理，让运营重新点一次。
+ *   3. **重启不丢**（9004 起任务落库）：后端重启后没放完的自动续跑，
+ *      轮询接着等就行。404 `DK_UPSCALE_NOT_FOUND` 只剩「从来没排过」一种含义，
+ *      轮询中途拿到它仍按「失败」兜底处理（`isUpscaleTaskLostError`）。
  */
 
 import { apiClient } from '@/api/client'
@@ -128,7 +129,7 @@ function upscaleSleep(ms: number, signal?: AbortSignal): Promise<void> {
  *
  * 跟「AI 推荐」同一套约定：路由没挂时请求打过去是**裸 404**（没有错误信封）。
  * 带 `DK_` 错误码的一律不算「没上线」——`DK_ASSET_NOT_FOUND`（图没了）和
- * `DK_UPSCALE_NOT_FOUND`（任务丢了，多半是服务重启）都是正经业务错误，
+ * `DK_UPSCALE_NOT_FOUND`（这张图没有放大任务）都是正经业务错误，
  * 误判成「没上线」运营就永远看不到该看的那句话了。
  */
 export function isUpscaleUnavailableError(error: unknown): boolean {
@@ -140,8 +141,9 @@ export function isUpscaleUnavailableError(error: unknown): boolean {
 }
 
 /**
- * 这个错误是不是「任务丢了」（后端重启把内存队列清空了）。
- * 认出来就按失败处理、让运营重新点一次——这是内存队列约定好的代价。
+ * 这个错误是不是「查不到任务」。9004 起任务落库，正常轮询中途**不该**再出现
+ * 这个错误（重启后任务还在）；留着这个兜底是防御——真拿到了（比如管理员
+ * 手工清了表）就按失败处理、让运营重新点一次，别让轮询没完没了。
  */
 export function isUpscaleTaskLostError(error: unknown): boolean {
   return toFriendlyError(error).code === 'DK_UPSCALE_NOT_FOUND'

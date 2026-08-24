@@ -266,7 +266,10 @@ func mountCommonRoutes(g *gin.RouterGroup, assets *AssetHandler, catalog *Catalo
 		// 删除商品图（软删）。**不花钱**，挂这一组。
 		// 历史批次的记录和结果图不受影响（item 存的是提示词快照和结果图）。
 		g.DELETE("/assets/:uid", assets.Delete)
-		// TODO(designkit): POST /assets/:uid/preprocess
+
+		// ⚠ 刻意没有 POST /assets/:uid/preprocess（2026-08-24 收口，原来这里是 TODO）：
+		// 补白边等预处理在出图流程里自动做（worker/process.go），单独暴露没有使用场景。
+		// ERP接口文档.md 附录 C 已写明「不存在、也没有提供的计划」。
 	}
 
 	// 报价
@@ -282,6 +285,10 @@ func mountCommonRoutes(g *gin.RouterGroup, assets *AssetHandler, catalog *Catalo
 		g.GET("/jobs/:uid/items", jobs.Items)
 		g.GET("/jobs/:uid/items/:seq", jobs.Item)
 		g.GET("/jobs/:uid/items/:seq/content", jobs.ItemContent)
+
+		// 打包下载：把这一批出成功的每一张打进一个 zip 流。**不花钱**，挂这一组 ——
+		// 跟单张取图一个道理，已经付过钱的图在额度耗尽时照样取得回来。
+		g.GET("/jobs/:uid/images.zip", jobs.ImagesZip)
 
 		// 「停止排队」算在这一组：它**不花钱**，正相反 —— 它是运营用来**别再花钱**的。
 		// 挂在花钱那一组会被上游的计费准入拦掉：额度耗尽时最需要能停的人反而停不了。
@@ -410,7 +417,7 @@ func mountQuotaAdminRoutes(g *gin.RouterGroup, svc QuotaAdminService) {
 	admin.POST("/admin/quota-requests/:id/handle", handler.Handle)
 }
 
-// mountAdminRecordsRoutes 挂「用户记录」的六个管理端点。**仅管理员**。
+// mountAdminRecordsRoutes 挂「用户记录」的七个管理端点。**仅管理员**。
 //
 // 为什么只挂浏览器组、不挂 ERP 组：这是管理员跨用户看记录的通道，
 // service 侧**刻意不做归属校验** —— 给外部系统那把 Key 一个
@@ -436,6 +443,9 @@ func mountAdminRecordsRoutes(g *gin.RouterGroup, svc AdminRecordsService) {
 	admin.GET("/admin/records/jobs", handler.ListJobs)
 	admin.GET("/admin/records/jobs/:uid", handler.GetJob)
 	admin.GET("/admin/records/jobs/:uid/items/:seq/content", handler.ItemContent)
+	// 对话附图的缩略图。用户态的 /assets/:uid/content 只放素材主人过，
+	// 管理员回放别人的对话要看图只能走这条（跨用户读，门同样是 RequireAdmin）。
+	admin.GET("/admin/records/assets/:uid/content", handler.AssetContent)
 }
 
 // mountMeRoutes 挂「我的消费」。me 为 nil 时整块不挂，其余端点照常。

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,7 +26,149 @@ import (
 // 假上游是一个 httptest 版的 imgsvc（真 HTTP、真 multipart 解析、返回一张
 // 真实小 PNG），客户端用生产那份 ImgsvcUpscaleClient —— 错误格式解析、
 // 响应体读取这些真问题在这一层就能暴露。商品图服务用 asset_test.go 的
-// fixture（真本地磁盘存储 + 假仓储），不碰数据库、不联网、不花钱。
+// fixture（真本地磁盘存储 + 假仓储），任务表用下面的 fakeUpscaleRepo
+//（照 repository.UpscaleRepo 的语义写），不碰数据库、不联网、不花钱。
+
+// ----------------------------------------------------------------------------
+// 假任务表
+// ----------------------------------------------------------------------------
+
+// fakeUpscaleRepo 内存版 UpscaleStore，**照着真实 SQL 的语义写**：
+// LatestByAsset 取该图最新一行且带归属过滤；Mark* 全部带状态守卫，
+// 没命中返回 ErrConflict；RequeueInterrupted / ListQueued 供重启恢复。
+type fakeUpscaleRepo struct {
+	mu sync.Mutex
+	// recs 按插入顺序追加，越靠后越新（真表按 created_at DESC, uid DESC 取最新）。
+	recs []*dkdomain.UpscaleTaskRecord
+}
+
+func newFakeUpscaleRepo() *fakeUpscaleRepo { return &fakeUpscaleRepo{} }
+
+var _ UpscaleStore = (*fakeUpscaleRepo)(nil)
+
+func (r *fakeUpscaleRepo) Insert(_ context.Context, rec *dkdomain.UpscaleTaskRecord) (*dkdomain.UpscaleTaskRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	clone := *rec
+	clone.Status = string(UpscaleStatusQueued)
+	clone.CreatedAt = time.Now().UTC()
+	clone.UpdatedAt = clone.CreatedAt
+	r.recs = append(r.recs, &clone)
+	out := clone
+	return &out, nil
+}
+
+// seed 预置一行（模拟「重启前的进程」留下的任务）。
+func (r *fakeUpscaleRepo) seed(rec dkdomain.UpscaleTaskRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if rec.CreatedAt.IsZero() {
+		rec.CreatedAt = time.Now().UTC()
+	}
+	rec.UpdatedAt = rec.CreatedAt
+	r.recs = append(r.recs, &rec)
+}
+
+func (r *fakeUpscaleRepo) LatestByAsset(_ context.Context, userID int64, assetUID string) (*dkdomain.UpscaleTaskRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.recs) - 1; i >= 0; i-- {
+		if r.recs[i].UserID == userID && r.recs[i].AssetUID == assetUID {
+			clone := *r.recs[i]
+			return &clone, nil
+		}
+	}
+	return nil, fmt.Errorf("designkit: 找不到放大任务: %w", dkdomain.ErrNotFound)
+}
+
+func (r *fakeUpscaleRepo) GetByUID(_ context.Context, uid string) (*dkdomain.UpscaleTaskRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, rec := range r.recs {
+		if rec.UID == uid {
+			clone := *rec
+			return &clone, nil
+		}
+	}
+	return nil, fmt.Errorf("designkit: 找不到放大任务: %w", dkdomain.ErrNotFound)
+}
+
+// mark 带守卫的状态流转：from 没命中返回 ErrConflict（真 SQL 影响行数 0）。
+func (r *fakeUpscaleRepo) mark(uid string, from UpscaleStatus, mutate func(*dkdomain.UpscaleTaskRecord)) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, rec := range r.recs {
+		if rec.UID != uid {
+			continue
+		}
+		if rec.Status != string(from) {
+			return fmt.Errorf("designkit: 放大任务的状态已经被别人改过了: %w", dkdomain.ErrConflict)
+		}
+		mutate(rec)
+		rec.UpdatedAt = time.Now().UTC()
+		return nil
+	}
+	return fmt.Errorf("designkit: 放大任务的状态已经被别人改过了: %w", dkdomain.ErrConflict)
+}
+
+func (r *fakeUpscaleRepo) MarkRunning(_ context.Context, uid string) error {
+	return r.mark(uid, UpscaleStatusQueued, func(rec *dkdomain.UpscaleTaskRecord) {
+		rec.Status = string(UpscaleStatusRunning)
+	})
+}
+
+func (r *fakeUpscaleRepo) MarkDone(_ context.Context, uid, resultAssetUID string) error {
+	return r.mark(uid, UpscaleStatusRunning, func(rec *dkdomain.UpscaleTaskRecord) {
+		rec.Status = string(UpscaleStatusDone)
+		v := resultAssetUID
+		rec.ResultAssetUID = &v
+		rec.ErrorCode, rec.ErrorMessage = "", ""
+	})
+}
+
+func (r *fakeUpscaleRepo) MarkFailed(_ context.Context, uid, errorCode, errorMessage string) error {
+	return r.mark(uid, UpscaleStatusRunning, func(rec *dkdomain.UpscaleTaskRecord) {
+		rec.Status = string(UpscaleStatusFailed)
+		rec.ErrorCode, rec.ErrorMessage = errorCode, errorMessage
+	})
+}
+
+func (r *fakeUpscaleRepo) RequeueInterrupted(_ context.Context) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var n int64
+	for _, rec := range r.recs {
+		if rec.Status == string(UpscaleStatusRunning) {
+			rec.Status = string(UpscaleStatusQueued)
+			rec.UpdatedAt = time.Now().UTC()
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (r *fakeUpscaleRepo) ListQueued(_ context.Context, limit int) ([]*dkdomain.UpscaleTaskRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*dkdomain.UpscaleTaskRecord, 0)
+	for _, rec := range r.recs {
+		if len(out) >= limit {
+			break
+		}
+		if rec.Status == string(UpscaleStatusQueued) {
+			clone := *rec
+			out = append(out, &clone)
+		}
+	}
+	return out, nil
+}
+
+// taskCount 一共插过几行（断言「重试 = 新行」「去重 = 不加行」用）。
+func (r *fakeUpscaleRepo) taskCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.recs)
+}
 
 // fakeImgsvc 一个可控的假 imgsvc /v1/upscale。
 type fakeImgsvc struct {
@@ -95,6 +238,8 @@ func (f *fakeImgsvc) succeed() {
 type upscaleFixture struct {
 	*assetTestFixture
 	imgsvc *fakeImgsvc
+	client *ImgsvcUpscaleClient
+	repo   *fakeUpscaleRepo
 	up     *UpscaleService
 }
 
@@ -106,15 +251,24 @@ func newUpscaleFixture(t *testing.T, gate chan struct{}, queueCap int) *upscaleF
 	client, err := NewUpscaleClient(imgsvc.server.URL, "", 10*time.Second)
 	require.NoError(t, err)
 
+	f := &upscaleFixture{assetTestFixture: base, imgsvc: imgsvc, client: client, repo: newFakeUpscaleRepo()}
+	f.up = f.newService(t, queueCap)
+	return f
+}
+
+// newService 起一个新的 UpscaleService 实例（同一张任务表、同一套商品图）。
+// 「重启」的模拟就是：Close 旧的，再 newService 一个。
+func (f *upscaleFixture) newService(t *testing.T, queueCap int) *UpscaleService {
+	t.Helper()
 	up, err := NewUpscaleService(UpscaleServiceDeps{
-		Assets:   base.svc,
-		Backend:  client,
+		Assets:   f.svc,
+		Backend:  f.client,
+		Repo:     f.repo,
 		QueueCap: queueCap,
 	})
 	require.NoError(t, err)
 	t.Cleanup(up.Close)
-
-	return &upscaleFixture{assetTestFixture: base, imgsvc: imgsvc, up: up}
+	return up
 }
 
 // uploadSource 传一张原图进 fixture，返回它的 uid。
@@ -274,6 +428,7 @@ func TestUpscale_FailureThenRetry(t *testing.T) {
 	require.Empty(t, done.ErrorMessage)
 	require.Empty(t, done.ErrorCode)
 	require.Equal(t, int64(2), f.imgsvc.calls.Load())
+	require.Equal(t, 2, f.repo.taskCount(), "失败重试 = 插一行新任务，failed 的旧行留作历史")
 }
 
 func TestUpscale_BackendUnavailable(t *testing.T) {
@@ -344,4 +499,65 @@ func TestUpscale_ResultDedupBySHA256(t *testing.T) {
 	doneB := f.waitStatus(t, 7, uidB, UpscaleStatusDone)
 
 	require.Equal(t, doneA.Result.UID, doneB.Result.UID, "同样的字节必须去重成同一条商品图")
+}
+
+// ----------------------------------------------------------------------------
+// 重启恢复：任务表为准，没放完的自动续跑
+// ----------------------------------------------------------------------------
+
+// 上次进程死在半路：running 的重置回 queued 接着放，queued 的原样接着放。
+// 运营什么都不用做——这正是 9004 落库换来的东西。
+func TestUpscale_RestartRecovery_ResumesUnfinished(t *testing.T) {
+	f := newUpscaleFixture(t, nil, 0)
+	uidA := f.uploadSource(t, 7, 1)
+	uidB := f.uploadSource(t, 7, 2)
+
+	// 模拟重启前的任务表：A 死在 running（进程被杀时正在放），B 还在排队。
+	f.repo.seed(dkdomain.UpscaleTaskRecord{
+		UID: "01J8ZK7Q9X2M4N6P8R0T2VUP01", AssetUID: uidA, UserID: 7,
+		Origin: dkdomain.OriginWeb, Status: string(UpscaleStatusRunning),
+	})
+	f.repo.seed(dkdomain.UpscaleTaskRecord{
+		UID: "01J8ZK7Q9X2M4N6P8R0T2VUP02", AssetUID: uidB, UserID: 7,
+		Origin: dkdomain.OriginWeb, Status: string(UpscaleStatusQueued),
+	})
+
+	// 「重启」：关掉旧实例，起一个新实例（同一张任务表）。
+	f.up.Close()
+	f.up = f.newService(t, 0)
+
+	doneA := f.waitStatus(t, 7, uidA, UpscaleStatusDone)
+	doneB := f.waitStatus(t, 7, uidB, UpscaleStatusDone)
+	require.NotNil(t, doneA.Result)
+	require.NotNil(t, doneB.Result)
+	require.Equal(t, int64(2), f.imgsvc.calls.Load(), "两张都要真的放一遍，谁也不许丢")
+	require.Equal(t, 2, f.repo.taskCount(), "恢复是续跑原有任务，不是插新行")
+}
+
+// 放完的结果重启后还查得到：Status 走任务表，Enqueue 去重也认老结果，
+// 不会因为换了进程就重放一遍。
+func TestUpscale_StatusSurvivesRestart(t *testing.T) {
+	f := newUpscaleFixture(t, nil, 0)
+	uid := f.uploadSource(t, 7, 1)
+
+	_, err := f.up.Enqueue(context.Background(), 7, dkdomain.OriginWeb, uid)
+	require.NoError(t, err)
+	before := f.waitStatus(t, 7, uid, UpscaleStatusDone)
+
+	// 「重启」。
+	f.up.Close()
+	f.up = f.newService(t, 0)
+
+	after, err := f.up.Status(context.Background(), 7, uid)
+	require.NoError(t, err)
+	require.Equal(t, UpscaleStatusDone, after.Status)
+	require.NotNil(t, after.Result)
+	require.Equal(t, before.Result.UID, after.Result.UID)
+
+	// 再点一次「高清放大」：直接拿到老结果，不再调 imgsvc、不插新行。
+	again, err := f.up.Enqueue(context.Background(), 7, dkdomain.OriginWeb, uid)
+	require.NoError(t, err)
+	require.Equal(t, UpscaleStatusDone, again.Status)
+	require.Equal(t, int64(1), f.imgsvc.calls.Load())
+	require.Equal(t, 1, f.repo.taskCount())
 }

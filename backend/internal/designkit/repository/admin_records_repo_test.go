@@ -22,6 +22,7 @@ func adminRecordsAllSQL() []string {
 		buildAdminListJobsSQL(false),
 		getAdminJobSQL,
 		adminJobItemsSQL,
+		getAdminAssetSQL,
 	}
 }
 
@@ -94,6 +95,10 @@ func TestAdminRecordsFilterSoftDeleted(t *testing.T) {
 		!strings.Contains(adminRecordUsersSQL, "user_deleted_at IS NULL") {
 		t.Fatalf("账户清单的两个来源子查询必须只数未删记录:\n%s", adminRecordUsersSQL)
 	}
+	// 对话附图同理：素材被主人删了，管理员这边也不给。
+	if !strings.Contains(getAdminAssetSQL, "deleted_at IS NULL") {
+		t.Fatalf("对话附图查询必须过滤软删（deleted_at IS NULL）:\n%s", getAdminAssetSQL)
+	}
 }
 
 // user_id 筛选只在 filterByUser=true 时出现；单条详情**不带**归属条件
@@ -112,7 +117,7 @@ func TestAdminRecordsUserFilterPlacement(t *testing.T) {
 		t.Fatal("不带筛选的批次列表不该有 user_id 条件（省略 = 全部账户）")
 	}
 	// WHERE 里出现 user_id = 就是有人把归属校验加回来了（LEFT JOIN u.id = 那条不算）。
-	for _, s := range []string{getAdminChatSessionSQL, getAdminJobSQL} {
+	for _, s := range []string{getAdminChatSessionSQL, getAdminJobSQL, getAdminAssetSQL} {
 		if strings.Contains(s, "user_id = $2") {
 			t.Fatalf("管理端详情不做归属过滤（这是管理员通道），别把 user_id 条件加回来:\n%s", s)
 		}

@@ -4,6 +4,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -163,6 +164,33 @@ func TestCreateJobReturnsSmallPayload(t *testing.T) {
 	assert.Equal(t, "order-2026-08-13-0001", jobs.lastCreate.IdempotencyKey)
 	assert.Equal(t, testUserID, jobs.lastCreate.UserID)
 	assert.Equal(t, dkdomain.OriginWeb, jobs.lastCreate.Origin, "浏览器前缀进来的必须记成 web")
+}
+
+// keep_transparency 的三态解析（9004 起真实生效）：
+// 没传 = 系统默认（合成白底），传了按传的来——包括显式的 false。
+func TestCreateJobResolvesKeepTransparency(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{name: "没传用默认", body: validCreateBody, want: dkdomain.DefaultKeepTransparency},
+		{name: "显式 true", body: `{"ratio":"3:4","asset_uids":["a"],"prompts":["词"],"keep_transparency":true}`, want: true},
+		{name: "显式 false", body: `{"ratio":"3:4","asset_uids":["a"],"prompts":["词"],"keep_transparency":false}`, want: false},
+	}
+	for i, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			jobs := &fakeJobService{job: testJob()}
+			engine := newTestEngine(t, testServices(jobs), testUserID)
+
+			rec := doRequest(t, engine, http.MethodPost, "/api/v1/designkit/jobs", c.body,
+				map[string]string{idempotencyHeader: fmt.Sprintf("keep-%d", i)})
+
+			require.Equal(t, http.StatusCreated, rec.Code, "响应体：%s", rec.Body.String())
+			require.Equal(t, 1, jobs.createCall)
+			assert.Equal(t, c.want, jobs.lastCreate.KeepTransparency)
+		})
+	}
 }
 
 // 同一批 handler 挂两个前缀：ERP 那条进来的 origin 必须是 erp。

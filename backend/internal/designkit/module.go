@@ -152,11 +152,12 @@ type Module struct {
 	// assets 商品图上传 / 预处理 / 比例白名单。
 	assets *dkservice.AssetService
 
-	// upscale 「高清放大」的内存队列（Real-ESRGAN ×4，跑在 imgsvc 里）。
+	// upscale 「高清放大」队列（Real-ESRGAN ×4，跑在 imgsvc 里）。
+	// 任务表在 designkit_upscale_tasks（9004），重启会自动把没放完的续上。
 	//
 	// 允许为 nil：缺席时只有「高清放大」那两条路由不挂（前端显示「还没准备好」），
-	// 上传、预处理、出图全都照常。**单实例约定**：队列在内存里，重启丢任务
-	// 是接受过的代价（运营重点一次），跟 worker 的 Locker=nil 是同一份约束。
+	// 上传、预处理、出图全都照常。**单实例约定**：队列信道在内存里、任务表
+	// 没有跨实例的领取锁，跟 worker 的 Locker=nil 是同一份约束。
 	upscale *dkservice.UpscaleService
 
 	// jobs 批次的报价 / 提交 / 查询 / 停止排队 / 重试。
@@ -392,6 +393,8 @@ func NewModule(
 	// 两个前提：商品图服务（读原图 + 结果入库）、imgsvc 地址合法（跟预处理
 	// 共用 DESIGNKIT_IMGSVC_URL）。缺了**只记降级不报错**：放大挂了只是
 	// 那个按钮不可用，上传和出图照常。
+	// 任务表（9004）用同一个连接池；NewUpscaleService 起的后台 worker
+	// 会先把上次没放完的任务重新排队（重启恢复）。
 	if m.assets == nil {
 		m.degrade("没有商品图服务，高清放大不可用")
 	} else if upscaleBackend, backendErr := dkservice.NewUpscaleClientFromEnv(); backendErr != nil {
@@ -400,6 +403,7 @@ func NewModule(
 	} else if up, upErr := dkservice.NewUpscaleService(dkservice.UpscaleServiceDeps{
 		Assets:  m.assets,
 		Backend: upscaleBackend,
+		Repo:    dkrepository.NewUpscaleRepo(db),
 	}); upErr != nil {
 		m.degrade("高清放大没建起来：%v", upErr)
 	} else {
@@ -649,7 +653,7 @@ func (m *Module) buildServices() dkhandler.Services {
 			svcs.AdminRecords = adminRecordsServiceAdapter{svc: records}
 		}
 	}
-	// 高清放大：跟数据库无关，只要队列建起来了就挂。
+	// 高清放大：队列建起来了就挂（任务表用的连接池跟模块同生共死）。
 	// ⚠ typed-nil：m.upscale 的声明类型是 *UpscaleService，为 nil 时直接赋给
 	// 接口字段会让 register_business.go 的判空失效，路由挂上去返回 500，
 	// 而不是我们设计好的「裸 404 → 前端显示还没准备好」。
@@ -829,8 +833,9 @@ func (m *Module) Close() error {
 		upscale := m.upscale
 		m.mu.Unlock()
 
-		// 高清放大队列先停：cancel 之后在放的那张立刻中断。任务表在内存里，
-		// 反正重启就没了（设计好的代价），不值得为它占用 5 秒的关停预算。
+		// 高清放大队列先停：cancel 之后在放的那张立刻中断。被打断的任务
+		// 留在 running（刻意不写失败），下次启动的重启恢复会把它重置回
+		// queued 接着放——所以这里不值得为它占用 5 秒的关停预算。
 		if upscale != nil {
 			upscale.Close()
 		}
@@ -1098,6 +1103,23 @@ func (a chatConversationAdapter) Send(ctx context.Context, in dkhandler.ChatSend
 	}, nil
 }
 
+func (a chatConversationAdapter) SendStream(ctx context.Context, in dkhandler.ChatSendInput, onDelta func(text string)) (*dkhandler.ChatSendResult, error) {
+	result, err := a.svc.SendStream(ctx, dkservice.SendInput{
+		UserID:     in.UserID,
+		SessionUID: in.SessionUID,
+		Text:       in.Text,
+		AssetUIDs:  in.AssetUIDs,
+	}, onDelta)
+	if err != nil {
+		return nil, err
+	}
+	return &dkhandler.ChatSendResult{
+		Session:          result.Session,
+		UserMessage:      result.UserMessage,
+		AssistantMessage: result.AssistantMessage,
+	}, nil
+}
+
 func (a chatConversationAdapter) ListSessions(ctx context.Context, userID int64) ([]*dkdomain.ChatSession, error) {
 	return a.svc.ListSessions(ctx, userID)
 }
@@ -1167,6 +1189,7 @@ func (a suggestServiceAdapter) SuggestPrompt(ctx context.Context, in dkhandler.S
 		ExtraAssetUIDs: in.ExtraAssetUIDs,
 		CategorySlug:   in.CategorySlug,
 		Features:       in.Features,
+		Force:          in.Force,
 	})
 	if err != nil {
 		return nil, err
@@ -1186,6 +1209,7 @@ func (a suggestServiceAdapter) SuggestPrompt(ctx context.Context, in dkhandler.S
 		},
 		Candidates: candidates,
 		Note:       result.Note,
+		CachedAt:   result.CachedAt,
 	}, nil
 }
 
@@ -1530,8 +1554,7 @@ func toServiceJobSpec(spec dkhandler.JobSpec) dkservice.JobSpec {
 		PromptUIDs:  spec.PromptUIDs,
 		PromptTexts: spec.PromptTexts,
 		Model:       spec.Model,
-		// ⚠ 传下去也不会落库：designkit_jobs 没有这一列（9001 跑过、永不可改），
-		// 出图 worker 用的是它自己的全局配置。要做到「每批可选」得先加一条 9xxx 迁移。
+		// 9004 起随批落库（designkit_jobs.keep_transparency），出图 worker 按批取值。
 		KeepTransparency: spec.KeepTransparency,
 	}
 }
@@ -1910,6 +1933,15 @@ func (a adminRecordsServiceAdapter) OpenJobRecordItemContent(ctx context.Context
 		// 建议文件名：任务号 + 序号（跟运营侧取图同一个拼法）。
 		Filename: fmt.Sprintf("%s-%d.png", jobUID, seq),
 	}, nil
+}
+
+func (a adminRecordsServiceAdapter) OpenAssetRecordContent(ctx context.Context, uid string) (*dkhandler.ContentBlob, error) {
+	data, contentType, err := a.svc.OpenAssetContent(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	// 不带 Filename：这条只喂缩略图，跟用户态 assetServiceAdapter.OpenAssetContent 同口径。
+	return &dkhandler.ContentBlob{Data: data, ContentType: contentType}, nil
 }
 
 // imageServiceAdapter 把 repository + 对象存储适配成 handler.ImageService。

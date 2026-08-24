@@ -376,6 +376,14 @@ export interface SuggestPromptRequest {
    * 是**关于商品的事实**（材质、颜色、卖点、想要的感觉），由模型去写提示词。
    */
   features?: string
+  /**
+   * true = 跳过缓存、强制重新推荐（「重新推荐」按钮传它）。
+   *
+   * 后端对**输入完全相同**（同一批图 + 同分类 + 同一句商品特点）的重复请求
+   * 默认直接返回上次的结果（响应带 `cached_at`），不再调模型、不产生新计费。
+   * force 是运营明确要一个新答案；新答案会顶掉缓存里的旧结果。
+   */
+  force?: boolean
 }
 
 /** 推荐时参考到的一条灵感库提示词。**只用来展示依据**，不参与出图。 */
@@ -404,6 +412,13 @@ export interface SuggestPromptResponse {
    * 这里做了归一：拿到的**永远是字符串**，模板里 `v-if="note"` 就够了，不必再判 undefined。
    */
   note?: string
+  /**
+   * 非空 = 这条来自后端缓存（RFC3339 UTC，值是它最初生成的时间）。
+   * 命中缓存没有调模型、没有计费。界面要在结果框顶部显示
+   * `designkit.suggest.cachedNote`，否则运营会以为「怎么点都一样」是坏了。
+   * 这里同样做了归一：拿到的永远是字符串，空串 = 现算的。
+   */
+  cached_at?: string
 }
 
 /**
@@ -429,6 +444,8 @@ export async function suggestPrompt(
     // 且界面上完全看不出哪一步出的岔子。同 `updatePromptSyncSettings` 的理由。
     category_slug: (req.category_slug ?? '').trim(),
     features: (req.features ?? '').trim(),
+    // 只有显式的 true 才算 force：少传 = false = 允许命中缓存。
+    force: req.force === true,
   }
 
   const { data } = await apiClient.post<SuggestPromptResponse>(
@@ -447,6 +464,7 @@ export async function suggestPrompt(
       title: one?.title ?? '',
     })),
     note: data.note ?? '',
+    cached_at: data.cached_at ?? '',
   }
 }
 

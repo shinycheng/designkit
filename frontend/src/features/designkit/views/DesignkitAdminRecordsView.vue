@@ -9,12 +9,12 @@
   1. **这里只有用户自己没删过的记录。** 管理员视角跟用户视角一致，
      后端已把软删的过滤掉——列表条数对不上总量是正常的，不是丢数据。
 
-  2. **对话里带图的消息只显示「[附图]」占位，不显示缩略图。**
-     取图走的是用户态接口（/designkit/assets/:uid/content，只放素材主人过），
-     管理员的登录态去取别人的图会 404。管理员看图通道没有做——
-     对话附图是发给模型「看」的参考图，不是产出物，不值得为它开一条鉴权通道。
-     出图记录的缩略图**有得看**：那条走的是管理员专用的
-     /admin/records/jobs/:uid/items/:seq/content。
+  2. **对话里带图的消息显示真缩略图**，走管理员专用的
+     /admin/records/assets/:uid/content（跨用户读，门是 RequireAdmin）——
+     用户态的 /designkit/assets/:uid/content 只放素材主人过，管理员的登录态
+     去取别人的图会 404，别换回去。取失败（素材被主人删了、存储故障）
+     回落「[附图]」占位文字，不给重试按钮——回放场景里图取不到就是取不到。
+     出图记录的缩略图走 /admin/records/jobs/:uid/items/:seq/content。
 
   3. **气泡样式是从 ChatMessageList.vue 抄来的**（类名保持一致）。
      那边的样式是 scoped 的，跨组件引用不到，只能复制一份；
@@ -123,11 +123,26 @@
               :class="msg.role === 'user' ? 'is-user' : 'is-assistant'"
             >
               <div class="dk-chat-bubble">
-                <!-- 带图消息：只有占位，理由见文件头第 2 条。 -->
-                <p v-if="msg.asset_uids.length > 0" class="dk-records-attach">
-                  {{ t('designkit.adminRecords.attachment')
-                  }}<template v-if="msg.asset_uids.length > 1"> × {{ msg.asset_uids.length }}</template>
-                </p>
+                <!-- 带图消息：缩略图走管理员附图通道（文件头第 2 条）；
+                     取失败回落「[附图]」占位文字。 -->
+                <div v-if="msg.asset_uids.length > 0" class="dk-chat-thumbs">
+                  <template v-for="uid in msg.asset_uids" :key="uid">
+                    <img
+                      v-if="chatImages.urls.value[attachmentUrl(uid)]"
+                      :src="chatImages.urls.value[attachmentUrl(uid)]"
+                      alt=""
+                    />
+                    <span
+                      v-else-if="chatImages.failed.value[attachmentUrl(uid)]"
+                      class="dk-records-attach"
+                    >
+                      {{ t('designkit.adminRecords.attachment') }}
+                    </span>
+                    <span v-else class="dk-chat-thumb-fallback">
+                      {{ t('designkit.common.loading') }}
+                    </span>
+                  </template>
+                </div>
                 <p v-if="msg.content !== ''" class="dk-chat-text">{{ msg.content }}</p>
               </div>
             </div>
@@ -362,6 +377,7 @@ import { useAppStore } from '@/stores'
 import { formatDateTimeToMinute } from '@/utils/format'
 import {
   ADMIN_RECORDS_PAGE_SIZE,
+  adminAssetContentUrl,
   adminJobItemContentUrl,
   formatMoney,
   getAdminChatSession,
@@ -434,6 +450,12 @@ const jobDetail = ref<JobDetail | null>(null)
 /** 批次缩略图。取、缓存、限流、回收都在它里面（组件卸载自动回收）。 */
 const images = useAuthedImages()
 
+/**
+ * 对话附图的缩略图。跟批次缩略图**分开一个实例**：关批次详情会 releaseAll，
+ * 合用一个会把还开着的对话详情里的图一起放掉。
+ */
+const chatImages = useAuthedImages()
+
 let sessionsController: AbortController | null = null
 let jobsController: AbortController | null = null
 // 两个详情各一个 controller：合用一个的话，chat 详情还在加载时打开一个批次
@@ -462,6 +484,10 @@ function jobName(row: AdminJobRow): string {
 
 function itemUrl(item: AdminJobItemRow): string {
   return adminJobItemContentUrl(jobDetail.value?.row.uid ?? '', item.seq)
+}
+
+function attachmentUrl(assetUid: string): string {
+  return adminAssetContentUrl(assetUid)
 }
 
 // ---------------------------------------------------------------------------
@@ -573,6 +599,8 @@ async function openSession(row: AdminChatSessionRow): Promise<void> {
 function closeSession(): void {
   sessionDetailController?.abort()
   sessionDetail.value = null
+  // 附图缩略图占的内存，关详情就放掉（同 closeJob 的做法）。
+  chatImages.releaseAll()
 }
 
 async function openJob(row: AdminJobRow): Promise<void> {
@@ -612,6 +640,18 @@ watch(
     const detail = jobDetail.value
     if (detail?.items) {
       images.ensure(detail.items.filter((item) => item.has_image).map((item) => itemUrl(item)))
+    }
+  },
+  { immediate: true },
+)
+
+// 会话详情一到就把附图排进队列（同上：只在 watch 里 ensure）。
+watch(
+  () => sessionDetail.value?.messages?.flatMap((msg) => msg.asset_uids).join('\n') ?? '',
+  () => {
+    const messages = sessionDetail.value?.messages
+    if (messages) {
+      chatImages.ensure(messages.flatMap((msg) => msg.asset_uids.map(attachmentUrl)))
     }
   },
   { immediate: true },
@@ -781,15 +821,49 @@ onUnmounted(() => {
   white-space: pre-wrap;
 }
 
-/* 带图消息的「[附图]」占位（不显示缩略图，理由见文件头）。 */
-.dk-records-attach {
-  margin: 0;
-  font-size: var(--dk-text-xs);
-  opacity: 0.85;
+/* 带图消息的缩略图（样式抄自 ChatMessageList.vue 的 dk-chat-thumbs，
+   那边是 scoped 跨组件引用不到；改观感时两处都要改）。 */
+.dk-chat-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dk-space-1);
 }
 
-.dk-records-attach + .dk-chat-text {
-  margin-top: var(--dk-space-1);
+.dk-chat-thumbs + .dk-chat-text {
+  margin-top: var(--dk-space-2);
+}
+
+.dk-chat-thumbs img {
+  display: block;
+  width: 96px;
+  height: 96px;
+  border-radius: var(--dk-radius-sm);
+  background: var(--dk-image-canvas);
+  object-fit: cover;
+}
+
+.dk-chat-thumb-fallback {
+  display: inline-flex;
+  width: 96px;
+  height: 96px;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--dk-border-strong);
+  border-radius: var(--dk-radius-sm);
+  background: var(--dk-image-canvas);
+  color: var(--dk-text-tertiary);
+  padding: var(--dk-space-1);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* 取失败的回落：「[附图]」占位文字（文件头第 2 条）。 */
+.dk-records-attach {
+  margin: 0;
+  align-self: center;
+  font-size: var(--dk-text-xs);
+  opacity: 0.85;
 }
 
 /* ---------- 出图详情：单张 = 缩略图 + 提示词快照。 ---------- */

@@ -57,12 +57,13 @@ func testUserID() int64 {
 func TestDesignkitMigrationsOnRealPostgres(t *testing.T) {
 	ctx := context.Background()
 
-	// 三个迁移都以「迁移」的身份被记录过——不是表恰好在，
+	// 每个迁移都以「迁移」的身份被记录过——不是表恰好在，
 	// 而是 schema_migrations 里有它们的行（文件名即主键）。
 	for _, filename := range []string{
 		"9001_designkit_init.sql",
 		"9002_designkit_chat.sql",
 		"9003_designkit_quota_admin.sql",
+		"9004_designkit_p1.sql",
 	} {
 		var applied bool
 		require.NoError(t, integrationDB.QueryRowContext(ctx,
@@ -71,7 +72,7 @@ func TestDesignkitMigrationsOnRealPostgres(t *testing.T) {
 		require.True(t, applied, "迁移 %s 没有被应用", filename)
 	}
 
-	// 14 张表全部真的建出来了（9001 的 12 张 + 9002 的 2 张）。
+	// 15 张表全部真的建出来了（9001 的 12 张 + 9002 的 2 张 + 9004 的 1 张）。
 	for _, table := range []string{
 		"designkit_assets",
 		"designkit_asset_variants",
@@ -87,6 +88,7 @@ func TestDesignkitMigrationsOnRealPostgres(t *testing.T) {
 		"designkit_settings",
 		"designkit_chat_sessions",
 		"designkit_chat_messages",
+		"designkit_upscale_tasks",
 	} {
 		var exists bool
 		require.NoError(t, integrationDB.QueryRowContext(ctx,
@@ -105,6 +107,19 @@ SELECT EXISTS(
     AND column_name = $1
 )`, column).Scan(&exists))
 		require.True(t, exists, "designkit_quota_requests.%s 列不存在", column)
+	}
+
+	// 9004 给批次表加的列真的加上了（scanJob 现在扫它，缺了每条批次查询都会炸）。
+	{
+		var exists bool
+		require.NoError(t, integrationDB.QueryRowContext(ctx, `
+SELECT EXISTS(
+  SELECT 1 FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'designkit_jobs'
+    AND column_name = 'keep_transparency'
+)`).Scan(&exists))
+		require.True(t, exists, "designkit_jobs.keep_transparency 列不存在")
 	}
 
 	// 两个部分唯一索引在。ON CONFLICT（同步幂等）和「同人只能有一条 pending」

@@ -196,12 +196,14 @@ INSERT INTO designkit_jobs (
   idempotency_key, callback_url, currency, estimated_cost,
   base_unit_price, group_rate_multiplier, account_rate_multiplier,
   billing_mode, pricing_tier, price_source, pricing_snapshot_version,
+  keep_transparency,
   heartbeat_at
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9,
   $10, $11, $12, $13,
   $14, $15, $16,
   $17, $18, $19, $20,
+  $21,
   NOW()
 ) RETURNING `+jobColumns,
 		params.JobUID,
@@ -224,6 +226,7 @@ INSERT INTO designkit_jobs (
 		params.Pricing.PricingTier,
 		params.Pricing.PriceSource,
 		params.Pricing.Version,
+		params.KeepTransparency,
 	))
 	if err != nil {
 		return nil, translate(err, "任务")

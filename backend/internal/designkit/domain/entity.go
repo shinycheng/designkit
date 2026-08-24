@@ -242,6 +242,13 @@ type Job struct {
 	Ratio Ratio
 	// Model 出图模型名，例如 gpt-image-2。
 	Model string
+	// KeepTransparency 这一批预处理时是否保留透明底（false = 合成白底）。
+	//
+	// 9004 迁移加的列（NOT NULL DEFAULT FALSE），按批生效：worker 用它替代
+	// 原来的全局配置。请求没显式传时由提交侧按 DefaultKeepTransparency 落定
+	//（ResolveKeepTransparency），所以这里永远是定值，没有「未知」态；
+	// 9004 之前的历史批次回填 FALSE——正是它们当时的实际行为。
+	KeepTransparency bool
 	// ItemCount 展开后的总张数。
 	ItemCount int
 	// SuccessCount 出成功的张数。**一律 SET x = x + 1 原子自增，绝不读回来再写。**
@@ -686,6 +693,10 @@ const (
 	DefaultModel = "gpt-image-2"
 	// DefaultMaxAttempts 单张累计最多尝试几次（决策 20）。
 	DefaultMaxAttempts = 3
+	// DefaultKeepTransparency 请求没显式传 keep_transparency 时的默认值：
+	// false = 合成白底。它就是原来 worker.Config.KeepTransparency 那个
+	// 「全局默认」，9004 起批次落库、默认值收敛到这一处。
+	DefaultKeepTransparency = false
 	// DefaultLeaseSeconds 队列租约秒数。
 	DefaultLeaseSeconds = 180
 	// DefaultLeaseRenewSeconds 租约续期间隔秒数。
@@ -695,6 +706,19 @@ const (
 	// DefaultStaleJobMinutes 心跳超过这么久没动静就判定为僵尸。
 	DefaultStaleJobMinutes = 10
 )
+
+// ResolveKeepTransparency 把「请求传没传 keep_transparency」落成定值：
+// nil（没传）用 DefaultKeepTransparency，传了用传的。
+//
+// 落定发生在提交侧（handler 组装 JobSpec 那一刻），从那之后整条链路
+// （service → designkit_jobs.keep_transparency → worker）都是定值，
+// 没有第二处需要再判「传没传」。
+func ResolveKeepTransparency(v *bool) bool {
+	if v == nil {
+		return DefaultKeepTransparency
+	}
+	return *v
+}
 
 // Setting 是 designkit_settings 的一行。
 type Setting struct {

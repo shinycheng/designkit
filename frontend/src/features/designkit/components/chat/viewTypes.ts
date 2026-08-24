@@ -17,4 +17,10 @@ export interface ChatMessageView {
   created_at: string
   /** true = 没发出去，气泡标红并显示「重发」。 */
   failed: boolean
+  /**
+   * true = 这条 assistant 回复是流式中断留下的半截（已收到的文字保留展示，
+   * 气泡标红 + 一行「回复中断」说明，但**没有**重发按钮——重发挂在对应的
+   * 用户消息上，重发时这条半截会被移除）。
+   */
+  interrupted?: boolean
 }

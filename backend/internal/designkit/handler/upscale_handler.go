@@ -21,8 +21,8 @@ import (
 // Global() 的 240 次/分绰绰有余；Heavy 只有 60 次/分还跟重查询共用桶）。
 //
 // 放大是**异步**的：POST 立刻返回 queued，一张要一两分钟。
-// 队列在内存里（单实例约定），重启后任务消失，GET 会返回
-// DK_UPSCALE_NOT_FOUND（「重新点『高清放大』」）——这是设计好的代价，不是 bug。
+// 任务落库（designkit_upscale_tasks，9004），重启后没放完的自动续跑；
+// GET 返回 DK_UPSCALE_NOT_FOUND 只剩一种情况：这张图从来没排过（或不是他的）。
 
 // UpscaleHandler 高清放大的两个端点。
 type UpscaleHandler struct {

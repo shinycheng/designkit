@@ -16,6 +16,10 @@
   3. **新会话的编号以响应为准**：session_uid 传空串 = 新建，后端在响应里
      给回编号，从那一刻起这个页面就「在」那个会话里了。
   4. 发完消息把会话顶到列表最上面（updated_at 就地改，排序是 computed）。
+  5. **发送默认走流式**（sendChatMessageStream）：assistant 气泡边收边长
+     （打字机），done 后用服务端定稿替换；中途出错时已收的文字**保留展示**
+     （标红 + 「回复中断」），重发挂在那条用户消息上，重发前把半截移掉。
+     旧后端不支持流式时 api 层自动回落非流式，这一层不感知。
 -->
 <template>
   <AppLayout>
@@ -62,6 +66,7 @@
             class="dk-chat-stream"
             :messages="messages"
             :replying="replying"
+            :streaming="streamKey !== null"
             :loading="historyLoading"
             :load-error="historyError"
             @resend="resend"
@@ -83,7 +88,7 @@ import {
   getChatSession,
   isCanceledError,
   listChatSessions,
-  sendChatMessage,
+  sendChatMessageStream,
   toFriendlyError,
 } from '../api'
 import type { ChatMessage, ChatSession } from '../api'
@@ -116,8 +121,16 @@ const historyError = ref('')
 /** AI 正在回复：输入禁用、会话列表禁用。 */
 const replying = ref(false)
 
+/**
+ * 正在流式接收的那条 assistant 消息的本地 key；null = 还没收到第一段。
+ * 它是「打字机占位切换」的开关：第一段到达前消息流里显示「AI 回复中…」，
+ * 到达后换成边收边长的气泡。
+ */
+const streamKey = ref<string | null>(null)
+
 let sessionsController: AbortController | null = null
 let historyController: AbortController | null = null
+let deliverController: AbortController | null = null
 let keyCounter = 0
 
 function newLocalKey(): string {
@@ -274,19 +287,30 @@ function resend(key: string): void {
     return
   }
   const target = messages.value.find((one) => one.key === key)
-  if (!target || !target.failed) {
+  // 只有用户消息能重发：中断的半截 assistant 也标红，但它上面没有重发按钮，
+  // 这里再守一道，免得哪天模板改了把半截当消息发出去。
+  if (!target || !target.failed || target.role !== 'user') {
     return
   }
+  // 上次中断留下的半截回复在重发前移掉，免得新旧两截回答并排。
+  messages.value = messages.value.filter((one) => !one.interrupted)
   target.failed = false
   void deliver(key)
 }
 
 /**
- * 真正发出去。按 key 从流里取（拿到的是响应式代理，直接改属性才会刷新界面；
- * 存局部变量改原对象是不会刷新的）。
+ * 真正发出去（默认流式，打字机）。按 key 从流里取（拿到的是响应式代理，
+ * 直接改属性才会刷新界面；存局部变量改原对象是不会刷新的）。
  *
  * replying 期间会话列表整栏禁用，所以在途中 currentUid 不会变，
  * 响应落回来一定还是这个会话。
+ *
+ * 三个回调的分工：
+ *   - onDelta：第一段到达时把 assistant 气泡摆进流里，之后逐段接长；
+ *   - onDone：用服务端定稿替换打字机内容（key 不变，v-for 不闪）——
+ *     以落库的为准，也顺带接过新会话的编号；
+ *   - onError：**已收到的文字保留**（标「回复中断」），用户消息标失败给重发。
+ *     后端流完才落库，中断的这半截在服务端不存在，重发就是干净的一问。
  */
 async function deliver(key: string): Promise<void> {
   const view = messages.value.find((one) => one.key === key)
@@ -294,32 +318,85 @@ async function deliver(key: string): Promise<void> {
     return
   }
   replying.value = true
+  streamKey.value = null
+  deliverController?.abort()
+  deliverController = new AbortController()
   try {
-    const result = await sendChatMessage({
-      session_uid: currentUid.value,
-      text: view.content,
-      asset_uids: view.asset_uids,
-    })
-    // 新对话：从响应里接过后端建好的会话编号。
-    if (currentUid.value === '') {
-      currentUid.value = result.session_uid
-    }
-    // 用服务端定稿替换乐观显示的那条（key 不变，v-for 不闪）。
-    const index = messages.value.findIndex((one) => one.key === key)
-    if (index >= 0) {
-      messages.value.splice(index, 1, toView(result.user_message, key))
-    }
-    messages.value = [...messages.value, toView(result.assistant_message, newLocalKey())]
-    touchSession(result.session_uid, result.title)
-  } catch (err) {
-    const target = messages.value.find((one) => one.key === key)
-    if (target) {
-      target.failed = true
-    }
-    // 后端的中文原话（超长、图没了这类都写着原因），失败行上只有「重发」两个字。
-    appStore.showError(toFriendlyError(err).message)
+    await sendChatMessageStream(
+      {
+        session_uid: currentUid.value,
+        text: view.content,
+        asset_uids: view.asset_uids,
+      },
+      {
+        onDelta(piece) {
+          const sk = streamKey.value
+          if (sk === null) {
+            const assistant: ChatMessageView = {
+              key: newLocalKey(),
+              id: null,
+              role: 'assistant',
+              content: piece,
+              asset_uids: [],
+              created_at: new Date().toISOString(),
+              failed: false,
+            }
+            streamKey.value = assistant.key
+            messages.value = [...messages.value, assistant]
+          } else {
+            const target = messages.value.find((one) => one.key === sk)
+            if (target) {
+              target.content += piece
+            }
+          }
+        },
+        onDone(result) {
+          // 新对话：从响应里接过后端建好的会话编号。
+          if (currentUid.value === '') {
+            currentUid.value = result.session_uid
+          }
+          // 用服务端定稿替换乐观显示的那条（key 不变，v-for 不闪）。
+          const index = messages.value.findIndex((one) => one.key === key)
+          if (index >= 0) {
+            messages.value.splice(index, 1, toView(result.user_message, key))
+          }
+          const sk = streamKey.value
+          const streamIndex = sk === null ? -1 : messages.value.findIndex((one) => one.key === sk)
+          if (streamIndex >= 0 && sk !== null) {
+            // 打字机攒的内容换成服务端定稿（理论上一样，以落库的为准）。
+            messages.value.splice(streamIndex, 1, toView(result.assistant_message, sk))
+          } else {
+            // 没收到过 delta（api 层回落非流式时就是这样）：直接摆进来。
+            messages.value = [...messages.value, toView(result.assistant_message, newLocalKey())]
+          }
+          touchSession(result.session_uid, result.title)
+        },
+        onError(err) {
+          // 页面卸载等主动取消：组件都不在了，什么都不该弹。
+          if (isCanceledError(err)) {
+            return
+          }
+          const target = messages.value.find((one) => one.key === key)
+          if (target) {
+            target.failed = true
+          }
+          // 已收到的文字保留展示，标「回复中断」；重发按钮在用户消息那条上。
+          const sk = streamKey.value
+          if (sk !== null) {
+            const partial = messages.value.find((one) => one.key === sk)
+            if (partial) {
+              partial.interrupted = true
+            }
+          }
+          // 后端的中文原话（超长、图没了这类都写着原因），失败行上只有「重发」两个字。
+          appStore.showError(toFriendlyError(err).message)
+        },
+      },
+      deliverController.signal,
+    )
   } finally {
     replying.value = false
+    streamKey.value = null
   }
 }
 
@@ -330,6 +407,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   sessionsController?.abort()
   historyController?.abort()
+  deliverController?.abort()
 })
 </script>
 

@@ -170,39 +170,44 @@ func failService(c *gin.Context, err error, notFoundCode string) {
 	if err == nil {
 		return
 	}
+	abortWithDesignkitError(c, serviceErrorToDesignkit(err, notFoundCode))
+}
 
+// serviceErrorToDesignkit 是 failService 的翻译部分，单独拆出来给
+// 「不能再改状态码」的场景用（SSE 流已经开了，错误只能装进 error 帧，
+// 见 chat_handler.go 的 sendStream）。翻译规则两边必须是同一份。
+func serviceErrorToDesignkit(err error, notFoundCode string) *dkdomain.DesignkitError {
 	// service 自己已经给出我方错误码时，原样用它的码、文案和状态。
 	if dkErr, ok := dkdomain.AsDesignkitError(err); ok {
-		abortWithDesignkitError(c, dkErr)
-		return
+		return dkErr
 	}
 
 	switch {
 	case errors.Is(err, dkdomain.ErrNotFound):
-		abortWithDesignkitError(c, dkdomain.NewError(notFoundCode).WithCause(err))
+		return dkdomain.NewError(notFoundCode).WithCause(err)
 
 	case errors.Is(err, dkdomain.ErrInsufficientBalance):
-		abortWithDesignkitError(c, insufficientBalanceError(err))
+		return insufficientBalanceError(err)
 
 	case errors.Is(err, dkdomain.ErrIllegalTransition):
-		abortWithDesignkitError(c, dkdomain.NewError(dkdomain.ErrCodeIllegalStateTransition).WithCause(err))
+		return dkdomain.NewError(dkdomain.ErrCodeIllegalStateTransition).WithCause(err)
 
 	case errors.Is(err, dkdomain.ErrConflict):
-		abortWithDesignkitError(c, dkdomain.NewError(dkdomain.ErrCodeIllegalStateTransition).WithCause(err))
+		return dkdomain.NewError(dkdomain.ErrCodeIllegalStateTransition).WithCause(err)
 
 	case errors.Is(err, dkdomain.ErrObjectNotFound):
 		// 库里有记录、对象存储里没文件：这不是「找不到」，是存储出了问题，
 		// 报成 404 会让运营以为图被自己删了，实际要查的是磁盘/桶。
-		abortWithDesignkitError(c, dkdomain.NewError(dkdomain.ErrCodeStorageError).WithCause(err))
+		return dkdomain.NewError(dkdomain.ErrCodeStorageError).WithCause(err)
 
 	case errors.Is(err, context.Canceled):
-		abortWithDesignkitError(c, dkdomain.NewError(dkdomain.ErrCodeCanceled).WithCause(err))
+		return dkdomain.NewError(dkdomain.ErrCodeCanceled).WithCause(err)
 
 	case errors.Is(err, context.DeadlineExceeded):
-		abortWithDesignkitError(c, dkdomain.NewError(dkdomain.ErrCodeTimeout).WithCause(err))
+		return dkdomain.NewError(dkdomain.ErrCodeTimeout).WithCause(err)
 
 	default:
-		abortWithDesignkitError(c, dkdomain.NewError(dkdomain.ErrCodeInternal).WithCause(err))
+		return dkdomain.NewError(dkdomain.ErrCodeInternal).WithCause(err)
 	}
 }
 

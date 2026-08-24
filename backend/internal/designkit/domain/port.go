@@ -92,6 +92,9 @@ type CreateJobParams struct {
 	Ratio Ratio
 	// Model 出图模型。
 	Model string
+	// KeepTransparency 这一批预处理时是否保留透明底（9004 加的列，按批落库）。
+	// 到这一层已经是定值——「没传用默认」在提交侧 ResolveKeepTransparency 落定过了。
+	KeepTransparency bool
 	// IdempotencyKey 客户端送来的防重复标识，浏览器端也必须带。
 	IdempotencyKey *string
 	// CallbackURL 完成回调地址，空 = 不回调。

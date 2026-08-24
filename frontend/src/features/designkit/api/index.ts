@@ -511,7 +511,7 @@ export async function downloadContent(contentUrl: string, filename: string): Pro
 /**
  * 工作台角落那三个数：本月出图张数 / 花费 / 余额。
  *
- * ⚠ **后端还没实现这个端点**，现在一定返回 null。
+ * ⚠ 「我的消费」服务缺席时这条路由整个不挂（裸 404），此时返回 null。
  * 界面拿到 null 时把这一块**整个藏起来**，不要显示 0 ——
  * 「本月花费 $0」和「还不知道花了多少」是两回事，前者会让人误判。
  *

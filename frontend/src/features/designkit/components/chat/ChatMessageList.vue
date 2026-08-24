@@ -7,9 +7,11 @@
     取成 blob 再显示，直接 <img src> 是 401 碎图。历史消息里只有 asset_uids，
     地址由 chatAssetContentUrl() 拼出（形状与 DesignkitAsset.content_url 一致）。
   - `replying` 为 true 时在 assistant 位置显示「AI 回复中…」占位——
-    后端要问一趟对话模型，几十秒，没有占位就是「点了没反应」。
+    后端要问一趟对话模型，没有占位就是「点了没反应」。流式回复开始长字后
+    （`streaming`）占位收起来，位置让给打字机气泡。
   - 发送失败的那条标红，下面给「重发」（emit 上去由页面层重发，
-    组件自己不发请求）。
+    组件自己不发请求）；流式中断留下的半截 assistant 回复也标红，
+    但只挂「回复中断」说明，不给按钮——重发在对应的用户消息上。
 
   滚动容器就是本组件根节点；尺寸（flex:1 / min-height）由页面层通过 class 给。
 -->
@@ -31,7 +33,7 @@
         class="dk-chat-row"
         :class="msg.role === 'user' ? 'is-user' : 'is-assistant'"
       >
-        <div class="dk-chat-bubble" :class="{ 'is-failed': msg.failed }">
+        <div class="dk-chat-bubble" :class="{ 'is-failed': msg.failed || msg.interrupted }">
           <div v-if="msg.asset_uids.length > 0" class="dk-chat-thumbs">
             <template v-for="uid in msg.asset_uids" :key="uid">
               <img
@@ -67,10 +69,15 @@
             {{ t('designkit.chat.resend') }}
           </button>
         </p>
+        <!-- 流式中断留下的半截回复：只说明，不给按钮（重发在用户消息那条上）。 -->
+        <p v-else-if="msg.interrupted" class="dk-chat-failed">
+          <span>{{ t('designkit.chat.interrupted') }}</span>
+        </p>
       </div>
 
-      <!-- AI 回复中的占位，永远排在最后、站 assistant 的位置。 -->
-      <div v-if="replying" class="dk-chat-row is-assistant">
+      <!-- AI 回复中的占位，永远排在最后、站 assistant 的位置。
+           打字机开始长字之后（streaming）就收起来，位置让给真气泡。 -->
+      <div v-if="replying && !streaming" class="dk-chat-row is-assistant">
         <div class="dk-chat-bubble dk-chat-bubble--pending">
           {{ t('designkit.chat.replying') }}
         </div>
@@ -90,6 +97,11 @@ const props = defineProps<{
   messages: ChatMessageView[]
   /** AI 正在回复（显示占位、禁掉「重发」）。 */
   replying: boolean
+  /**
+   * 流式回复已经开始往气泡里长字。此时「AI 回复中…」占位收起来——
+   * 打字机本身就是「正在回复」的证据，两个同时出现像卡了两条消息。
+   */
+  streaming?: boolean
   /** 正在加载历史。 */
   loading: boolean
   /** 历史加载失败的文案；空串 = 没出错。 */
@@ -123,9 +135,14 @@ watch(
   { immediate: true },
 )
 
-// 新消息、占位出现时滚到底。聊天页不自动跟底就得手动拖，每来一条拖一次。
+// 新消息、占位出现、**最后一条在流式长长**时滚到底。
+// 只看条数的话，打字机每来一段字都会把内容顶出视口，运营得一直手动拖。
 watch(
-  [() => props.messages.length, () => props.replying],
+  [
+    () => props.messages.length,
+    () => props.replying,
+    () => (props.messages.length > 0 ? props.messages[props.messages.length - 1].content.length : 0),
+  ],
   () => {
     void nextTick(() => {
       const el = scroller.value

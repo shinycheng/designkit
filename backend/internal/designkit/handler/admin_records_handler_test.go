@@ -21,7 +21,7 @@ import (
 // ============================================================================
 //
 // 这一组守三条底线：
-//  1. 六个端点**只有管理员**能进 —— service 侧刻意不做归属校验，
+//  1. 七个端点**只有管理员**能进 —— service 侧刻意不做归属校验，
 //     RequireAdmin 是唯一的门，非管理员必须 403 且 service 一次都不被调到；
 //  2. user_id 筛选原样透传（省略 = 0 = 全部账户），拼错直接 400 不静默；
 //  3. limit 默认 50、封顶 200（对外契约）。
@@ -70,6 +70,11 @@ type fakeAdminRecordsService struct {
 		jobUID string
 		seq    int
 	}
+
+	assetBlob    *ContentBlob
+	assetErr     error
+	assetCall    int
+	lastAssetUID string
 }
 
 func (f *fakeAdminRecordsService) ListRecordUsers(_ context.Context) ([]*dkdomain.RecordUser, error) {
@@ -129,8 +134,17 @@ func (f *fakeAdminRecordsService) OpenJobRecordItemContent(_ context.Context, jo
 	return f.blob, nil
 }
 
+func (f *fakeAdminRecordsService) OpenAssetRecordContent(_ context.Context, uid string) (*ContentBlob, error) {
+	f.assetCall++
+	f.lastAssetUID = uid
+	if f.assetErr != nil {
+		return nil, f.assetErr
+	}
+	return f.assetBlob, nil
+}
+
 func (f *fakeAdminRecordsService) totalCalls() int {
-	return f.usersCall + f.sessionsCall + f.sessionCall + f.jobsCall + f.jobCall + f.contentCall
+	return f.usersCall + f.sessionsCall + f.sessionCall + f.jobsCall + f.jobCall + f.contentCall + f.assetCall
 }
 
 // newAdminRecordsEngine 按 RegisterBusinessRoutes 的真实结构搭引擎，并指定登录者的角色。
@@ -209,6 +223,7 @@ func TestAdminRecordsEndpointsRejectNonAdmin(t *testing.T) {
 		"/api/v1/designkit/admin/records/jobs",
 		"/api/v1/designkit/admin/records/jobs/" + testRecordUID,
 		"/api/v1/designkit/admin/records/jobs/" + testRecordUID + "/items/1/content",
+		"/api/v1/designkit/admin/records/assets/" + testRecordUID + "/content",
 	}
 	for _, path := range paths {
 		rec := doRequest(t, engine, http.MethodGet, path, "", nil)
@@ -537,6 +552,54 @@ func TestAdminRecordsItemContentStorageError(t *testing.T) {
 
 	require.NotEqual(t, http.StatusNotFound, rec.Code,
 		"存储坏了不能报 404 —— 管理员会以为记录没了，实际要查的是磁盘")
+	assertErrorEnvelope(t, rec.Body.Bytes(), dkdomain.ErrCodeStorageError)
+}
+
+// ---- 对话附图字节 ----
+
+// 管理员取对话附图：uid 原样透传，字节和 Content-Type 原样返回。
+func TestAdminRecordsAssetContent(t *testing.T) {
+	png := []byte{0x89, 'P', 'N', 'G'}
+	svc := &fakeAdminRecordsService{assetBlob: &ContentBlob{
+		Data:        png,
+		ContentType: "image/png",
+	}}
+	engine := newAdminRecordsEngine(t, svc, upstreamservice.RoleAdmin)
+
+	rec := doRequest(t, engine, http.MethodGet,
+		"/api/v1/designkit/admin/records/assets/"+testRecordUID+"/content", "", nil)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, 1, svc.assetCall)
+	assert.Equal(t, testRecordUID, svc.lastAssetUID)
+	assert.Equal(t, "image/png", rec.Header().Get("Content-Type"))
+	assert.Equal(t, png, rec.Body.Bytes())
+}
+
+// uid 不是合法 ULID 直接 404，service 不被调到。
+func TestAdminRecordsAssetContentRejectsBadUID(t *testing.T) {
+	svc := &fakeAdminRecordsService{}
+	engine := newAdminRecordsEngine(t, svc, upstreamservice.RoleAdmin)
+
+	rec := doRequest(t, engine, http.MethodGet,
+		"/api/v1/designkit/admin/records/assets/not-a-ulid/content", "", nil)
+
+	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+	assertErrorEnvelope(t, rec.Body.Bytes(), dkdomain.ErrCodeAssetNotFound)
+	assert.Zero(t, svc.assetCall)
+}
+
+// service 报存储错误时原样透出（不误报成 404，口径同批次缩略图）。
+func TestAdminRecordsAssetContentStorageError(t *testing.T) {
+	svc := &fakeAdminRecordsService{
+		assetErr: dkdomain.NewError(dkdomain.ErrCodeStorageError),
+	}
+	engine := newAdminRecordsEngine(t, svc, upstreamservice.RoleAdmin)
+
+	rec := doRequest(t, engine, http.MethodGet,
+		"/api/v1/designkit/admin/records/assets/"+testRecordUID+"/content", "", nil)
+
+	require.NotEqual(t, http.StatusNotFound, rec.Code)
 	assertErrorEnvelope(t, rec.Body.Bytes(), dkdomain.ErrCodeStorageError)
 }
 

@@ -47,6 +47,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	dkdomain "github.com/Wei-Shaw/sub2api/internal/designkit/domain"
 )
@@ -134,6 +135,9 @@ type SuggestInput struct {
 	CategorySlug string
 	// Features 运营填的「商品特点」，可空。
 	Features string
+	// Force 跳过缓存、强制重新推荐（「重新推荐」按钮 = 运营明确要新答案）。
+	// 新结果照样回写缓存，下一次相同输入命中的是这份最新的。
+	Force bool
 }
 
 // SuggestCategory 最终用的是哪个分类。
@@ -163,6 +167,9 @@ type SuggestResult struct {
 	Candidates []SuggestCandidate
 	// Note 给运营的一句中文说明，可空（比如「没找到贴合的词，用的是这一类里的前几条」）。
 	Note string
+	// CachedAt 非零 = 这条来自缓存，值是它最初生成的时间。
+	// 命中缓存没有调模型、没有产生新计费；零值 = 本次现算的。
+	CachedAt time.Time
 }
 
 // PromptSuggestService 干活的。
@@ -172,6 +179,9 @@ type PromptSuggestService struct {
 	chat    ChatInvoker
 	keys    *InternalKeyService
 	log     *slog.Logger
+	// cache 推荐结果的进程内缓存（见 prompt_suggest_cache.go）。
+	// 一次推荐是真金白银（$0.09~$0.34），相同输入直接复用上次的答案。
+	cache *suggestCache
 }
 
 // NewPromptSuggestService 造服务。三个必需零件缺一个就报错——
@@ -192,6 +202,7 @@ func NewPromptSuggestService(deps PromptSuggestDeps) (*PromptSuggestService, err
 		chat:    deps.Chat,
 		keys:    deps.Keys,
 		log:     deps.Logger,
+		cache:   newSuggestCache(suggestCacheCapacity, suggestCacheTTL),
 	}, nil
 }
 
@@ -220,6 +231,19 @@ func (s *PromptSuggestService) Suggest(ctx context.Context, in SuggestInput) (*S
 		return nil, dkdomain.NewError(dkdomain.ErrCodeAPIKeyMissing).
 			WithMessage("账号还没开通出图权限，请联系管理员。")
 	}
+
+	// 缓存：输入完全相同（同一批图 + 同分类 + 同一句商品特点）时直接复用上次的答案，
+	// 一趟模型都不调、一分钱不花。Force（「重新推荐」按钮）跳过查询，
+	// 但算出来的新结果照样回写。命中的结果带 CachedAt，前端据此说明「这是缓存的」。
+	cacheKey := suggestCacheKey(in.UserID,
+		append([]string{in.AssetUID}, in.ExtraAssetUIDs...),
+		in.CategorySlug, in.Features, DefaultChatModel)
+	if !in.Force {
+		if hit, ok := s.cache.Get(cacheKey); ok {
+			return hit, nil
+		}
+	}
+
 	apiKey, err := s.keys.EnsureInternalKey(ctx, in.UserID)
 	if err != nil {
 		return nil, err
@@ -315,7 +339,7 @@ func (s *PromptSuggestService) Suggest(ctx context.Context, in SuggestInput) (*S
 		candidates = append(candidates, SuggestCandidate{UID: p.UID, Title: p.Title})
 	}
 
-	return &SuggestResult{
+	result := &SuggestResult{
 		Prompt: final,
 		Category: SuggestCategory{
 			Slug: category.Slug,
@@ -323,7 +347,10 @@ func (s *PromptSuggestService) Suggest(ctx context.Context, in SuggestInput) (*S
 		},
 		Candidates: candidates,
 		Note:       strings.Join(notes, " "),
-	}, nil
+	}
+	// 只缓存成功的结果；失败不缓存 —— 缓存一次失败等于让运营连错 24 小时。
+	s.cache.Put(cacheKey, *result)
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------

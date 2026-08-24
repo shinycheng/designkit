@@ -319,3 +319,19 @@ func (r *AdminRecordsRepo) ListCurrentImagesByItem(ctx context.Context, itemID i
 	defer closeRows(rows)
 	return scanImages(rows)
 }
+
+// ---- 对话附图（商品图）----
+
+// getAdminAssetSQL 跨用户按对外编号取一张商品图（对话附图的缩略图那条路用）。
+// **没有 user_id 条件**（管理员通道，口径 1），但软删过的照样不给（口径 2）。
+const getAdminAssetSQL = `SELECT ` + assetColumns + ` FROM designkit_assets
+WHERE uid = $1 AND deleted_at IS NULL`
+
+// GetAssetByUID 单张商品图。不存在（或已被主人删掉）返回 ErrNotFound。
+func (r *AdminRecordsRepo) GetAssetByUID(ctx context.Context, uid string) (*dkdomain.Asset, error) {
+	asset, err := scanAsset(r.sql.QueryRowContext(ctx, getAdminAssetSQL, uid))
+	if err != nil {
+		return nil, translate(err, "商品图")
+	}
+	return asset, nil
+}

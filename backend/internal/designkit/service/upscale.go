@@ -29,13 +29,14 @@ import (
 // 两块东西：
 //
 //	1. ImgsvcUpscaleClient —— POST imgsvc /v1/upscale 的 HTTP 客户端。
-//	2. UpscaleService      —— 内存队列 + 单 worker：运营点「高清放大」立刻返回
-//	   queued，后台一张一张放；前端每 5 秒查一次状态。
+//	2. UpscaleService      —— 任务表（designkit_upscale_tasks，9004）+ 单 worker：
+//	   运营点「高清放大」立刻返回 queued，后台一张一张放；前端每 5 秒查一次状态。
 //
-// 【为什么是内存队列，不落表】
-// 一张图要一两分钟，同步 HTTP 必超时；而为它建表又太重——放大不花钱、
-// 可以随手重点。CLAUDE.md 已知约束「只能跑一个后端实例」，内存队列在单实例下
-// 就是全局队列。**重启丢任务是接受过的代价**：运营看到失败/没结果就重点一次。
+// 【任务表为准，内存只剩队列信道】（9004 起；原来是纯内存队列，重启丢任务）
+// 状态的唯一真相在数据库：入队 = 插行，Status 查询 = 查最新一行，
+// 状态流转 = 带守卫的 UPDATE。内存里只有一条 chan 给 worker 递任务编号，
+// 丢了也无所谓——重启时把 status IN (queued, running) 的任务重新入队接着放
+//（running 的重置回 queued：上次进程死在半路）。运营点过就不用再点第二次。
 //
 // 【为什么单 worker、队列封顶 10】
 // imgsvc 那边单块 tile 推理峰值按 1~2GB 估，串行是内存的硬要求；
@@ -43,7 +44,8 @@ import (
 // 满了直接告诉运营「排队满了，等会儿再试」。
 //
 // 【去重】
-// 同一张商品图已经在排队/在放/放完了，再点一次不入队，直接返回现有任务。
+// 同一张商品图已经在排队/在放/放完了，再点一次不入队，直接返回现有任务
+//（按「这张图最新的一行」判）；failed 的重新入队 = 插一行新任务，旧行留作历史。
 // 放完的结果本身也走 sha256 去重入库（UploadAsset），磁盘上永远只有一份。
 
 const (
@@ -292,7 +294,8 @@ const (
 	UpscaleStatusFailed UpscaleStatus = "failed"
 )
 
-// UpscaleTask 一次放大任务的状态快照（Enqueue / Status 返回的都是副本）。
+// UpscaleTask 一次放大任务的状态快照（Enqueue / Status 返回的都是
+// 从任务表现读出来的值，不共享内存，调用方随便改）。
 type UpscaleTask struct {
 	// AssetUID 被放大的那张商品图。任务按它去重。
 	AssetUID string
@@ -313,36 +316,76 @@ type UpscaleTask struct {
 	UpdatedAt time.Time
 }
 
+// UpscaleStore 是本服务对任务表的全部要求。repository.UpscaleRepo 实现了它。
+//
+// 状态流转方法全部带守卫（MarkRunning 只认 queued、MarkDone/MarkFailed 只认
+// running），守卫没命中返回 ErrConflict——这是「同一个任务被处理两遍」的止损点。
+type UpscaleStore interface {
+	// Insert 插一行新任务（status=queued），返回带时间戳的完整行。
+	Insert(ctx context.Context, rec *dkdomain.UpscaleTaskRecord) (*dkdomain.UpscaleTaskRecord, error)
+	// LatestByAsset 这张图最新的一行，归属过滤在 SQL 里做；没有一律 ErrNotFound。
+	LatestByAsset(ctx context.Context, userID int64, assetUID string) (*dkdomain.UpscaleTaskRecord, error)
+	// GetByUID 按任务编号取一行。
+	GetByUID(ctx context.Context, uid string) (*dkdomain.UpscaleTaskRecord, error)
+	// MarkRunning queued → running。
+	MarkRunning(ctx context.Context, uid string) error
+	// MarkDone running → done，记下产物商品图。
+	MarkDone(ctx context.Context, uid, resultAssetUID string) error
+	// MarkFailed running → failed，记下错误码和中文原因。
+	MarkFailed(ctx context.Context, uid, errorCode, errorMessage string) error
+	// RequeueInterrupted running → queued（重启恢复第一步），返回重置了几行。
+	RequeueInterrupted(ctx context.Context) (int64, error)
+	// ListQueued 还排着队的任务，按入队顺序（恢复第二步）。
+	ListQueued(ctx context.Context, limit int) ([]*dkdomain.UpscaleTaskRecord, error)
+}
+
+// upscaleDBTimeout 单次任务表读写的超时。放大本体另有整段超时（timeout），
+// 这里只管状态行的那几条小 SQL。
+const upscaleDBTimeout = 10 * time.Second
+
+// upscaleRecoverLimit 重启恢复一次最多捞多少条排队任务。
+// 队列封顶 10 + 在放的 1，正常永远到不了这个数；到了说明有人手工改库。
+const upscaleRecoverLimit = 100
+
 // UpscaleServiceDeps 建 UpscaleService 要的依赖。
 type UpscaleServiceDeps struct {
 	// Assets 商品图服务，必填：读原图（校验归属）、放大结果入库都靠它。
 	Assets *AssetService
 	// Backend 放大后端，必填。
 	Backend UpscaleBackend
+	// Repo 任务表，必填（9004 起任务落库，重启不丢）。
+	Repo UpscaleStore
 	// QueueCap 队列封顶。<=0 用默认 10。
 	QueueCap int
 	// Timeout 单张放大的处理超时（读图 + 推理 + 入库整段）。<=0 用 5 分钟。
 	Timeout time.Duration
-	// Now 取当前时间，测试塞固定值。nil 用 time.Now。
-	Now func() time.Time
+	// NewUID 生成 26 位 ULID（任务编号）。nil 用内置实现。
+	// （原来这里还有个 Now——任务时间戳改由数据库 NOW() 写，字段删了。）
+	NewUID func() string
 }
 
 // UpscaleService 「高清放大」的排队与状态。
 //
-// 状态机（单向，除了 failed 可以重新入队）：
+// 状态机（单向；failed 之后重新入队 = 插一行新任务）：
 //
 //	queued → running → done
-//	                 ↘ failed →（运营再点一次）→ queued
+//	                 ↘ failed →（运营再点一次）→ 新的一行 queued
 type UpscaleService struct {
 	assets  *AssetService
 	backend UpscaleBackend
+	repo    UpscaleStore
 	timeout time.Duration
-	now     func() time.Time
+	newUID  func() string
 
-	mu    sync.Mutex
-	tasks map[string]*UpscaleTask // key = 商品图 uid
+	// mu 串行化入队：查最新一行 → 判满 → 插行 → 发信道 这一段必须原子，
+	// 否则两次双击会给同一张图排两个任务。**所有往 queue 发的地方都持有 mu**，
+	// 所以「len(queue) < cap 之后再发」不会阻塞。
+	mu sync.Mutex
 
-	queue chan string
+	// queue 队列信道，装的是任务编号（uid）。只是信道不是真相：
+	// 信号丢了（比如插行成功后进程被杀）重启恢复会把任务捞回来。
+	queue    chan string
+	queueCap int
 
 	// baseCtx 后台 worker 的生命周期；Close() 时 cancel，在放的那张立刻中断。
 	baseCtx context.Context
@@ -350,13 +393,17 @@ type UpscaleService struct {
 	wg      sync.WaitGroup
 }
 
-// NewUpscaleService 建服务并启动后台 worker。缺依赖直接报错。
+// NewUpscaleService 建服务并启动后台 worker（worker 起手先做重启恢复）。
+// 缺依赖直接报错。
 func NewUpscaleService(deps UpscaleServiceDeps) (*UpscaleService, error) {
 	if deps.Assets == nil {
 		return nil, errors.New("designkit: UpscaleService 缺少商品图服务")
 	}
 	if deps.Backend == nil {
 		return nil, errors.New("designkit: UpscaleService 缺少放大后端")
+	}
+	if deps.Repo == nil {
+		return nil, errors.New("designkit: UpscaleService 缺少任务表（9004 起任务落库）")
 	}
 	queueCap := deps.QueueCap
 	if queueCap <= 0 {
@@ -366,21 +413,22 @@ func NewUpscaleService(deps UpscaleServiceDeps) (*UpscaleService, error) {
 	if timeout <= 0 {
 		timeout = DefaultUpscaleTimeout
 	}
-	now := deps.Now
-	if now == nil {
-		now = time.Now
+	newUID := deps.NewUID
+	if newUID == nil {
+		newUID = newAssetULID
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &UpscaleService{
-		assets:  deps.Assets,
-		backend: deps.Backend,
-		timeout: timeout,
-		now:     now,
-		tasks:   make(map[string]*UpscaleTask),
-		queue:   make(chan string, queueCap),
-		baseCtx: ctx,
-		cancel:  cancel,
+		assets:   deps.Assets,
+		backend:  deps.Backend,
+		repo:     deps.Repo,
+		timeout:  timeout,
+		newUID:   newUID,
+		queue:    make(chan string, queueCap),
+		queueCap: queueCap,
+		baseCtx:  ctx,
+		cancel:   cancel,
 	}
 	s.wg.Add(1)
 	go s.run()
@@ -388,8 +436,9 @@ func NewUpscaleService(deps UpscaleServiceDeps) (*UpscaleService, error) {
 }
 
 // Close 停掉后台 worker。**不等在放的那张放完**——上游 main.go 只给 5 秒
-// 就让进程消失，而一张要一两分钟；cancel 之后推理请求立刻中断，
-// 那张任务留在 failed/running 也无所谓：重启后任务表本来就是空的（内存队列）。
+// 就让进程消失，而一张要一两分钟；cancel 之后推理请求立刻中断。
+// 被打断的那张**刻意留在 running 不写失败**：重启恢复会把它重置回 queued
+// 接着放，运营什么都不用做（见 process 里的关停分支）。
 func (s *UpscaleService) Close() {
 	if s == nil {
 		return
@@ -398,11 +447,12 @@ func (s *UpscaleService) Close() {
 	s.wg.Wait()
 }
 
-// Enqueue 把一张商品图排进放大队列。
+// Enqueue 把一张商品图排进放大队列（任务落库，重启不丢）。
 //
-// 去重规则（同一张图）：
-//   - queued / running / done → 不重复入队，返回现有任务（done 直接就是结果）；
-//   - failed → 重新入队（「放大失败，重试一次」点的就是这条路）。
+// 去重规则（按「这张图最新的一行」判）：
+//   - queued / running → 不重复入队，返回现有任务；
+//   - done 且产物还在 → 直接返回结果；产物被删了 → 当没放过，重新排；
+//   - failed / 没排过 → 插一行新任务入队（「放大失败，重试一次」点的就是这条路）。
 //
 // 队列满返回 DK_UPSCALE_QUEUE_FULL（「排队满了，等会儿再试。」）。
 func (s *UpscaleService) Enqueue(ctx context.Context, userID int64, origin dkdomain.Origin, assetUID string) (*UpscaleTask, error) {
@@ -425,64 +475,100 @@ func (s *UpscaleService) Enqueue(ctx context.Context, userID int64, origin dkdom
 		return nil, err
 	}
 
+	// 从这里到发信道必须原子（见 mu 的注释），否则双击 = 同一张图两个任务。
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// uid 是按人隔离的（GetAsset 刚校验过归属），同一个 uid 不可能属于两个人；
-	// 这里再比一次 UserID 纯属防御。
-	if existing, ok := s.tasks[assetUID]; ok && existing.UserID == userID {
-		if existing.Status != UpscaleStatusFailed {
-			return existing.snapshot(), nil
+	latest, err := s.repo.LatestByAsset(ctx, userID, assetUID)
+	if err != nil && !errors.Is(err, dkdomain.ErrNotFound) {
+		return nil, dkdomain.NewError(dkdomain.ErrCodeInternal).WithCause(err)
+	}
+	if latest != nil {
+		switch UpscaleStatus(latest.Status) {
+		case UpscaleStatusQueued, UpscaleStatusRunning:
+			// 已经在排 / 在放，不重复入队。
+			return s.taskFromRecord(ctx, latest), nil
+		case UpscaleStatusDone:
+			task := s.taskFromRecord(ctx, latest)
+			if task.Result != nil {
+				return task, nil
+			}
+			// done 但产物找不到了（被删/换过库）：当没放过，往下走重新排。
+		case UpscaleStatusFailed:
+			// 往下走：插一行新任务重试，failed 的旧行留作历史。
 		}
 	}
 
-	task := &UpscaleTask{
-		AssetUID:  assetUID,
-		UserID:    userID,
-		Origin:    origin,
-		Status:    UpscaleStatusQueued,
-		CreatedAt: s.now().UTC(),
-		UpdatedAt: s.now().UTC(),
-	}
-
-	select {
-	case s.queue <- assetUID:
-		s.tasks[assetUID] = task
-		return task.snapshot(), nil
-	default:
-		// 队列满。**不覆盖旧任务**：失败的那条留着，运营等会儿还能重试。
+	// 判满在插行**之前**：满了就什么都不建、不留任务残骸，
+	// 失败的旧行也原样留着，运营等会儿还能重试。
+	// len 和发送都在 mu 里，这个判断是准的。
+	if len(s.queue) >= s.queueCap {
 		return nil, dkdomain.NewError(dkdomain.ErrCodeUpscaleQueueFull)
 	}
+
+	created, err := s.repo.Insert(ctx, &dkdomain.UpscaleTaskRecord{
+		UID:      s.newUID(),
+		AssetUID: assetUID,
+		UserID:   userID,
+		Origin:   origin,
+	})
+	if err != nil {
+		return nil, dkdomain.NewError(dkdomain.ErrCodeInternal).WithCause(err)
+	}
+	// 刚判过不满、发送方都持有 mu，这里必然发得进去。
+	s.queue <- created.UID
+	return s.taskFromRecord(ctx, created), nil
 }
 
-// Status 查一张商品图的放大任务。没有（或不是他的）→ DK_UPSCALE_NOT_FOUND。
-//
-// ⚠ 重启后任务表是空的：正在轮询的前端会拿到 404，文案里写了
-// 「重新点『高清放大』」，这就是内存队列约定好的代价。
-func (s *UpscaleService) Status(_ context.Context, userID int64, assetUID string) (*UpscaleTask, error) {
+// Status 查一张商品图的放大任务（最新的一行，任务表为准，重启不丢）。
+// 没有（或不是他的）→ DK_UPSCALE_NOT_FOUND，不要 403——403 等于告诉对方编号存在。
+func (s *UpscaleService) Status(ctx context.Context, userID int64, assetUID string) (*UpscaleTask, error) {
 	if userID <= 0 {
 		return nil, dkdomain.NewError(dkdomain.ErrCodeUnauthorized)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	task, ok := s.tasks[strings.TrimSpace(assetUID)]
-	if !ok || task.UserID != userID {
-		// 归属不匹配也报「找不到」，不要 403 —— 403 等于告诉对方这个编号存在。
-		return nil, dkdomain.NewError(dkdomain.ErrCodeUpscaleNotFound)
+	rec, err := s.repo.LatestByAsset(ctx, userID, strings.TrimSpace(assetUID))
+	if err != nil {
+		if errors.Is(err, dkdomain.ErrNotFound) {
+			return nil, dkdomain.NewError(dkdomain.ErrCodeUpscaleNotFound)
+		}
+		return nil, dkdomain.NewError(dkdomain.ErrCodeInternal).WithCause(err)
 	}
-	return task.snapshot(), nil
+	return s.taskFromRecord(ctx, rec), nil
 }
 
-// snapshot 返回副本，调用方拿到的状态不会被 worker 改到一半。
-// 调用方必须已持有 s.mu。
-func (t *UpscaleTask) snapshot() *UpscaleTask {
-	clone := *t
-	return &clone
+// taskFromRecord 把任务行翻成对外快照；done 的顺手把产物商品图读出来。
+//
+// 产物读不到（被删/换过库）**不报错**：任务本身的状态还是真的。
+// Result 缺席时 Status 原样返回并留一行日志，Enqueue 会把它当「没放过」重新排。
+func (s *UpscaleService) taskFromRecord(ctx context.Context, rec *dkdomain.UpscaleTaskRecord) *UpscaleTask {
+	task := &UpscaleTask{
+		AssetUID:     rec.AssetUID,
+		UserID:       rec.UserID,
+		Origin:       rec.Origin,
+		Status:       UpscaleStatus(rec.Status),
+		ErrorMessage: rec.ErrorMessage,
+		ErrorCode:    rec.ErrorCode,
+		CreatedAt:    rec.CreatedAt,
+		UpdatedAt:    rec.UpdatedAt,
+	}
+	if task.Status == UpscaleStatusDone && rec.ResultAssetUID != nil {
+		result, err := s.assets.GetAsset(ctx, rec.UserID, *rec.ResultAssetUID)
+		if err != nil {
+			slog.Warn("designkit 放大任务的产物商品图读不到了",
+				slog.String("task_uid", rec.UID),
+				slog.String("result_asset_uid", *rec.ResultAssetUID),
+				slog.Any("error", err))
+		} else {
+			task.Result = result
+		}
+	}
+	return task
 }
 
-// run 后台 worker：一次一张，串行。
+// run 后台 worker：起手先做重启恢复，然后一次一张，串行。
 func (s *UpscaleService) run() {
 	defer s.wg.Done()
+	s.recoverPending()
 	for {
 		select {
 		case <-s.baseCtx.Done():
@@ -493,44 +579,116 @@ func (s *UpscaleService) run() {
 	}
 }
 
-// process 放一张。任何失败都把任务置 failed + 中文原因，绝不静默。
-func (s *UpscaleService) process(uid string) {
-	s.mu.Lock()
-	task, ok := s.tasks[uid]
-	if !ok || task.Status != UpscaleStatusQueued {
-		// 只处理还排着队的。（正常流程走不到别的状态；防御分支。）
-		s.mu.Unlock()
-		return
-	}
-	task.Status = UpscaleStatusRunning
-	task.UpdatedAt = s.now().UTC()
-	userID, origin := task.UserID, task.Origin
-	s.mu.Unlock()
-
-	ctx, cancel := context.WithTimeout(s.baseCtx, s.timeout)
-	defer cancel()
-
-	result, err := s.execute(ctx, userID, origin, uid)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// 任务行还是同一条（中间没有别的写方），直接改。
-	task.UpdatedAt = s.now().UTC()
+// recoverPending 重启恢复：running 的重置回 queued（上次进程死在半路），
+// 然后把还排着队的按入队顺序直接处理掉。
+//
+// **不经过队列信道**：恢复的任务在信道里没有名额也不占名额（Enqueue 的判满
+// 只管新请求）。恢复期间用户新排的任务照常走信道，等恢复的处理完才轮到——
+// 这正是「先来先放」。两边撞上同一个任务（恢复扫到的同时用户重试成功）也不怕：
+// process 只认 queued + MarkRunning 带守卫，后到的一方空转返回。
+func (s *UpscaleService) recoverPending() {
+	ctx, cancel := context.WithTimeout(s.baseCtx, upscaleDBTimeout)
+	requeued, err := s.repo.RequeueInterrupted(ctx)
+	cancel()
 	if err != nil {
-		task.Status = UpscaleStatusFailed
-		task.ErrorMessage, task.ErrorCode = upscaleFailureText(err)
-		slog.Warn("designkit 高清放大失败",
-			slog.String("asset_uid", uid),
-			slog.Int64("user_id", userID),
-			slog.String("error_code", task.ErrorCode),
+		// 恢复失败不拦启动：新任务照常收，旧任务等下次重启再捞。
+		slog.Error("designkit 高清放大重启恢复失败（running 重置 queued），旧任务暂时不会续跑",
 			slog.Any("error", err))
 		return
 	}
-	task.Status = UpscaleStatusDone
-	task.Result = result
+	if requeued > 0 {
+		slog.Info("designkit 高清放大：上次进程死在半路的任务已重新排队",
+			slog.Int64("count", requeued))
+	}
+
+	ctx, cancel = context.WithTimeout(s.baseCtx, upscaleDBTimeout)
+	pending, err := s.repo.ListQueued(ctx, upscaleRecoverLimit)
+	cancel()
+	if err != nil {
+		slog.Error("designkit 高清放大重启恢复失败（读排队任务），旧任务暂时不会续跑",
+			slog.Any("error", err))
+		return
+	}
+	for _, rec := range pending {
+		if s.baseCtx.Err() != nil {
+			return
+		}
+		s.process(rec.UID)
+	}
+}
+
+// process 放一张（入参是任务编号）。任何失败都把任务行置 failed + 中文原因，
+// 绝不静默——唯一的例外是关停：被 Close 打断的那张**留在 running**，
+// 下次启动 recoverPending 会把它重置回 queued 接着放，运营什么都不用做。
+func (s *UpscaleService) process(uid string) {
+	readCtx, cancelRead := context.WithTimeout(s.baseCtx, upscaleDBTimeout)
+	task, err := s.repo.GetByUID(readCtx, uid)
+	cancelRead()
+	if err != nil {
+		// 找不到 = 信道里的陈旧信号（行被手工清了），跳过即可；别的错误要留痕。
+		if !errors.Is(err, dkdomain.ErrNotFound) {
+			slog.Error("designkit 高清放大读任务失败，这一张先跳过（重启恢复会再捞）",
+				slog.String("task_uid", uid), slog.Any("error", err))
+		}
+		return
+	}
+	if task.Status != string(UpscaleStatusQueued) {
+		// 已经被处理过（恢复循环和信道信号撞上同一个任务）。不是错误。
+		return
+	}
+
+	claimCtx, cancelClaim := context.WithTimeout(s.baseCtx, upscaleDBTimeout)
+	err = s.repo.MarkRunning(claimCtx, uid)
+	cancelClaim()
+	if err != nil {
+		if !errors.Is(err, dkdomain.ErrConflict) {
+			slog.Error("designkit 高清放大领任务失败，这一张先跳过（重启恢复会再捞）",
+				slog.String("task_uid", uid), slog.Any("error", err))
+		}
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(s.baseCtx, s.timeout)
+	defer cancel()
+	result, execErr := s.execute(ctx, task.UserID, task.Origin, task.AssetUID)
+
+	// 关停打断：不写失败，留在 running 让下次启动续跑（见函数头注释）。
+	if s.baseCtx.Err() != nil {
+		return
+	}
+
+	// 写回必须用干净的 context：execute 那个可能已经超时了，
+	// 拿它写库会把「放大超时」变成「超时且状态没落库」。
+	writeCtx, cancelWrite := context.WithTimeout(context.WithoutCancel(s.baseCtx), upscaleDBTimeout)
+	defer cancelWrite()
+
+	if execErr != nil {
+		message, code := upscaleFailureText(execErr)
+		if markErr := s.repo.MarkFailed(writeCtx, uid, code, message); markErr != nil {
+			slog.Error("designkit 高清放大失败且状态写不进任务表（任务会留在 running，重启恢复会重放这一张）",
+				slog.String("task_uid", uid), slog.Any("mark_error", markErr))
+		}
+		slog.Warn("designkit 高清放大失败",
+			slog.String("task_uid", uid),
+			slog.String("asset_uid", task.AssetUID),
+			slog.Int64("user_id", task.UserID),
+			slog.String("error_code", code),
+			slog.Any("error", execErr))
+		return
+	}
+
+	if markErr := s.repo.MarkDone(writeCtx, uid, result.UID); markErr != nil {
+		// 图已入库但任务行没写上 done：留在 running，重启恢复会重放这一张，
+		// 重放的产物走 sha256 去重（UploadAsset），不会重复占盘。
+		slog.Error("designkit 高清放大完成但状态写不进任务表（重启恢复会重放，产物按 sha256 去重）",
+			slog.String("task_uid", uid), slog.Any("mark_error", markErr))
+		return
+	}
 	slog.Info("designkit 高清放大完成",
-		slog.String("asset_uid", uid),
+		slog.String("task_uid", uid),
+		slog.String("asset_uid", task.AssetUID),
 		slog.String("result_uid", result.UID),
-		slog.Int64("user_id", userID),
+		slog.Int64("user_id", task.UserID),
 		slog.Int64("bytes", result.ByteSize))
 }
 

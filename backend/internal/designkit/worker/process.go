@@ -146,7 +146,9 @@ func (p *Pool) resolveImage(ctx context.Context, job *dkdomain.Job, item *dkdoma
 	assetID := *item.AssetID
 	maxDimension := p.settings.MaxDimension
 
-	variant, err := p.deps.Repo.GetVariant(ctx, assetID, job.Ratio, p.cfg.KeepTransparency, maxDimension)
+	// keep_transparency 按批取值（designkit_jobs.keep_transparency，9004 起）。
+	// 9004 之前的历史批次回填 FALSE，跟它们当时走全局配置的实际行为一致。
+	variant, err := p.deps.Repo.GetVariant(ctx, assetID, job.Ratio, job.KeepTransparency, maxDimension)
 	// ErrNotFound 是正常路径（还没预处理过），其余错误才是真的出事了。
 	if err != nil && !errors.Is(err, dkdomain.ErrNotFound) {
 		return nil, failRetry(dkdomain.ErrCodeInternal).withCause(err)
@@ -212,7 +214,7 @@ func (p *Pool) preprocess(ctx context.Context, job *dkdomain.Job, assetID int64,
 		Filename:         filenameFor(asset.ObjectKey, contentType),
 		ContentType:      contentType,
 		Ratio:            job.Ratio,
-		KeepTransparency: p.cfg.KeepTransparency,
+		KeepTransparency: job.KeepTransparency,
 		// ⚠ **每次都要显式带**，值取自 designkit_settings.max_dimension。
 		// 不带的话，管理员把它从 2048 改成 4096 而 Python 那边的环境变量没跟着改，
 		// 就会「界面说 4K、实际按 2K 出图」，而且不报错。
@@ -228,7 +230,7 @@ func (p *Pool) preprocess(ctx context.Context, job *dkdomain.Job, assetID int64,
 	}
 
 	outType := firstNonEmpty(result.ContentType, "image/png")
-	key := dkdomain.VariantObjectKey(p.now(), asset.UID, job.Ratio, p.cfg.KeepTransparency, maxDimension, extForContentType(outType))
+	key := dkdomain.VariantObjectKey(p.now(), asset.UID, job.Ratio, job.KeepTransparency, maxDimension, extForContentType(outType))
 	if err := p.putWithRetry(ctx, key, outType, result.Data); err != nil {
 		return nil, failRetry(dkdomain.ErrCodeStorageError).withCause(err)
 	}
@@ -237,7 +239,7 @@ func (p *Pool) preprocess(ctx context.Context, job *dkdomain.Job, assetID int64,
 	if _, err := p.deps.Repo.UpsertVariant(ctx, dkdomain.UpsertVariantParams{
 		AssetID:          asset.ID,
 		Ratio:            job.Ratio,
-		KeepTransparency: p.cfg.KeepTransparency,
+		KeepTransparency: job.KeepTransparency,
 		MaxDimension:     maxDimension,
 		ObjectKey:        key,
 		Width:            &width,
