@@ -108,6 +108,7 @@
 
         <!-- 库是空的：还没同步过。**不要显示一个空白列表。** -->
         <div v-else-if="libraryEmpty" class="dk-empty">
+          <img class="dk-empty__illus" src="/designkit/illustrations/empty-inspiration.svg" alt="" />
           <p class="dk-empty__title">{{ t('designkit.inspiration.emptyTitle') }}</p>
           <p class="dk-empty__description">
             {{ isAdmin
@@ -129,9 +130,11 @@
 
         <!-- 库里有词，但这个条件下搜不到 -->
         <div v-else-if="prompts.length === 0" class="dk-empty">
+          <img class="dk-empty__illus" src="/designkit/illustrations/empty-generic.svg" alt="" />
           <p class="dk-empty__title">{{ t('designkit.inspiration.noResultTitle') }}</p>
           <p class="dk-empty__description">{{ t('designkit.inspiration.noResultHint') }}</p>
-          <button type="button" class="dk-button dk-button--secondary" @click="resetFilters()">
+          <!-- 精修①：从次要钮升成主行动钮（去掉 --secondary，基础款就是主紫）。 -->
+          <button type="button" class="dk-button" @click="resetFilters()">
             {{ t('designkit.inspiration.resetFilters') }}
           </button>
         </div>

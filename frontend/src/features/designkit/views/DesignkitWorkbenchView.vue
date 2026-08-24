@@ -51,7 +51,7 @@
           -->
           <UsageCard ref="usageCard" />
 
-          <AssetUploader ref="assetUploader" v-model="assets" />
+          <AssetUploader ref="assetUploader" v-model="assets" :step-state="stepStates.upload" />
 
           <!-- 提交之后：进度和结果图 -->
           <JobProgressPanel
@@ -169,15 +169,21 @@
           -->
           <PromptEditor
             v-model="prompts"
-            class="dk-config-section"
+            class="dk-config-section dk-step-panel"
             :asset-count="assets.length"
             :first-asset-uid="assets.length > 0 ? assets[0].uid : ''"
             :extra-asset-uids="assets.slice(1).map((a) => a.uid)"
+            :step-state="stepStates.prompt"
           />
-          <RatioPicker v-model="ratio" class="dk-config-section" />
+          <RatioPicker
+            v-model="ratio"
+            class="dk-config-section dk-step-panel"
+            :step-state="stepStates.ratio"
+          />
           <EstimatePanel
             v-model:name="jobName"
-            class="dk-config-section"
+            class="dk-config-section dk-step-panel"
+            :step-state="stepStates.submit"
             :asset-count="assets.length"
             :prompt-count="allPrompts.length"
             :estimate="estimate"
@@ -236,7 +242,7 @@ import ConfirmSubmitDialog from '../components/workbench/ConfirmSubmitDialog.vue
 import QuotaRequestDialog from '../components/workbench/QuotaRequestDialog.vue'
 import JobProgressPanel from '../components/workbench/JobProgressPanel.vue'
 import { estimateJobWithNote } from '../components/workbench/jobApi'
-import type { SubmitErrorView } from '../components/workbench/viewTypes'
+import type { SubmitErrorView, WorkbenchStepState } from '../components/workbench/viewTypes'
 // 页面里用到的通用样式（按钮、卡片、画布、配置区……），全局引入，Vite 会去重。
 import '../components/designkit-ui.css'
 
@@ -436,6 +442,30 @@ const estimatedCost = computed<Price>(() => estimate.value?.estimated_cost ?? PR
 const canEstimate = computed(
   () => ratio.value !== '' && assets.value.length > 0 && allPrompts.value.length > 0,
 )
+
+/**
+ * 四步标题前编号圆点的状态（设计稿 05-视觉精修 第③块），全部从已有状态推导：
+ * 有图=步1完成、有词=步2完成、选了比例=步3完成；「当前步」=第一个没完成的那步；
+ * 前三步都齐（= canEstimate，也就是可提交）时第4步高亮。
+ * 比例会自动选中默认值，所以步3常常先于步1、步2完成——圆点照实画，不装作按顺序走。
+ */
+const stepStates = computed<{
+  upload: WorkbenchStepState
+  prompt: WorkbenchStepState
+  ratio: WorkbenchStepState
+  submit: WorkbenchStepState
+}>(() => {
+  const done = [assets.value.length > 0, allPrompts.value.length > 0, ratio.value !== '']
+  const firstTodo = done.indexOf(false)
+  const stateOf = (i: number): WorkbenchStepState =>
+    done[i] ? 'done' : i === firstTodo ? 'current' : 'todo'
+  return {
+    upload: stateOf(0),
+    prompt: stateOf(1),
+    ratio: stateOf(2),
+    submit: firstTodo === -1 ? 'current' : 'todo',
+  }
+})
 
 /**
  * 画布右上角那行小字：「3 张商品图 × 4 条提示词 = 12 张」。

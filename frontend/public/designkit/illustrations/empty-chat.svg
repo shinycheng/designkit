@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="对话气泡，中间亮着一颗紫色星点" style="color:var(--dk-border,#273049)">
+  <path d="M38 32H86A8 8 0 0 1 94 40V68A8 8 0 0 1 86 76H60L48 88V76H38A8 8 0 0 1 30 68V40A8 8 0 0 1 38 32Z"/>
+  <path class="dk-illus-accent" d="M62 44C63 50.5 65.5 53 72 54C65.5 55 63 57.5 62 64C61 57.5 58.5 55 52 54C58.5 53 61 50.5 62 44Z" style="stroke:var(--dk-action,#7c6bff)"/>
+  <circle cx="44" cy="54" r="2" fill="currentColor" stroke="none" opacity="0.55"/>
+  <circle cx="80" cy="54" r="2" fill="currentColor" stroke="none" opacity="0.55"/>
+  <path d="M101 24V31M97.5 27.5H104.5" opacity="0.55"/>
+</svg>

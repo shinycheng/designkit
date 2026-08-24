@@ -98,7 +98,7 @@ body {
 ::selection { background: rgba(124, 107, 255, 0.35); }
 a { color: var(--dk-accent); text-decoration: none; }
 a:hover { color: var(--dk-accent-strong); }
-:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--dk-focus); border-radius: var(--dk-radius-sm); }
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dk-focus); border-radius: var(--dk-radius-sm); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #273049; border-radius: 999px; border: 2px solid var(--dk-canvas); }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -173,7 +173,7 @@ a:hover { color: var(--dk-accent-strong); }
 .dk-input { height: var(--dk-control-h); }
 .dk-input::placeholder, .dk-textarea::placeholder { color: var(--dk-text-tertiary); }
 .dk-input:hover, .dk-textarea:hover, .dk-select:hover { border-color: var(--dk-border-strong); }
-.dk-input:focus, .dk-textarea:focus, .dk-select:focus { outline: none; border-color: var(--dk-action); box-shadow: 0 0 0 3px var(--dk-focus); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { outline: none; border-color: var(--dk-action); box-shadow: 0 0 0 2px var(--dk-focus); }
 .dk-input.is-error, .dk-textarea.is-error { border-color: var(--dk-danger); }
 .dk-input:disabled, .dk-textarea:disabled, .dk-select:disabled { color: var(--dk-text-disabled); background: var(--dk-surface); }
 .dk-field-error { font-size: var(--dk-text-sm); color: var(--dk-danger); margin-top: 6px; }

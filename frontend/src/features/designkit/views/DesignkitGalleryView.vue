@@ -73,12 +73,14 @@
               </button>
             </div>
 
-            <!-- 一张图都没出过：直接把人送去工作台 -->
+            <!-- 一张图都没出过：直接把人送去工作台。
+                 gallery.empty 和 job.listEmpty 是同一句话说两遍，只留后者
+                 （设计稿 05-视觉精修 第①块点名删的重复）。 -->
             <div v-else-if="jobs.length === 0" class="dk-empty">
-              <p class="dk-empty__title">{{ t('designkit.gallery.empty') }}</p>
+              <img class="dk-empty__illus" src="/designkit/illustrations/empty-gallery.svg" alt="" />
               <p class="dk-empty__description">{{ t('designkit.job.listEmpty') }}</p>
               <RouterLink class="dk-button" :to="DESIGNKIT_WORKBENCH_PATH">
-                {{ t('designkit.nav.workbench') }}
+                {{ t('designkit.inspiration.goWorkbench') }}
               </RouterLink>
             </div>
 

@@ -209,6 +209,16 @@
   -webkit-line-clamp: 2;
 }
 
+/* 链接跟其它控件同一节奏（交互过渡统一 150ms ease，设计稿 05-视觉精修 ⑤）。
+   全局生效（上游页面也在内）——只统一过渡节奏，不动任何颜色。 */
+a {
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
 /* ── 按钮 ─────────────────────────────────────────────────── */
 .dk-button {
   position: relative;
@@ -231,11 +241,14 @@
   text-align: center;
   text-decoration: none;
   cursor: pointer;
+  /* 交互过渡统一 150ms ease（设计稿 05-视觉精修 ⑤）。
+     写字面值不写 --dk-motion-fast：那个令牌是 120ms，令牌值冻结不改。 */
   transition:
-    background-color var(--dk-motion-fast) var(--dk-ease-out),
-    border-color var(--dk-motion-fast) var(--dk-ease-out),
-    color var(--dk-motion-fast) var(--dk-ease-out),
-    transform var(--dk-motion-fast) var(--dk-ease-out);
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
   white-space: nowrap;
 }
 
@@ -248,9 +261,10 @@
   transform: translateY(1px);
 }
 
+/* 焦点环全站只有一种：2px 紫（--dk-focus）。旧的 2px 蓝 outline 是浅色期残留。 */
 .dk-button:focus-visible {
-  outline: 2px solid var(--dk-accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dk-focus);
 }
 
 .dk-button:disabled,
@@ -344,8 +358,10 @@
   font-size: var(--dk-text-md);
   line-height: 1.45;
   transition:
-    border-color var(--dk-motion-fast) var(--dk-ease-out),
-    box-shadow var(--dk-motion-fast) var(--dk-ease-out);
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .dk-textarea {
@@ -358,10 +374,11 @@
   border-color: #aeb2ba;
 }
 
+/* 与按钮同一个环：2px --dk-focus，边框跟主紫走（原来蓝边 + 3px 环是另一套）。 */
 .dk-input:focus,
 .dk-textarea:focus {
-  border-color: var(--dk-accent);
-  box-shadow: 0 0 0 3px var(--dk-focus);
+  border-color: var(--dk-action);
+  box-shadow: 0 0 0 2px var(--dk-focus);
   outline: none;
 }
 
@@ -379,6 +396,8 @@
 }
 
 /* ── 标签 / 徽章 ──────────────────────────────────────────── */
+/* 规格（设计稿 05-视觉精修 ⑦）：999px 圆角；语义款 = 14% soft 底 + 本色文字；
+   中性款 = surface-raised 底 + 次级文字（原来写死的 #eceef1 是浅色期残留）。 */
 .dk-badge {
   display: inline-flex;
   width: fit-content;
@@ -387,8 +406,8 @@
   justify-content: center;
   gap: var(--dk-space-1);
   border-radius: var(--dk-radius-pill);
-  background: #eceef1;
-  color: #4e5258;
+  background: var(--dk-surface-raised);
+  color: var(--dk-text-secondary);
   padding: 3px 9px;
   font-size: var(--dk-text-xs);
   font-weight: 650;
@@ -424,6 +443,21 @@
 .dk-badge--danger {
   background: var(--dk-danger-soft);
   color: var(--dk-danger);
+}
+
+/* 「生成中」的呼吸点（值照抄 design/system/dk-dark.css 蓝本）。 */
+.dk-badge--running .dk-badge__dot {
+  animation: dk-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dk-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
 }
 
 .dk-count-pill {
@@ -515,6 +549,26 @@
   width: 24px;
   height: 24px;
   stroke-width: 1.5;
+}
+
+/*
+ * 插画位（设计稿 05-视觉精修 ①）：放 brand/empty-illustrations 那五张
+ * 120×120 细线条 SVG（frontend/public/designkit/illustrations/empty-*.svg，
+ * <img> 引用或直接内联都行）。主线 currentColor（这里给 --dk-border），
+ * 每张唯一的紫点缀元素自带 var(--dk-action)。
+ * 高度不写死：内联 SVG 有 viewBox，按宽度等比即可。
+ */
+.dk-empty__illus {
+  width: 120px;
+  height: auto;
+  flex: 0 0 auto;
+  color: var(--dk-border);
+}
+
+/* 主行动按钮位：插画 + 一句话 + 一个按钮。没有合适动作的空态不硬凑按钮。 */
+.dk-empty .dk-button {
+  min-width: 132px;
+  margin-top: var(--dk-space-1);
 }
 
 .dk-empty__title {
@@ -788,6 +842,107 @@
   }
 }
 
+/* ── 工作台步骤条（设计稿 05-视觉精修 ③） ─────────────────── */
+/*
+ * 编号圆点 + 竖连线：当前步实心紫、已完成青色对勾（--dk-accent-2）、未到灰圈。
+ * 状态类挂在 .dk-step 上：is-done / is-current；圆点里已完成放对勾 SVG、
+ * 其余放数字。圆点是视觉锚，不替代标题文字里的「第X步」。
+ */
+/* 步骤面板之间的竖连线（施工图 03 稿：dk-x-step-panel 去前缀）。
+   模板已挂 dk-step-panel 钩子，这两条一亮连线就通。 */
+.dk-step-panel { position: relative; }
+.dk-step-panel + .dk-step-panel::before {
+  content: "";
+  position: absolute;
+  left: 31px;
+  top: -17px;
+  width: 2px;
+  height: 17px;
+  background: var(--dk-border-strong);
+}
+
+.dk-steps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dk-step {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  grid-template-rows: auto minmax(20px, auto);
+  column-gap: 12px;
+}
+
+.dk-step:last-child {
+  grid-template-rows: auto;
+}
+
+.dk-step__dot {
+  grid-area: 1 / 1;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--dk-surface-subtle);
+  border: 1.5px solid var(--dk-border-strong);
+  color: var(--dk-text-tertiary);
+}
+
+.dk-step__dot svg {
+  width: 12px;
+  height: 12px;
+}
+
+.dk-step__title {
+  grid-area: 1 / 2;
+  align-self: center;
+  font-size: var(--dk-text-md);
+  font-weight: 600;
+  color: var(--dk-text-tertiary);
+}
+
+.dk-step__line {
+  grid-area: 2 / 1;
+  width: 1.5px;
+  min-height: 20px;
+  justify-self: center;
+  background: var(--dk-border);
+  margin: 4px 0;
+}
+
+.dk-step__meta {
+  grid-area: 2 / 2;
+  font-size: var(--dk-text-xs);
+  color: var(--dk-text-tertiary);
+  padding: 3px 0 10px;
+}
+
+.dk-step.is-done .dk-step__dot {
+  background: transparent;
+  border-color: var(--dk-accent-2);
+  color: var(--dk-accent-2);
+}
+
+.dk-step.is-done .dk-step__title {
+  color: var(--dk-text-secondary);
+}
+
+.dk-step.is-current .dk-step__dot {
+  background: var(--dk-action);
+  border-color: var(--dk-action);
+  color: #fff;
+}
+
+.dk-step.is-current .dk-step__title {
+  color: var(--dk-text);
+}
+
 /* ── 上传商品图 ───────────────────────────────────────────── */
 .dk-dropzone {
   display: flex;
@@ -808,9 +963,10 @@
   text-align: center;
   cursor: pointer;
   transition:
-    background-color var(--dk-motion-fast) var(--dk-ease-out),
-    border-color var(--dk-motion-fast) var(--dk-ease-out),
-    color var(--dk-motion-fast) var(--dk-ease-out);
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .dk-dropzone:hover,
@@ -821,8 +977,8 @@
 }
 
 .dk-dropzone:focus-visible {
-  outline: 2px solid var(--dk-accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dk-focus);
 }
 
 .dk-dropzone__title {
@@ -925,6 +1081,11 @@
   background: var(--dk-danger-strong);
 }
 
+/*
+ * 图上角标（设计稿 05-视觉精修 ⑦，值照抄 dk-dark.css 蓝本）：
+ * 999px 圆角、深 scrim 底、语义色只上文字——14% soft 底压在图上看不清，
+ * 所以这里是徽章规格的唯一例外。字色不用 --dk-text-inverse（深色化后它是深字）。
+ */
 .dk-thumb__tag {
   position: absolute;
   top: 6px;
@@ -932,30 +1093,32 @@
   display: inline-flex;
   min-height: 20px;
   align-items: center;
-  border-radius: var(--dk-radius-sm);
-  background: rgba(28, 29, 31, 0.76);
-  color: var(--dk-text-inverse);
+  border-radius: var(--dk-radius-pill);
+  background: rgba(11, 15, 26, 0.78);
+  color: var(--dk-text-secondary);
+  backdrop-filter: blur(4px);
   padding: 0 6px;
   font-size: 10px;
   font-weight: 700;
 }
 
+/* 状态角标（右上角）：底一律 scrim，语义只换字色。「生成中」就是 --state 本色。 */
 .dk-thumb__tag--state {
   right: 6px;
   left: auto;
-  background: var(--dk-accent);
+  color: var(--dk-accent-strong);
 }
 
 .dk-thumb__tag--ok {
-  background: var(--dk-success);
+  color: var(--dk-success);
 }
 
 .dk-thumb__tag--fail {
-  background: var(--dk-danger);
+  color: var(--dk-danger);
 }
 
 .dk-thumb__tag--idle {
-  background: rgba(88, 92, 98, 0.86);
+  color: var(--dk-text-tertiary);
 }
 
 .dk-thumb__body {
@@ -1008,10 +1171,11 @@
   text-align: center;
   cursor: pointer;
   transition:
-    background-color var(--dk-motion-fast) var(--dk-ease-out),
-    border-color var(--dk-motion-fast) var(--dk-ease-out),
-    color var(--dk-motion-fast) var(--dk-ease-out),
-    transform var(--dk-motion-fast) var(--dk-ease-out);
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 .dk-size-option:hover {
@@ -1024,8 +1188,8 @@
 }
 
 .dk-size-option:focus-visible {
-  outline: 2px solid var(--dk-accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dk-focus);
 }
 
 .dk-size-option.is-selected {
@@ -1241,6 +1405,8 @@
   padding: 0;
 }
 
+/* 可点的卡片（设计稿 05-视觉精修 ②）：默认平面；hover 边框亮一档 +
+   上浮 1px + 二档投影，:active 落回 0。纯容器（.dk-panel）不加 hover。 */
 .dk-result-card {
   display: flex;
   min-width: 0;
@@ -1250,13 +1416,19 @@
   border-radius: var(--dk-radius-lg);
   background: var(--dk-surface);
   transition:
-    border-color var(--dk-motion-fast) var(--dk-ease-out),
-    box-shadow var(--dk-motion-fast) var(--dk-ease-out);
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 .dk-result-card:hover {
   border-color: var(--dk-border-strong);
-  box-shadow: var(--dk-shadow-1);
+  transform: translateY(-1px);
+  box-shadow: var(--dk-shadow-2);
+}
+
+.dk-result-card:active {
+  transform: translateY(0);
 }
 
 .dk-result-card__media {
@@ -1312,23 +1484,24 @@
   text-align: left;
   cursor: pointer;
   transition:
-    border-color var(--dk-motion-fast) var(--dk-ease-out),
-    box-shadow var(--dk-motion-fast) var(--dk-ease-out),
-    transform var(--dk-motion-fast) var(--dk-ease-out);
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 .dk-history-card:hover {
   border-color: var(--dk-border-strong);
-  box-shadow: var(--dk-shadow-1);
+  transform: translateY(-1px);
+  box-shadow: var(--dk-shadow-2);
 }
 
 .dk-history-card:active {
-  transform: translateY(1px);
+  transform: translateY(0);
 }
 
 .dk-history-card:focus-visible {
-  outline: 2px solid var(--dk-accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dk-focus);
 }
 
 .dk-history-card__title {
@@ -1410,6 +1583,136 @@
   display: grid;
   min-width: 0;
   gap: var(--dk-space-4);
+}
+
+/*
+ * 灵感库卡片的 hover 抬到与 .dk-result-card 同规格（设计稿 05-视觉精修 ②）。
+ * 基础样式在 PromptCard.vue 的 scoped 里，编译后带属性选择器
+ * （基础 0,2,0 / hover 0,3,0），这里的选择器故意叠到 0,2,1 / 0,3,1 压过它。
+ * 哪天把 PromptCard scoped 里那两条 transition / :hover 删了，这里就能降回单类。
+ */
+article.dk-insp-card.dk-insp-card {
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+article.dk-insp-card.dk-insp-card:hover {
+  border-color: var(--dk-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--dk-shadow-2);
+}
+
+article.dk-insp-card.dk-insp-card:active {
+  transform: translateY(0);
+}
+
+/* ── 管理页表格（设计稿 05-视觉精修 ④，基座照抄 dk-dark.css 蓝本） ── */
+/*
+ * - 表头吸顶不透（--dk-surface-raised 底）。吸顶要生效，滚动容器得在
+ *   表格外面（overflow: auto 的包一层），并给那层去掉表格自身圆角。
+ * - 行悬停是中性白 3%（字面值，不进令牌表）——紫 8%（--dk-surface-hover）
+ *   让位给「选中」语义，行行像被选中就没有选中了。
+ * - 数字列挂 .dk-table__num（蓝本里叫 .is-num，两个名字都认）：
+ *   右对齐 + 等宽字体 + tabular-nums，一列竖着扫就能比大小。金额一律 $。
+ */
+.dk-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--dk-surface);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-lg);
+  overflow: hidden;
+}
+
+.dk-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  background: var(--dk-surface-raised);
+  color: var(--dk-text-secondary);
+  font-size: var(--dk-text-xs);
+  font-weight: 600;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dk-border-strong);
+}
+
+.dk-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dk-border);
+  font-size: var(--dk-text-sm);
+}
+
+/* 斑马纹 = 次级底；悬停写在后面，同特异性下悬停赢。 */
+.dk-table tbody tr:nth-child(even) {
+  background: var(--dk-surface-subtle);
+}
+
+.dk-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dk-table .dk-table__num,
+.dk-table .is-num {
+  text-align: right;
+  font-family: var(--dk-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 对话气泡里的富文本（设计稿 05-视觉精修 ⑥） ───────────── */
+/*
+ * 气泡外壳在 ChatMessageList.vue 和 DesignkitAdminRecordsView.vue 的
+ * scoped 里（同一套双胞胎），内容规格放这份全局文件里两边共用。
+ * 渲染层把 \n\n 切成 <p>、反引号提成 <code>/<pre>，容器是
+ * <div class="dk-chat-text">；用户消息保持 <p class="dk-chat-text">
+ * 原样 pre-wrap 不解析。
+ * ⚠ div 那条选择器故意写成 0,2,1：要压过 scoped 里
+ * `.dk-chat-text[data-v-…] { white-space: pre-wrap }`（0,2,0）。
+ */
+.dk-chat-bubble div.dk-chat-text {
+  white-space: normal;
+}
+
+.dk-chat-text p {
+  margin: 0;
+}
+
+/* 段落 8px 节奏——原来靠 pre-wrap 空行硬撑出一整行行高的空白。 */
+.dk-chat-text p + p {
+  margin-top: 8px;
+}
+
+.dk-chat-text code {
+  font-family: var(--dk-font-mono);
+  font-size: 12px;
+  background: var(--dk-surface-raised);
+  border: 1px solid var(--dk-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* 代码块衬 --dk-canvas（比气泡深一档），超宽横滚、不撑破气泡。 */
+.dk-chat-text pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--dk-canvas);
+  border: 1px solid var(--dk-border);
+  border-radius: var(--dk-radius-md);
+  overflow-x: auto;
+}
+
+.dk-chat-text pre code {
+  display: block;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dk-text-secondary);
+  white-space: pre;
 }
 
 /* ── 窄屏收敛 ─────────────────────────────────────────────── */

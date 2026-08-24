@@ -11,9 +11,29 @@
 <template>
   <section class="dk-panel">
     <header class="dk-panel-head">
-      <div>
-        <h2 class="dk-panel-title">{{ t('designkit.workbench.stepRatio') }}</h2>
-        <p class="dk-panel-hint">{{ t('designkit.ratio.hint') }}</p>
+      <!-- 编号圆点是视觉锚，不替代标题里的「第三步」，读屏直接读标题。 -->
+      <div
+        class="dk-step"
+        :class="{ 'is-done': stepState === 'done', 'is-current': stepState === 'current' }"
+      >
+        <span class="dk-step__dot" aria-hidden="true">
+          <svg
+            v-if="stepState === 'done'"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M2 6.5 5 9.5 10 3" />
+          </svg>
+          <template v-else>3</template>
+        </span>
+        <div>
+          <h2 class="dk-panel-title dk-step__title">{{ t('designkit.workbench.stepRatio') }}</h2>
+          <p class="dk-panel-hint">{{ t('designkit.ratio.hint') }}</p>
+        </div>
       </div>
     </header>
 
@@ -79,11 +99,17 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { errorText, formatPrice, isCanceledError, listRatios, ratioLabel } from '../../api'
 import type { RatioOption } from '../../api'
+import type { WorkbenchStepState } from './viewTypes'
 
-defineProps<{
-  /** 当前选中的比例，例如 "3:4"。 */
-  modelValue: string
-}>()
+withDefaults(
+  defineProps<{
+    /** 当前选中的比例，例如 "3:4"。 */
+    modelValue: string
+    /** 标题前编号圆点的状态，由页面层推导（viewTypes.ts 的说明）。 */
+    stepState?: WorkbenchStepState
+  }>(),
+  { stepState: 'todo' },
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void

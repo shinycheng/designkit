@@ -18,9 +18,33 @@
 <template>
   <section class="dk-panel">
     <header class="dk-panel-head">
+      <!-- 编号圆点是视觉锚，不替代标题里的「第一步」，读屏直接读标题。
+           外层多包一个 div：让 .dk-step 是它爹的最后一个孩子，
+           命中 .dk-step:last-child 的单行网格（不然圆点下面多出 20px 连线位）。 -->
       <div>
-        <h2 class="dk-panel-title">{{ t('designkit.workbench.stepUpload') }}</h2>
-        <p class="dk-panel-hint">{{ t('designkit.upload.hint') }}</p>
+        <div
+          class="dk-step"
+          :class="{ 'is-done': stepState === 'done', 'is-current': stepState === 'current' }"
+        >
+          <span class="dk-step__dot" aria-hidden="true">
+            <svg
+              v-if="stepState === 'done'"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M2 6.5 5 9.5 10 3" />
+            </svg>
+            <template v-else>1</template>
+          </span>
+          <div>
+            <h2 class="dk-panel-title dk-step__title">{{ t('designkit.workbench.stepUpload') }}</h2>
+            <p class="dk-panel-hint">{{ t('designkit.upload.hint') }}</p>
+          </div>
+        </div>
       </div>
       <div class="dk-panel-actions">
         <span v-if="entries.length > 0" class="dk-count-pill">
@@ -212,6 +236,7 @@ import {
   waitForUpscale,
 } from '../../api'
 import type { DesignkitAsset } from '../../api'
+import type { WorkbenchStepState } from './viewTypes'
 
 /**
  * 一次最多选这么多张。
@@ -244,10 +269,15 @@ interface UploadEntry {
   controller: AbortController | null
 }
 
-defineProps<{
-  /** 已经传好的商品图，顺序就是出图时的外层顺序。 */
-  modelValue: DesignkitAsset[]
-}>()
+withDefaults(
+  defineProps<{
+    /** 已经传好的商品图，顺序就是出图时的外层顺序。 */
+    modelValue: DesignkitAsset[]
+    /** 标题前编号圆点的状态，由页面层推导（viewTypes.ts 的说明）。 */
+    stepState?: WorkbenchStepState
+  }>(),
+  { stepState: 'todo' },
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: DesignkitAsset[]): void

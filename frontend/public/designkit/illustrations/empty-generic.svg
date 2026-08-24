@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="虚线占位框，中央一个紫色亮点" style="color:var(--dk-border,#273049)">
+  <rect x="26" y="30" width="68" height="56" rx="7" stroke-dasharray="5 7"/>
+  <g class="dk-illus-accent" stroke="none" style="fill:var(--dk-action,#7c6bff)">
+    <circle cx="60" cy="58" r="13" opacity="0.1"/>
+    <circle cx="60" cy="58" r="7" opacity="0.18"/>
+    <circle cx="60" cy="58" r="2.8"/>
+  </g>
+  <path d="M98 27V34M94.5 30.5H101.5" opacity="0.55"/>
+  <path d="M42 100H58" opacity="0.5"/>
+  <path d="M66 100H75" opacity="0.3"/>
+</svg>

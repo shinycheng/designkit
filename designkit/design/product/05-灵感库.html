@@ -445,11 +445,11 @@ a:hover { color: var(--dk-accent-strong); }
   break-inside: avoid; margin: 0 0 16px; display: flex; flex-direction: column;
   border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg);
   background: var(--dk-surface); overflow: hidden;
-  transition: border-color var(--dk-motion-fast) var(--dk-ease-out),
-              box-shadow var(--dk-motion-fast) var(--dk-ease-out),
-              transform var(--dk-motion-fast) var(--dk-ease-out);
+  transition: border-color 150ms ease,
+              box-shadow 150ms ease,
+              transform 150ms ease; /* 精修 2/5：统一 150ms ease */
 }
-.dk-x-pcard:hover, .dk-x-pcard.is-hover { transform: translateY(-2px); border-color: var(--dk-border-strong); box-shadow: var(--dk-shadow-2); }
+.dk-x-pcard:hover, .dk-x-pcard.is-hover { transform: translateY(-1px); border-color: var(--dk-border-strong); box-shadow: var(--dk-shadow-2); } /* 精修 2：上浮收敛到 -1px */
 .dk-x-pcard__media { position: relative; width: 100%; display: grid; place-items: center; background: var(--dk-image-canvas); border-bottom: 1px solid var(--dk-border); }
 .dk-x-art { width: 54%; height: 54%; color: var(--dk-text-secondary); }
 .dk-x-pcard__overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(4, 7, 14, 0.55); opacity: 0; transition: opacity var(--dk-motion-fast) var(--dk-ease-out); }
@@ -492,16 +492,16 @@ a:hover { color: var(--dk-accent-strong); }
 .dk-x-var .dk-label { font-weight: 500; color: var(--dk-text-tertiary); }
 .dk-x-drawer__foot { margin-top: auto; display: flex; justify-content: flex-end; gap: 12px; padding-top: 14px; border-top: 1px solid var(--dk-border); }
 
-/* 空态两小样 */
+/* 空态两小样（精修 1：插画线条改边框色，紫点缀走 --dk-action 令牌） */
 .dk-x-empties { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.dk-x-empty-art { width: 200px; height: 160px; color: var(--dk-text-tertiary); }
+.dk-x-empty-art { width: 200px; height: 160px; color: var(--dk-border-strong); }
 .dk-x-ticon { width: 16px; height: 16px; flex: none; }
 
 /* 「我的提示词」页签：运营自建的词没有示例图，用文字卡（对应 PromptCard 的 editable 态） */
 .dk-x-mine-head { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .dk-x-minegrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
-.dk-x-mycard { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); background: var(--dk-surface); overflow: hidden; transition: border-color var(--dk-motion-fast) var(--dk-ease-out), box-shadow var(--dk-motion-fast) var(--dk-ease-out); }
-.dk-x-mycard:hover { border-color: var(--dk-border-strong); box-shadow: var(--dk-shadow-1); }
+.dk-x-mycard { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); background: var(--dk-surface); overflow: hidden; transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease; }
+.dk-x-mycard:hover { border-color: var(--dk-border-strong); transform: translateY(-1px); box-shadow: var(--dk-shadow-2); } /* 精修 2：与瀑布流卡同一套 hover */
 .dk-x-mycard__open { display: grid; gap: 8px; flex: 1; padding: 16px 16px 12px; text-align: left; }
 .dk-x-mycard__title { margin: 0; font-size: var(--dk-text-md); font-weight: 600; line-height: var(--dk-leading-tight); }
 .dk-x-mycard__body { margin: 0; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -512,6 +512,24 @@ a:hover { color: var(--dk-accent-strong); }
 
 /* 新建 / 编辑弹窗小样：两个静态并排（不压遮罩，遮罩规格见 06 稿的删除确认） */
 .dk-x-dialogrow { display: flex; gap: 16px; align-items: flex-start; }
+
+/* ═══ 本次精修（2026-08-24 增量，冻结方向 1/2/5/7；不换主题、不改令牌值） ═══ */
+
+/* 精修 7 · 徽章查漏补齐：同步面板「进行中」「失败时」状态小标改 999px 圆角 + 14% 语义底 */
+.dk-x-statetag { border-radius: var(--dk-radius-pill); background: var(--dk-info-soft); color: var(--dk-accent-strong); }
+.dk-x-inlinerow .dk-tag { border-radius: var(--dk-radius-pill); background: var(--dk-danger-soft); color: var(--dk-danger); }
+
+/* 精修 5 · 交互统一：按钮/输入/链接过渡 150ms ease；焦点环统一 2px 紫（沿用 --dk-focus 令牌） */
+.dk-button, .dk-input, .dk-textarea, .dk-select, .dk-chip { transition-duration: 150ms; transition-timing-function: ease; }
+a { transition: color 150ms ease; }
+:focus-visible { box-shadow: 0 0 0 2px var(--dk-focus); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { box-shadow: 0 0 0 2px var(--dk-focus); }
+
+/* 本次精修点列表（设计稿标注） */
+.dk-x-refine-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+.dk-x-refine-list li { position: relative; padding-left: 18px; }
+.dk-x-refine-list li::before { content: ""; position: absolute; left: 0; top: 7px; width: 7px; height: 7px; border-radius: 50%; border: 1.75px solid var(--dk-action); }
+.dk-x-refine-list b { color: var(--dk-text); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -596,7 +614,7 @@ a:hover { color: var(--dk-accent-strong); }
         <path d="M112 63c9-3 18-3 26-1M112 91c9-3 18-3 26-1" opacity="0.5"/>
         <path d="M14 134h172" opacity="0.4"/>
       </g>
-      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <g fill="none" stroke="var(--dk-action)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
         <path d="M120 72c-2.5 0-3.5 1.7-3.5 4 0 1.7-.8 2.6-2.5 3.4 1.7.8 2.5 1.7 2.5 3.4 0 2.3 1 4 3.5 4"/>
         <path d="M130 72c2.5 0 3.5 1.7 3.5 4 0 1.7.8 2.6 2.5 3.4-1.7.8-2.5 1.7-2.5 3.4 0 2.3-1 4-3.5 4"/>
       </g>
@@ -609,7 +627,7 @@ a:hover { color: var(--dk-accent-strong); }
         <rect x="82" y="54" width="24" height="24" rx="2" opacity="0.6"/>
         <path d="M36 128h128" opacity="0.4"/>
       </g>
-      <g stroke="none" fill="#7C6BFF">
+      <g stroke="none" fill="var(--dk-action)">
         <circle cx="94" cy="66" r="2.4"/>
       </g>
     </symbol>
@@ -934,7 +952,7 @@ a:hover { color: var(--dk-accent-strong); }
   </div>
 
   <!-- ═══ 空态两小样：「库是空的」和「搜不到」是两回事 ═══ -->
-  <div class="dk-x-annot"><span class="dk-x-annot__tag">空态</span>左：还没同步过（运营版——出路是找管理员，不是换词搜）；右：库里有词但这个条件搜不到（出路是换词或清空筛选）</div>
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">空态</span>左：还没同步过（运营版——出路是找管理员，不是换词搜）；右：库里有词但这个条件搜不到（出路是换词或清空筛选）。精修 1 新样式：1.75px 边框色线条插画 + --dk-action 紫点缀 + 一句话 + 主行动按钮</div>
   <div class="dk-x-empties">
 
     <section class="dk-panel">
@@ -942,7 +960,7 @@ a:hover { color: var(--dk-accent-strong); }
         <svg class="dk-x-empty-art dk-empty__icon" aria-hidden="true"><use href="#px-empty-book"/></svg>
         <p class="dk-empty__title">灵感库还是空的</p>
         <p class="dk-empty__description">提示词还没有导入进来。请管理员在这个页面点一下「立即同步」，导入之后这里会有一万多条可以挑。在那之前，工作台里的「让 AI 推荐」也挑不出东西——它挑的就是这个库里的提示词。</p>
-        <button type="button" class="dk-button">去工作台</button>
+        <button type="button" class="dk-button dk-button--primary-action">去工作台</button>
       </div>
     </section>
 
@@ -951,7 +969,7 @@ a:hover { color: var(--dk-accent-strong); }
         <svg class="dk-x-empty-art dk-empty__icon" aria-hidden="true"><use href="#px-empty-search"/></svg>
         <p class="dk-empty__title">没有找到符合的提示词</p>
         <p class="dk-empty__description">换一个词试试，或者点「全部」看看别的分类。</p>
-        <button type="button" class="dk-button dk-button--secondary">清空筛选条件</button>
+        <button type="button" class="dk-button dk-button--primary-action">清空筛选条件</button>
       </div>
     </section>
 
@@ -1046,6 +1064,17 @@ a:hover { color: var(--dk-accent-strong); }
     </div>
 
   </div>
+
+  <!-- ═══ 本次精修点（设计稿标注，非产品文案） ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">本次精修点</span>2026-08-24 增量精修，DesignKit Dark 之内：不换主题、不改令牌值，颜色一律引用 dk-dark.css 令牌</div>
+  <section class="dk-panel">
+    <ul class="dk-x-refine-list">
+      <li><b>空态升级（方向 1）</b>——两个空态小样定为「细线条插画 + 一句话 + 主行动按钮」：插画 1.75px 边框色线条（--dk-border 系）+ --dk-action 紫点缀（紫色改走令牌，不再写死色值）；「去工作台」「清空筛选条件」升为主按钮。</li>
+      <li><b>卡片层次（方向 2）</b>——瀑布流卡与「我的提示词」卡统一：默认平面，hover 边框亮一档 + translateY(-1px) + var(--dk-shadow-2)，过渡 150ms ease（原 -2px / 120ms / shadow-1 收敛到规范值）。</li>
+      <li><b>交互统一（方向 5）</b>——按钮/输入/链接过渡统一 150ms ease；焦点环统一 2px 紫（沿用 --dk-focus 令牌）。</li>
+      <li><b>徽章查漏（方向 7）</b>——同步面板「进行中」「失败时」两个状态小标改为 999px 圆角 + 14% 语义底（--dk-info-soft / --dk-danger-soft）；其余徽章无缺漏。</li>
+    </ul>
+  </section>
 
 </div>
 

@@ -171,6 +171,7 @@
           </div>
 
           <div v-else-if="sessions !== null && sessions.length === 0" class="dk-empty dk-empty--boxed">
+            <img class="dk-empty__illus" src="/designkit/illustrations/empty-generic.svg" alt="" />
             <p class="dk-empty__title">{{ t('designkit.adminRecords.empty') }}</p>
           </div>
 
@@ -321,6 +322,7 @@
           </div>
 
           <div v-else-if="jobs !== null && jobs.length === 0" class="dk-empty dk-empty--boxed">
+            <img class="dk-empty__illus" src="/designkit/illustrations/empty-generic.svg" alt="" />
             <p class="dk-empty__title">{{ t('designkit.adminRecords.empty') }}</p>
           </div>
 

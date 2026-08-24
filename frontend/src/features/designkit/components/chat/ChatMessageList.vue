@@ -21,9 +21,12 @@
 
     <p v-else-if="loadError !== ''" class="dk-note dk-note--danger">{{ loadError }}</p>
 
-    <!-- 空态：居中一句。 -->
+    <!-- 空态：插画 + 一句。不加按钮——这页的主行动就是下面的输入条。 -->
     <div v-else-if="messages.length === 0 && !replying" class="dk-chat-empty">
-      <p>{{ t('designkit.chat.empty') }}</p>
+      <div class="dk-empty">
+        <img class="dk-empty__illus" src="/designkit/illustrations/empty-chat.svg" alt="" />
+        <p class="dk-empty__description">{{ t('designkit.chat.empty') }}</p>
+      </div>
     </div>
 
     <template v-else>

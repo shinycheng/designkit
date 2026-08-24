@@ -18,7 +18,12 @@
 <template>
   <section class="dk-panel">
     <header class="dk-panel-head dk-panel-head--tight">
-      <h2 class="dk-panel-title">{{ t('designkit.workbench.stepSubmit') }}</h2>
+      <!-- 编号圆点是视觉锚，不替代标题里的「第四步」，读屏直接读标题。
+           第四步没有「完成」态——可提交时高亮（is-current），提交了批次就开跑。 -->
+      <div class="dk-step" :class="{ 'is-current': stepState === 'current' }">
+        <span class="dk-step__dot" aria-hidden="true">4</span>
+        <h2 class="dk-panel-title dk-step__title">{{ t('designkit.workbench.stepSubmit') }}</h2>
+      </div>
     </header>
 
     <!-- 这一批出多少张 -->
@@ -137,11 +142,13 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatMoney, formatPrice } from '../../api'
 import type { JobEstimate } from '../../api'
-import type { SubmitErrorView } from './viewTypes'
+import type { SubmitErrorView, WorkbenchStepState } from './viewTypes'
 
 const props = defineProps<{
   assetCount: number
   promptCount: number
+  /** 标题前编号圆点的状态，由页面层推导（viewTypes.ts 的说明）。 */
+  stepState?: WorkbenchStepState
   /** 给这批起的名字，可以不填。 */
   name: string
   /** 后端算的报价；还没算出来是 null。 */

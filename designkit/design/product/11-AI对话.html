@@ -488,8 +488,29 @@ a:hover { color: var(--dk-accent-strong); }
 .dk-x-states { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .dk-x-states .dk-panel { display: grid; gap: 12px; align-content: start; }
 .dk-x-state-demo { display: grid; gap: 8px; justify-items: start; }
-.dk-x-empty-art { width: 180px; height: 144px; color: var(--dk-text-tertiary); }
+.dk-x-empty-art { width: 180px; height: 144px; color: var(--dk-border-strong); } /* 精修 1：插画线条改边框色 */
 .dk-x-dialogstage { display: grid; place-items: center; padding: 48px 40px; background: var(--dk-canvas); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-lg); }
+
+/* ═══ 本次精修（2026-08-24 增量，冻结方向 1/5/6/7；不换主题、不改令牌值） ═══ */
+
+/* 精修 6 · assistant 气泡内代码样式：行内码/代码块用深一档底（--dk-surface-subtle）+ mono；
+   段落 8px 节奏本就有（.dk-x-bubble p + p），补上 pre 前后的同款间距 */
+.dk-x-msg--ai .dk-x-bubble code { font-family: var(--dk-font-mono); font-size: var(--dk-text-sm); background: var(--dk-surface-subtle); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-sm); padding: 1px 6px; }
+.dk-x-msg--ai .dk-x-bubble pre { margin: 8px 0 0; padding: 10px 12px; background: var(--dk-surface-subtle); border: 1px solid var(--dk-border); border-radius: var(--dk-radius-md); overflow-x: auto; }
+.dk-x-msg--ai .dk-x-bubble pre code { display: block; background: none; border: none; padding: 0; font-size: var(--dk-text-sm); line-height: 1.6; white-space: pre; }
+.dk-x-bubble pre + p { margin-top: 8px; }
+
+/* 精修 5 · 交互统一：按钮/输入/链接过渡 150ms ease；焦点环统一 2px 紫（沿用 --dk-focus 令牌） */
+.dk-button, .dk-input, .dk-textarea, .dk-select, .dk-chip { transition-duration: 150ms; transition-timing-function: ease; }
+a { transition: color 150ms ease; }
+:focus-visible { box-shadow: 0 0 0 2px var(--dk-focus); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { box-shadow: 0 0 0 2px var(--dk-focus); }
+
+/* 本次精修点列表（设计稿标注） */
+.dk-x-refine-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+.dk-x-refine-list li { position: relative; padding-left: 18px; }
+.dk-x-refine-list li::before { content: ""; position: absolute; left: 0; top: 7px; width: 7px; height: 7px; border-radius: 50%; border: 1.75px solid var(--dk-action); }
+.dk-x-refine-list b { color: var(--dk-text); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -514,7 +535,7 @@ a:hover { color: var(--dk-accent-strong); }
         <path d="M64 62h56M64 78h38" opacity="0.5"/>
         <path d="M26 134h148" opacity="0.4"/>
       </g>
-      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <g fill="none" stroke="var(--dk-action)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
         <path d="M138 62l2.6 6.4 6.4 2.6-6.4 2.6-2.6 6.4-2.6-6.4-6.4-2.6 6.4-2.6z"/>
       </g>
     </symbol>
@@ -527,7 +548,7 @@ a:hover { color: var(--dk-accent-strong); }
         <path d="M62 47h44M62 81h32" opacity="0.5"/>
         <path d="M28 140h144" opacity="0.4"/>
       </g>
-      <g fill="none" stroke="#7C6BFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <g fill="none" stroke="var(--dk-action)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
         <path d="M136 43h4M136 51h4" transform="translate(-6 0)"/>
         <circle cx="134" cy="47" r="4.5"/>
       </g>
@@ -733,7 +754,7 @@ a:hover { color: var(--dk-accent-strong); }
   </div>
 
   <!-- ═══ 状态小样 ═══ -->
-  <div class="dk-x-annot"><span class="dk-x-annot__tag">状态小样</span>八种状态各一小样：空对话 / 没有记录 / AI 回复中 / 流式输出中（P1 流式，2026-08-24） / 回复中断（标红） / 发送失败（重发） / 附件拦截（超限、超大，toast 呈现） / 记录加载失败</div>
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">状态小样</span>九种状态各一小样：空对话 / 没有记录 / AI 回复中 / 流式输出中（P1 流式，2026-08-24） / 回复中断（标红） / 发送失败（重发） / 附件拦截（超限、超大，toast 呈现） / 记录加载失败 / 代码块样式（精修 6：assistant 气泡内行内码与代码块）</div>
   <div class="dk-x-states">
 
     <!-- 空对话（右侧消息区，刚点开新对话时） -->
@@ -751,7 +772,8 @@ a:hover { color: var(--dk-accent-strong); }
       <div class="dk-empty" style="padding: 20px 8px">
         <svg class="dk-x-empty-art dk-empty__icon" aria-hidden="true"><use href="#px-empty-sessions"/></svg>
         <p class="dk-empty__description">还没有对话记录。</p>
-        <button type="button" class="dk-button dk-button--secondary dk-button--sm">新对话</button>
+        <!-- 精修 1：空态的主行动升为主按钮 -->
+        <button type="button" class="dk-button dk-button--primary-action dk-button--sm">新对话</button>
       </div>
     </section>
 
@@ -826,10 +848,39 @@ a:hover { color: var(--dk-accent-strong); }
       </div>
     </section>
 
+    <!-- 代码块样式（精修 6）：assistant 气泡内行内码 / 代码块——深一档底（--dk-surface-subtle）+ mono；
+         段落 8px 节奏不变。AI 给出可整段复制的内容（规格参数、模板片段）时用这个样式呈现 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">代码块样式</p>
+      <div class="dk-x-state-demo">
+        <div class="dk-x-msg dk-x-msg--ai" style="max-width: 100%">
+          <div class="dk-x-bubble">
+            <p>规格参数按下面这段贴进详情页模板：</p>
+            <pre><code>容量：30ml
+香调：琥珀木质调
+留香：8~12 小时</code></pre>
+            <p>主图统一 <code>800×800</code>，格式 <code>JPG</code>。</p>
+          </div>
+        </div>
+        <p class="dk-note dk-note--quiet">行内码与代码块共用深一档底 + mono；块内可横向滚动。</p>
+      </div>
+    </section>
+
   </div>
 
   <!-- ═══ 移动端说明 ═══ -->
   <div class="dk-x-annot"><span class="dk-x-annot__tag">移动端</span>窄屏时会话列表收进抽屉：左上角按钮呼出，消息流和输入条占满整宽；输入条吸底，附件 chip 行样式不变</div>
+
+  <!-- ═══ 本次精修点（设计稿标注，非产品文案） ═══ -->
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">本次精修点</span>2026-08-24 增量精修，DesignKit Dark 之内：不换主题、不改令牌值，颜色一律引用 dk-dark.css 令牌</div>
+  <section class="dk-panel">
+    <ul class="dk-x-refine-list">
+      <li><b>空态插画（方向 1）</b>——「空对话」「没有记录」插画改 1.75px 边框色线条（--dk-border 系）+ --dk-action 紫点缀（紫色改走令牌）；「没有记录」的「新对话」升为主按钮。「空对话」的主行动是输入条本身，不另加按钮。</li>
+      <li><b>对话气泡（方向 6）</b>——assistant 段落 8px 节奏保持；新增行内代码/代码块样式：深一档底（--dk-surface-subtle）+ var(--dk-font-mono)，见状态小样第 9 块。</li>
+      <li><b>交互统一（方向 5）</b>——按钮/输入/链接过渡统一 150ms ease；焦点环统一 2px 紫（沿用 --dk-focus 令牌）。</li>
+      <li><b>徽章核查（方向 7）</b>——日期分隔条、附件 chip 不属徽章；本页无缺漏。</li>
+    </ul>
+  </section>
 
 </div>
 

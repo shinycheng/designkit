@@ -98,3 +98,34 @@ body.driver-fade {
 .dark [_echarts_instance_] {
   background: transparent !important;
 }
+
+/* ── 上游后台表格（设计稿 05-视觉精修 ④，与 .dk-table 蓝本同规格） ──
+   上游表格是 Tailwind 工具类拼的、没有统一表格类，只能按元素补三件：
+
+   1. 表头吸顶不透（--dk-surface-raised 底）。!important 是要压过个别
+      thead/th 自带的 bg 工具类；只在竖向可滚的容器里看得出吸顶，
+      其余表格里这条是惰性的，不碍事。
+   2. 行悬停中性白 3%（字面值，不进令牌表）——紫底让位给「选中」语义。
+      不加 !important：个别列表自带 dark:hover 工具类（特异性更高）保持原样，
+      它们的颜色已经走换过源头的调色板，不冲突。
+   3. 数字列助手类 .dk-table__num：右对齐 + 等宽 + tabular-nums，
+      模板往 th/td 上挂即可；!important 压过同元素上的 text-left 工具类。
+      金额一律 $（决策 18）。 */
+.dark table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dk-surface-raised) !important;
+}
+
+.dark table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+th.dk-table__num,
+td.dk-table__num {
+  text-align: right !important;
+  font-family: var(--dk-font-mono) !important;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}

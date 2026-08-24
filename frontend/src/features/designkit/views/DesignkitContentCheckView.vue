@@ -110,6 +110,12 @@
           <!-- eslint-disable-next-line vue/no-v-html -->
           <div class="dk-cc-preview" v-html="previewHtml"></div>
         </section>
+
+        <!-- 还没查过：说明结果区在哪，别让下半页是一片空白 -->
+        <div v-else class="dk-empty dk-empty--boxed">
+          <img class="dk-empty__illus" src="/designkit/illustrations/empty-contentcheck.svg" alt="" />
+          <p class="dk-empty__description">{{ t('designkit.contentCheck.resultsPlaceholder') }}</p>
+        </div>
       </div>
     </div>
   </AppLayout>

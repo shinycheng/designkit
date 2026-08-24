@@ -30,9 +30,33 @@
 <template>
   <section class="dk-panel">
     <header class="dk-panel-head">
+      <!-- 编号圆点是视觉锚，不替代标题里的「第二步」，读屏直接读标题。
+           外层多包一个 div：让 .dk-step 是它爹的最后一个孩子，
+           命中 .dk-step:last-child 的单行网格（不然圆点下面多出 20px 连线位）。 -->
       <div>
-        <h2 class="dk-panel-title">{{ t('designkit.workbench.stepPrompt') }}</h2>
-        <p class="dk-panel-hint">{{ t('designkit.suggest.description') }}</p>
+        <div
+          class="dk-step"
+          :class="{ 'is-done': stepState === 'done', 'is-current': stepState === 'current' }"
+        >
+          <span class="dk-step__dot" aria-hidden="true">
+            <svg
+              v-if="stepState === 'done'"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M2 6.5 5 9.5 10 3" />
+            </svg>
+            <template v-else>2</template>
+          </span>
+          <div>
+            <h2 class="dk-panel-title dk-step__title">{{ t('designkit.workbench.stepPrompt') }}</h2>
+            <p class="dk-panel-hint">{{ t('designkit.suggest.description') }}</p>
+          </div>
+        </div>
       </div>
       <div class="dk-panel-actions">
         <span v-if="finalPrompt.trim() !== ''" class="dk-count-pill">
@@ -164,19 +188,25 @@ import {
   type PromptCategory,
   type SuggestPromptCandidate,
 } from '../../api'
+import type { WorkbenchStepState } from './viewTypes'
 
-const props = defineProps<{
-  /**
-   * 最终提示词。**最多一条**——出图张数按它算，见文件头第 2 条。
-   */
-  modelValue: string[]
-  /** 第一步选了几张商品图。0 张时推荐按钮点不了（AI 要看着图）。 */
-  assetCount: number
-  /** 第一张商品图的编号，推荐时发给后端。没有就是空串。 */
-  firstAssetUid: string
-  /** 其余商品图的编号。整批一起给 AI 看，写出来的提示词才适合整批。 */
-  extraAssetUids: string[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    /**
+     * 最终提示词。**最多一条**——出图张数按它算，见文件头第 2 条。
+     */
+    modelValue: string[]
+    /** 第一步选了几张商品图。0 张时推荐按钮点不了（AI 要看着图）。 */
+    assetCount: number
+    /** 第一张商品图的编号，推荐时发给后端。没有就是空串。 */
+    firstAssetUid: string
+    /** 其余商品图的编号。整批一起给 AI 看，写出来的提示词才适合整批。 */
+    extraAssetUids: string[]
+    /** 标题前编号圆点的状态，由页面层推导（viewTypes.ts 的说明）。 */
+    stepState?: WorkbenchStepState
+  }>(),
+  { stepState: 'todo' },
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string[]): void

@@ -453,6 +453,7 @@ export default {
       titleLen: 'Title {len} / {max} chars',
       titleOver: '{n} over the limit',
       lenOnly: '{len} chars',
+      resultsPlaceholder: 'Check results appear here.',
       note: 'The word list follows Chinese Advertising Law extreme-word lists. A match is not necessarily a violation — the platform review is final.',
     },
 

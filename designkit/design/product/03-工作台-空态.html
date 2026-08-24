@@ -499,6 +499,45 @@ a:hover { color: var(--dk-accent-strong); }
 
 /* AI 推荐结果下方那行：说明在左、「存为我的提示词」在右（PromptEditor 的 dk-editor-result-actions） */
 .dk-x-editor-result-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* ═══ 本次精修（2026-08-24 增量，冻结方向 2/3/5/7；不换主题、不改令牌值） ═══ */
+
+/* 设计稿标注（给评审看的说明，不是产品文案；与其他稿同款） */
+.dk-x-annot { display: flex; align-items: center; gap: 10px; margin-top: 20px; font-size: var(--dk-text-xs); color: var(--dk-text-tertiary); letter-spacing: 0.02em; }
+.dk-x-annot::after { content: ""; flex: 1; height: 1px; background: var(--dk-border); }
+.dk-x-annot__tag { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--dk-radius-pill); border: 1px solid var(--dk-border-strong); background: var(--dk-surface-raised); color: var(--dk-accent-strong); font-weight: 700; }
+.dk-x-refine-wrap { width: 1440px; margin: 0 auto; padding: 8px 32px 72px; }
+.dk-x-refine { margin-top: 10px; }
+.dk-x-refine-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--dk-text-sm); color: var(--dk-text-secondary); }
+.dk-x-refine-list li { position: relative; padding-left: 18px; }
+.dk-x-refine-list li::before { content: ""; position: absolute; left: 0; top: 7px; width: 7px; height: 7px; border-radius: 50%; border: 1.75px solid var(--dk-action); }
+.dk-x-refine-list b { color: var(--dk-text); font-weight: 600; }
+
+/* 精修 3 · 工作台四步：编号圆点 + 竖连线（当前步实心紫、已完成青色对勾、未到灰） */
+.dk-x-step-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.dk-x-step {
+  flex: 0 0 24px; width: 24px; height: 24px;
+  border-radius: 50%; border: 1.75px solid var(--dk-border-strong);
+  background: var(--dk-surface-subtle); color: var(--dk-text-tertiary);
+  font-size: var(--dk-text-xs); font-weight: 700; line-height: 1;
+  display: grid; place-items: center;
+}
+.dk-x-step svg { width: 12px; height: 12px; display: block; }
+.dk-x-step.is-current { background: var(--dk-action); border-color: var(--dk-action); color: #fff; }
+.dk-x-step.is-done { background: transparent; border-color: var(--dk-accent-2); color: var(--dk-accent-2); }
+/* 右列相邻步骤面板之间的 2px 竖连线：跨过 16px 间隙 + 1px 边框，对齐圆点中轴（20px 内边距 + 12px 半径） */
+.dk-x-step-panel { position: relative; }
+.dk-x-step-panel + .dk-x-step-panel::before { content: ""; position: absolute; left: 31px; top: -17px; width: 2px; height: 17px; background: var(--dk-border-strong); }
+
+/* 精修 2 · 卡片层次：默认平面；hover 边框亮一档 + 上浮 1px + shadow-2（150ms ease） */
+.dk-usage-cell { transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease; }
+.dk-usage-cell:hover, .dk-usage-cell.is-hover { border-color: var(--dk-border-strong); transform: translateY(-1px); box-shadow: var(--dk-shadow-2); }
+
+/* 精修 5 · 交互统一：按钮/输入/链接过渡 150ms ease；焦点环统一 2px 紫（沿用 --dk-focus 令牌） */
+.dk-button, .dk-input, .dk-textarea, .dk-select, .dk-chip { transition-duration: 150ms; transition-timing-function: ease; }
+a { transition: color 150ms ease; }
+:focus-visible { box-shadow: 0 0 0 2px var(--dk-focus); }
+.dk-input:focus, .dk-textarea:focus, .dk-select:focus { box-shadow: 0 0 0 2px var(--dk-focus); }
 </style>
 </head>
 <body>
@@ -590,7 +629,8 @@ a:hover { color: var(--dk-accent-strong); }
           <p class="dk-usage-cell__label">本月出图</p>
           <p class="dk-usage-cell__value dk-money">128 张</p>
         </div>
-        <div class="dk-usage-cell">
+        <!-- hover 态常显示例（精修 2）：边框亮一档 + 上浮 1px + shadow-2 -->
+        <div class="dk-usage-cell is-hover">
           <p class="dk-usage-cell__label">花费</p>
           <p class="dk-usage-cell__value dk-money">$136.35</p>
         </div>
@@ -604,7 +644,10 @@ a:hover { color: var(--dk-accent-strong); }
       <!-- 第一步 · 选商品图 -->
       <section class="dk-panel">
         <header class="dk-panel-head">
-          <h2 class="dk-panel-title">第一步 · 选商品图</h2>
+          <div class="dk-x-step-head">
+            <span class="dk-x-step is-done" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>
+            <h2 class="dk-panel-title">第一步 · 选商品图</h2>
+          </div>
           <div class="dk-x-panel-actions">
             <span class="dk-badge">已选 3 项</span>
             <button type="button" class="dk-button dk-button--quiet dk-button--sm">清空</button>
@@ -761,11 +804,14 @@ a:hover { color: var(--dk-accent-strong); }
       </section>
 
       <!-- 第二步 · AI 配词 -->
-      <section class="dk-panel">
+      <section class="dk-panel dk-x-step-panel">
         <header class="dk-panel-head">
-          <div>
-            <h2 class="dk-panel-title">第二步 · 选分类、写商品特点，让 AI 配提示词</h2>
-            <p class="dk-panel-hint">选分类、写商品特点，AI 根据商品图从灵感库挑 5 条参考，合成一条提示词。</p>
+          <div class="dk-x-step-head">
+            <span class="dk-x-step is-done" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5l2.5 2.5 4.5-5"/></svg></span>
+            <div>
+              <h2 class="dk-panel-title">第二步 · 选分类、写商品特点，让 AI 配提示词</h2>
+              <p class="dk-panel-hint">选分类、写商品特点，AI 根据商品图从灵感库挑 5 条参考，合成一条提示词。</p>
+            </div>
           </div>
         </header>
 
@@ -802,11 +848,14 @@ a:hover { color: var(--dk-accent-strong); }
       </section>
 
       <!-- 第三步 · 选出图比例 -->
-      <section class="dk-panel">
+      <section class="dk-panel dk-x-step-panel">
         <header class="dk-panel-head">
-          <div>
-            <h2 class="dk-panel-title">第三步 · 选出图比例</h2>
-            <p class="dk-panel-hint">按所选比例给商品图补白边，产品不会被裁剪。</p>
+          <div class="dk-x-step-head">
+            <span class="dk-x-step is-current" aria-hidden="true">3</span>
+            <div>
+              <h2 class="dk-panel-title">第三步 · 选出图比例</h2>
+              <p class="dk-panel-hint">按所选比例给商品图补白边，产品不会被裁剪。</p>
+            </div>
           </div>
         </header>
 
@@ -857,9 +906,12 @@ a:hover { color: var(--dk-accent-strong); }
       </section>
 
       <!-- 第四步 · 核对花费并提交（够用态） -->
-      <section class="dk-panel">
+      <section class="dk-panel dk-x-step-panel">
         <header class="dk-panel-head">
-          <h2 class="dk-panel-title">第四步 · 核对花费并提交</h2>
+          <div class="dk-x-step-head">
+            <span class="dk-x-step" aria-hidden="true">4</span>
+            <h2 class="dk-panel-title">第四步 · 核对花费并提交</h2>
+          </div>
         </header>
 
         <p class="dk-eyebrow">花费预估</p>
@@ -882,6 +934,19 @@ a:hover { color: var(--dk-accent-strong); }
       </section>
     </aside>
   </div>
+</div>
+
+<!-- ═══ 本次精修点（设计稿标注，非产品文案） ═══ -->
+<div class="dk-x-refine-wrap">
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">本次精修点</span>2026-08-24 增量精修，DesignKit Dark 之内：不换主题、不改令牌值，颜色一律引用 dk-dark.css 令牌</div>
+  <section class="dk-panel dk-x-refine">
+    <ul class="dk-x-refine-list">
+      <li><b>四步编号圆点+竖连线（方向 3）</b>——第一步、第二步已完成（青色对勾 --dk-accent-2），第三步当前（实心紫 --dk-action），第四步未到（灰）；右列相邻步骤面板间 2px 竖连线对齐圆点中轴。</li>
+      <li><b>卡片层次（方向 2）</b>——三格数据卡默认平面，hover 边框亮一档 + translateY(-1px) + var(--dk-shadow-2)，过渡 150ms ease；中间「花费」卡为 hover 常显示例。</li>
+      <li><b>交互统一（方向 5）</b>——按钮/输入/链接过渡统一 150ms ease；焦点环统一 2px 紫（沿用 --dk-focus 令牌）。</li>
+      <li><b>徽章核查（方向 7）</b>——本页徽章（「已选 3 项」、缩略图角标）均已是 999px 圆角、语义色 14% 底，无缺漏。</li>
+    </ul>
+  </section>
 </div>
 
 </body>

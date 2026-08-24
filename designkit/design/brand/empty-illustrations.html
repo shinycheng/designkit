@@ -1,4 +1,4 @@
-<!-- @dsCard group="品牌" name="空状态插画五张" subtitle="细线条几何 · 200×160 · 禁人物禁表情" width="1280" -->
+<!-- @dsCard group="品牌" name="空状态插画五张" subtitle="细线条几何 · 200×160 · 禁人物禁表情 · 已落地 120×120 SVG 五张" width="1280" -->
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -435,6 +435,15 @@ a:hover { color: var(--dk-accent-strong); }
 .dk-x-fln2 { fill: var(--dk-text-tertiary); stroke: none; }
 .dk-x-fcanvas { fill: var(--dk-canvas); }
 .dk-x-brace { font: 600 27px var(--dk-font-mono); fill: var(--dk-action); stroke: none; }
+
+/* 已落地资产（120×120 独立 SVG 文件的原样内联展示） */
+.dk-x-assets { grid-column: 1 / -1; display: grid; gap: 14px; align-content: start; }
+.dk-x-assetgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+.dk-x-asset { margin: 0; display: grid; gap: 8px; align-content: start; }
+.dk-x-asset .dk-x-stage { padding: 14px; }
+.dk-x-asset figcaption { display: grid; gap: 3px; justify-items: center; text-align: center; }
+.dk-x-asset-name { font-size: var(--dk-text-sm); font-weight: 600; color: var(--dk-text-secondary); }
+.dk-x-asset-path { font-family: var(--dk-font-mono); font-size: 11px; color: var(--dk-text-tertiary); word-break: break-all; }
 </style>
 </head>
 <body>
@@ -611,6 +620,116 @@ a:hover { color: var(--dk-accent-strong); }
         <p class="dk-empty__description">连不上服务器。检查网络或刷新重试；一直这样，截图给管理员。</p>
         <button class="dk-button dk-button--quiet" type="button">再试一次</button>
         <p class="dk-mono-note">designkit.errors.network / common.retry</p>
+      </div>
+    </section>
+
+    <!-- 已落地资产 -->
+    <section class="dk-panel dk-x-assets">
+      <div>
+        <h2 class="dk-panel-title">已落地资产</h2>
+        <p class="dk-panel-hint">
+          五张 120×120 独立 SVG 已落进前端仓库，可 &lt;img&gt; 引用也可直接内联：
+          主线一律 currentColor（根元素默认 color 取 var(--dk-border) 并带回退值），
+          每张唯一的紫点缀元素带 dk-illus-accent 类、内联 var(--dk-action) 并带回退值；
+          无 style 标签、无字体、无外链，纯 path 线条。下面五张就是文件内容原样内联。
+          来源说明见同目录 README.md：本项目自绘，随 LGPL 分发。
+        </p>
+      </div>
+      <div class="dk-x-assetgrid">
+
+        <figure class="dk-x-asset">
+          <div class="dk-x-stage">
+            <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="摊开的书页，右页夹着一条紫色书签" style="color:var(--dk-border,#273049)">
+              <path d="M60 83C50.4 78.2 38.4 77 27.6 79.4V43.4C38.4 41 50.4 42.2 60 47C69.6 42.2 81.6 41 92.4 43.4V79.4C81.6 77 69.6 78.2 60 83Z"/>
+              <path d="M60 47V83"/>
+              <path d="M33.6 51.8C40.8 50 48 50.6 55.2 53" opacity="0.55"/>
+              <path d="M33.6 63.2C40.8 61.4 48 62 55.2 64.4" opacity="0.55"/>
+              <path d="M33.6 74.6C40.8 72.8 48 73.4 55.2 75.8" opacity="0.55"/>
+              <path d="M64.8 64.4C72 62 79.2 61.4 86.4 63.2" opacity="0.55"/>
+              <path d="M64.8 75.8C72 73.4 79.2 72.8 86.4 74.6" opacity="0.55"/>
+              <path class="dk-illus-accent" d="M82 42.8V53.4L85 50.4L88 53.4V42.4" style="stroke:var(--dk-action,#7c6bff)"/>
+              <path d="M98 30V37M94.5 33.5H101.5" opacity="0.55"/>
+            </svg>
+          </div>
+          <figcaption>
+            <span class="dk-x-asset-name">灵感库空 · 书页</span>
+            <span class="dk-x-asset-path">frontend/public/designkit/illustrations/empty-inspiration.svg</span>
+          </figcaption>
+        </figure>
+
+        <figure class="dk-x-asset">
+          <div class="dk-x-stage">
+            <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="挂着的相框，框里是山和一轮紫色的月亮" style="color:var(--dk-border,#273049)">
+              <path d="M44 28L60 17L76 28" opacity="0.55"/>
+              <circle cx="60" cy="15" r="1.6" fill="currentColor" stroke="none" opacity="0.55"/>
+              <rect x="24" y="28" width="72" height="64" rx="6"/>
+              <rect x="32" y="36" width="56" height="48" rx="3" opacity="0.55"/>
+              <path d="M34 81L50 61L60 72L68 63L86 81"/>
+              <circle class="dk-illus-accent" cx="74" cy="48" r="4.5" stroke="none" style="fill:var(--dk-action,#7c6bff)"/>
+              <path d="M40 102H84" stroke-dasharray="2 8" opacity="0.5"/>
+            </svg>
+          </div>
+          <figcaption>
+            <span class="dk-x-asset-name">我的图片空 · 相框山月</span>
+            <span class="dk-x-asset-path">frontend/public/designkit/illustrations/empty-gallery.svg</span>
+          </figcaption>
+        </figure>
+
+        <figure class="dk-x-asset">
+          <div class="dk-x-stage">
+            <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="对话气泡，中间亮着一颗紫色星点" style="color:var(--dk-border,#273049)">
+              <path d="M38 32H86A8 8 0 0 1 94 40V68A8 8 0 0 1 86 76H60L48 88V76H38A8 8 0 0 1 30 68V40A8 8 0 0 1 38 32Z"/>
+              <path class="dk-illus-accent" d="M62 44C63 50.5 65.5 53 72 54C65.5 55 63 57.5 62 64C61 57.5 58.5 55 52 54C58.5 53 61 50.5 62 44Z" style="stroke:var(--dk-action,#7c6bff)"/>
+              <circle cx="44" cy="54" r="2" fill="currentColor" stroke="none" opacity="0.55"/>
+              <circle cx="80" cy="54" r="2" fill="currentColor" stroke="none" opacity="0.55"/>
+              <path d="M101 24V31M97.5 27.5H104.5" opacity="0.55"/>
+            </svg>
+          </div>
+          <figcaption>
+            <span class="dk-x-asset-name">对话空 · 气泡星点</span>
+            <span class="dk-x-asset-path">frontend/public/designkit/illustrations/empty-chat.svg</span>
+          </figcaption>
+        </figure>
+
+        <figure class="dk-x-asset">
+          <div class="dk-x-stage">
+            <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="文稿上压着放大镜，镜片里一枚紫色对勾" style="color:var(--dk-border,#273049)">
+              <rect x="28" y="20" width="48" height="64" rx="5"/>
+              <path d="M36 34H68" opacity="0.55"/>
+              <path d="M36 44H68" opacity="0.55"/>
+              <path d="M36 54H56" opacity="0.55"/>
+              <path d="M36 64H48" opacity="0.55"/>
+              <circle cx="78" cy="70" r="17"/>
+              <path d="M90 82L101 93"/>
+              <path class="dk-illus-accent" d="M71 70L76.5 75.5L87 64.5" style="stroke:var(--dk-action,#7c6bff)"/>
+            </svg>
+          </div>
+          <figcaption>
+            <span class="dk-x-asset-name">文案检查初始 · 放大镜文稿</span>
+            <span class="dk-x-asset-path">frontend/public/designkit/illustrations/empty-contentcheck.svg</span>
+          </figcaption>
+        </figure>
+
+        <figure class="dk-x-asset">
+          <div class="dk-x-stage">
+            <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="虚线占位框，中央一个紫色亮点" style="color:var(--dk-border,#273049)">
+              <rect x="26" y="30" width="68" height="56" rx="7" stroke-dasharray="5 7"/>
+              <g class="dk-illus-accent" stroke="none" style="fill:var(--dk-action,#7c6bff)">
+                <circle cx="60" cy="58" r="13" opacity="0.1"/>
+                <circle cx="60" cy="58" r="7" opacity="0.18"/>
+                <circle cx="60" cy="58" r="2.8"/>
+              </g>
+              <path d="M98 27V34M94.5 30.5H101.5" opacity="0.55"/>
+              <path d="M42 100H58" opacity="0.5"/>
+              <path d="M66 100H75" opacity="0.3"/>
+            </svg>
+          </div>
+          <figcaption>
+            <span class="dk-x-asset-name">通用无结果 · 虚线框</span>
+            <span class="dk-x-asset-path">frontend/public/designkit/illustrations/empty-generic.svg</span>
+          </figcaption>
+        </figure>
+
       </div>
     </section>
 

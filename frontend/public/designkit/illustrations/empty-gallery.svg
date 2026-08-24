@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="挂着的相框，框里是山和一轮紫色的月亮" style="color:var(--dk-border,#273049)">
+  <path d="M44 28L60 17L76 28" opacity="0.55"/>
+  <circle cx="60" cy="15" r="1.6" fill="currentColor" stroke="none" opacity="0.55"/>
+  <rect x="24" y="28" width="72" height="64" rx="6"/>
+  <rect x="32" y="36" width="56" height="48" rx="3" opacity="0.55"/>
+  <path d="M34 81L50 61L60 72L68 63L86 81"/>
+  <circle class="dk-illus-accent" cx="74" cy="48" r="4.5" stroke="none" style="fill:var(--dk-action,#7c6bff)"/>
+  <path d="M40 102H84" stroke-dasharray="2 8" opacity="0.5"/>
+</svg>
