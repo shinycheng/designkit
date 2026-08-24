@@ -490,6 +490,17 @@ git show <commit> -- <文件>                          # 逐个读
     mermaid 原型污染修复、B2 计费巡检（billing_watch.go）、
     OAuth 白名单启动断言（绕过面实为六个提供方，比第七节原记录宽）。
 
+43. **P2 工程质量批（2026-08-24 完成，交付计划 P0~P2 至此全部落地）**：
+    designkit 前端测试 0→39 例（3 个钱相关文件进 CI 关键集）；`dk-nas.sh ci`
+    一键预演（顺带把 `check` 从「只打印」改成真失败）；sync 幽灵文件对照
+    （`DK_SYNC_PRUNE=1` 可清，构建产物目录已排除）；版本检查前后端断网关闭
+    （上游 update_service 加 DisableRemoteCheck，VersionBadge 961→18 行只留版本号）；
+    图片自动清理开关（默认关、保留 30~3650 天、被未结束批次引用的素材不删、
+    每批 500、fail-closed）。附带修真 bug：`formatMoney('')` 曾显示 $0.00
+    （空值被当免费），现回落占位符。
+    ⚠ 老 bash 3.2 的坑记一条：`$VAR` 后紧跟全角字符会把多字节并进变量名，
+    脚本里这种位置一律写 `${VAR}`。
+
 **下面三条是纯技术决定，我定的，记在这里防止以后反复：**
 
 - **接口挂两个前缀，handler 和 service 完全共用**（2026-08-12 核实后修正，
@@ -792,7 +803,8 @@ designkit/bin/dk-nas.sh <子命令>
 | `sync` | 把工作区同步到群晖 | 一般不用单独跑，下面几个都会先同步 |（⚠ **只增不删**：Mac 上删掉的文件会一直留在 NAS 上，能让 NAS 的检查「假绿」——tagcloud.d.ts 误删后 CI 红了一周而 NAS 全绿就是这么来的。怀疑树不一致时用 `git archive HEAD` 铺一份纯 git 树比对）
 | `build` | 在 NAS 上编译后端 | 改完 Go 代码，最快的对错检查 |
 | `test` | 跑单元测试 | 改完逻辑 |
-| `check` | gofmt + go vet | **推送前必跑**，CI 会卡这两项 |
+| `check` | gofmt + go vet（2026-08-24 起**真会失败退出**，不再只打印退出码） | 快速对错检查 |
+| **`ci`** | **完整预演 CI**：gofmt+vet → golangci-lint → 单测 → 前端 lint/类型/关键 vitest | **推送前必跑**（仅 integration/imgsvc/deploy 检查还得看 GitHub） |
 | `web` | 前端类型检查 + 构建 | 改完 .vue / .ts，CI 也会卡 |
 | `up` | 起整套环境 | 第一次，或者 down 之后 |
 | **`rebuild`** | **重新构建镜像并替换容器** | **改完代码要在 18080 上看到效果** |
@@ -818,8 +830,7 @@ NAS 本地**（这台机器上 BuildKit 拉元数据会走 IPv6 超时，而 `do
 
 CI（`.github/workflows/backend-ci.yml`）在**每次 push**（任意分支）都会跑
 `make test-unit` + `make test-integration` + 前端构建。
-⚠ 但**没有一个 dk-nas.sh 子命令能完整预演 CI**：`check` 漏了 golangci-lint，
-`test` 只跑 unit，`web` 只跑 build 不跑 eslint 和 vitest。
+（2026-08-24 已解决：`dk-nas.sh ci` 完整预演，见上表。）
 
 ---
 
@@ -838,7 +849,7 @@ CI（`.github/workflows/backend-ci.yml`）在**每次 push**（任意分支）�
 | ~~运营自建提示词~~ | **2026-08-16 已完成**：「我的提示词」增删改（上限 200 条/人，仅本人可见，youmind 词不可改删）；灵感库入口 + AI 推荐结果「存为我的提示词」 | — |
 | **推荐结果缓存** | 没有 | 重复点「重新推荐」每次真花 $0.09~$0.34 |
 | **仪表盘是隐藏菜单的后门** | 「渠道状态」已隐藏，但 `/dashboard` 的「快捷操作」四个按钮直通 `/keys`、`/usage`、`/batch-image`、`/redeem`——全是决策 10 要藏的 | 菜单藏了、按钮还在。**monica 还没决定要不要一起藏** |
-| **版本更新检查仍指向上游** | 后端 `github_release_service.go` 轮询的是上游 Sub2API 的 releases；脱离上游后「有新版本」提示恒为误导，管理员照着升级会把系统换成上游镜像。前端徽章的仓库常量已改指本仓库（命令变 404，无害化），后端轮询未关 | 管理员界面可能长期显示可升级；关掉轮询是后续活 |
+| ~~版本更新检查仍指向上游~~ | **2026-08-24 已关**：后端 DisableRemoteCheck 断网、前端徽章只显版本号 |
 | `keep_transparency` | 是公开接口字段，收下、透传、出图时被忽略（`designkit_jobs` 没这一列，worker 用全局配置且恒为 false） | ERP 传 true 拿到合成白底，接口不报错 |
 
 ### 结构缺口

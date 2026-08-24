@@ -711,7 +711,7 @@ a:hover { color: var(--dk-accent-strong); }
       </section>
 
       <!-- 展开的批次详情 -->
-      <div class="dk-x-annot"><span class="dk-x-annot__tag">状态演示</span>点「打开这一批」之后 —— 图片严格按「第几张」排列；第 2 张常显了悬停操作，第 3 张演示白底衬底切换，第 4 张演示「高清放大」进行中；标题行右侧是「删除这一批记录」（批次结束后才显示）</div>
+      <div class="dk-x-annot"><span class="dk-x-annot__tag">状态演示</span>点「打开这一批」之后 —— 图片严格按「第几张」排列；第 2 张常显了悬停操作，第 3 张演示白底衬底切换，第 4 张演示「高清放大」进行中；标题行右侧是「删除这一批记录」（批次结束后才显示）与「打包下载这一批」（P1 打包下载，2026-08-24；有出成功的图才显示，两钮顺序照 JobDetail.vue）</div>
       <div style="margin-top:10px">
         <button type="button" class="dk-button dk-button--quiet dk-button--sm">← 返回列表</button>
         <section class="dk-panel" style="margin-top:12px">
@@ -723,6 +723,15 @@ a:hover { color: var(--dk-accent-strong); }
                  后端对没结束的批次也会拒，这里干脆不给入口。点了先弹危险确认（规格照本稿下方
                  的删除确认弹窗）：「删除这一批的记录？结果图会一起从「我的图片」消失，已扣的费用不退。」 -->
             <button type="button" class="dk-button dk-button--danger dk-button--sm" style="margin-left:auto">删除这一批记录</button>
+            <!-- 打包下载这一批（P1 打包下载，2026-08-24；gallery.downloadJob）：
+                 后端 GET /jobs/:uid/images.zip 现拼现流，zip 内文件名「第{seq}张.png」与界面序号严格对应。
+                 有出成功的图才显示（canDownloadZip：success_count > 0，空批次后端 404）；
+                 下载在途按钮禁用、文案换「加载中…」，防连点重复打整包。
+                 与「删除这一批记录」并排，先删后载的顺序照 JobDetail.vue 实现的出现顺序。 -->
+            <button type="button" class="dk-button dk-button--secondary dk-button--sm">
+              <svg class="dk-x-ticon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5h13v8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M3.5 7.5 5.2 4.5h9.6l1.7 3M10 10v4.2m0 0 2.2-2.2M10 14.2l-2.2-2.2"/></svg>
+              打包下载这一批
+            </button>
           </div>
           <dl class="dk-x-facts">
             <div><dt>提交时间</dt><dd>2026-08-15 10:24</dd></div>

@@ -466,6 +466,11 @@ a:hover { color: var(--dk-accent-strong); }
 .dk-x-typing__dot:nth-child(2) { animation-delay: 0.2s; }
 .dk-x-typing__dot:nth-child(3) { animation-delay: 0.4s; }
 
+/* 流式输出中：半截文字末尾的光标闪烁点（step-end = 硬切明灭，不是渐隐；
+   减少动态效果时被全局规则关掉，静止显示为实心点） */
+.dk-x-caret { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dk-action); margin-left: 3px; vertical-align: 1px; animation: dk-x-caret-blink 1s step-end infinite; }
+@keyframes dk-x-caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
 /* 输入条 + 附件 chip */
 .dk-x-inputbar { border-top: 1px solid var(--dk-border); background: var(--dk-surface); padding: 10px 16px 14px; display: grid; gap: 8px; }
 .dk-x-attachrow { display: flex; align-items: center; gap: 10px; }
@@ -728,7 +733,7 @@ a:hover { color: var(--dk-accent-strong); }
   </div>
 
   <!-- ═══ 状态小样 ═══ -->
-  <div class="dk-x-annot"><span class="dk-x-annot__tag">状态小样</span>六种状态各一小样：空对话 / 没有记录 / AI 回复中 / 发送失败（重发） / 附件拦截（超限、超大，toast 呈现） / 记录加载失败</div>
+  <div class="dk-x-annot"><span class="dk-x-annot__tag">状态小样</span>八种状态各一小样：空对话 / 没有记录 / AI 回复中 / 流式输出中（P1 流式，2026-08-24） / 回复中断（标红） / 发送失败（重发） / 附件拦截（超限、超大，toast 呈现） / 记录加载失败</div>
   <div class="dk-x-states">
 
     <!-- 空对话（右侧消息区，刚点开新对话时） -->
@@ -762,7 +767,31 @@ a:hover { color: var(--dk-accent-strong); }
             </span>
           </div>
         </div>
-        <p class="dk-note dk-note--quiet">回复中「发送」置灰；流式逐字上屏，不是等完整段。</p>
+        <p class="dk-note dk-note--quiet">回复中「发送」置灰；这是首字到达前的样子，首字到达后转成「流式输出中」小样。</p>
+      </div>
+    </section>
+
+    <!-- 流式输出中（P1 对话流式，2026-08-24）：SSE 逐字上屏，半截文字末尾一颗光标闪烁点。
+         流式不可用时前端自动回落成整段返回（那时只有「AI 回复中」态，没有本态）。 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">流式输出中</p>
+      <div class="dk-x-state-demo">
+        <div class="dk-x-msg dk-x-msg--ai" style="max-width: 100%">
+          <div class="dk-x-bubble"><p>光线可以这样补：把主光源移到左前 45°，瓶身高光会更干净，然后在右侧加一块<span class="dk-x-caret" aria-hidden="true"></span></p></div>
+        </div>
+        <p class="dk-note dk-note--quiet">逐字上屏，光标点跟在最后一个字后面；期间「发送」仍置灰。</p>
+      </div>
+    </section>
+
+    <!-- 回复中断（chat.interrupted）：流没走完就断了。半截回复保留展示，
+         标红说明挂在半截回复下面；「重发」按钮在对应的用户消息上（样式同「发送失败」），不在这条下面。 -->
+    <section class="dk-panel">
+      <p class="dk-eyebrow">回复中断</p>
+      <div class="dk-x-state-demo">
+        <div class="dk-x-msg dk-x-msg--ai" style="max-width: 100%">
+          <div class="dk-x-bubble"><p>光线可以这样补：把主光源移到左前 45°，瓶身高光会更干净，然后在右侧加一块</p></div>
+        </div>
+        <p class="dk-note dk-note--danger">回复中断，内容不完整，重发这条提问可重新生成。</p>
       </div>
     </section>
 
@@ -823,6 +852,7 @@ a:hover { color: var(--dk-accent-strong); }
   designkit.chat.attachTooLarge zh: '图片超过 2MB，压缩后再发。'                en: 'Image exceeds 2MB. Compress it and send again.'
   designkit.chat.failed         zh: '这条没发出去，点「重发」。'                 en: 'This message was not sent. Click "Resend".'
   designkit.chat.resend         zh: '重发'                                     en: 'Resend'
+  designkit.chat.interrupted    zh: '回复中断，内容不完整，重发这条提问可重新生成。' en: 'Reply interrupted and incomplete. Resend the question to regenerate.'
   designkit.chat.untitled       zh: '新对话'                                   en: 'New chat'
   designkit.chat.loadFailed     zh: '记录加载失败，刷新页面重试。'               en: 'Failed to load history. Refresh the page and try again.'
   designkit.chat.emptySessions  zh: '还没有对话记录。'                          en: 'No chats yet.'

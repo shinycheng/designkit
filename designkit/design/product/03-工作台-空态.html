@@ -789,6 +789,11 @@ a:hover { color: var(--dk-accent-strong); }
              出图用的是改完的版本。「存为我的提示词」存的也是当前编辑后的内容——
              不花钱、不出图，存完在灵感库「我的提示词」页签里能直接「用它生成」 -->
         <label class="dk-label dk-x-mt-4" for="dkx-suggest-result">AI 推荐的提示词</label>
+        <!-- 命中推荐缓存时的提示行（P1 推荐结果缓存，2026-08-24；suggest.cachedNote）：
+             同商品图+分类+特点 24h 内重复点直接复用上次结果、不重复计费，本行说明来源；
+             {time} 是相对时间（这里示例「刚刚」）。没命中缓存时无此行；
+             「重新推荐」带 force 跳过缓存，那次照常计费。位置照 PromptEditor：标题下、结果框上。 -->
+        <p class="dk-note dk-x-mt-1">这是 刚刚 的推荐结果，内容相同不再重复计费；改动商品特点或分类会重新推荐。</p>
         <textarea id="dkx-suggest-result" class="dk-textarea" rows="7">米白色针织开衫平铺在浅灰亚麻布面上，旁边点缀干燥花与牛皮纸标签，顶部打柔和自然光，日系温柔氛围，画面干净、留白均匀，细节清晰，质感高级，适合电商平台展示。</textarea>
         <div class="dk-x-editor-result-actions dk-x-mt-1">
           <p class="dk-note">可直接修改。出图用这一条，出 1 张。</p>

@@ -774,6 +774,26 @@ export default {
       adminContactTooLong: '「管理员联系方式」最多 {max} 个字。',
       adminContactEmptyWarn: '还没填联系方式，建议填上。',
 
+      // ── 图片自动清理（决策 17）──────────────────────────
+      sectionCleanup: '图片自动清理',
+      sectionCleanupHint: '硬盘不够用时，定期删掉超过保留天数的图。默认关闭，图片永久保留。',
+
+      cleanupEnabledLabel: '自动清理',
+      cleanupEnabledHint:
+        '开着时每天清一次：超过保留天数的结果图和商品图，文件删除、记录标记删除。正在出图的批次用到的商品图不删。保存后立刻生效，不用重启。',
+      cleanupEnabledOn: '已开启：超过保留天数的图会被删除',
+      cleanupEnabledOff: '已关闭：图片永久保留',
+
+      cleanupDangerTitle: '开启前先看清楚',
+      cleanupDangerScope: '删的是图片文件本身（结果图、商品图和它的处理产物），删了找不回来；记录只做标记删除。',
+      cleanupDangerMoney: '不涉及钱：账目和消费记录全部保留，已扣的费用不退也不会多扣。',
+      cleanupDangerBackup: '先确认备份正常再开（配置手册第 10 步）——超期删除的图只能从备份里找。',
+
+      cleanupDaysLabel: '保留天数',
+      cleanupDaysHint: '生成或上传超过这个天数的图，会在下一轮清理时删除。默认 180 天。',
+      cleanupDaysDanger: '填得太小，上个月出的图也会被删。最少 {min} 天。',
+      cleanupDaysRange: '「保留天数」要填 {min} 到 {max} 之间的整数。',
+
       // ── 灵感库同步代理（只读）───────────────────────────
       sectionSync: '灵感库同步',
       sectionSyncHint: '同步提示词时走不走代理。',

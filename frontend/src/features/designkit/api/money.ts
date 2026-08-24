@@ -61,10 +61,12 @@ export function formatMoney(amount: Money | null | undefined, fallback: string =
   if (typeof amount !== 'string') {
     return fallback
   }
-  const value = Number(amount.trim())
-  if (!Number.isFinite(value)) {
+  const trimmed = amount.trim()
+  // ⚠ Number('') 是 0 不是 NaN：空串不拦在这里就会显示成 $0.00（= 被读成免费）。
+  if (trimmed === '' || !Number.isFinite(Number(trimmed))) {
     return fallback
   }
+  const value = Number(trimmed)
   const twoDecimals = value.toFixed(2)
   const fourDecimals = value.toFixed(4)
   if (Number(twoDecimals) === Number(fourDecimals)) {

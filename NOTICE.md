@@ -78,6 +78,9 @@ only to indicate supported channels; no affiliation or endorsement is implied.
 pnpm overrides 修 mermaid/lodash 漏洞（lockfile 随之重生成）；
 `.github/audit-exceptions.yml` 清理僵尸豁免；`deploy/docker-compose.dev.yml`
 补内存上限与日志限额、端口绑定变量拆分；`backend-ci.yml` 加 imgsvc job。
+2026-08-24 追加：`backend/internal/service/update_service.go` + `wire.go`
+（版本远程检查关闭，本项目已脱离上游发布线）；`VersionBadge.vue` 精简为纯版本显示；
+根 `Makefile` 关键前端测试清单加入 designkit 用例。
 
 **② 品牌字样替换（17 个文件，2026-08-15）**：站点名未配置时的兜底
 「Sub2API」→「DesignKit」（前端 12 个文件、后端

@@ -677,6 +677,16 @@ const (
 	SettingKeyWorkerConcurrency = "worker_concurrency"
 	// SettingKeyAdminContact 管理员联系方式，余额不足的提示里会显示，部署时填。
 	SettingKeyAdminContact = "admin_contact"
+	// SettingKeyCleanupEnabled 图片自动清理开关（决策 17 的落地）。默认 false：
+	// 图片永久保留，硬盘紧了才在「商品图设置」里打开。
+	//
+	// 这两个键不在 9001 的预置 INSERT 里（那个文件跑过就不能改），
+	// 第一次保存设置时由 PutSetting 的 UPSERT 建出来；没保存过就按默认值跑。
+	SettingKeyCleanupEnabled = "cleanup_enabled"
+	// SettingKeyCleanupRetentionDays 图片保留天数。清理的判据是
+	// 「created_at 早于 now − 保留天数」（designkit_images.expires_at 若被显式
+	// 设过也认，见 service/cleanup.go）。
+	SettingKeyCleanupRetentionDays = "cleanup_retention_days"
 )
 
 // 配置项的兜底默认值。跟 9001 迁移里 INSERT 的预置值保持一致。
@@ -705,7 +715,27 @@ const (
 	DefaultHeartbeatSeconds = 30
 	// DefaultStaleJobMinutes 心跳超过这么久没动静就判定为僵尸。
 	DefaultStaleJobMinutes = 10
+	// DefaultCleanupRetentionDays 图片自动清理的默认保留天数（半年）。
+	DefaultCleanupRetentionDays = 180
+	// MinCleanupRetentionDays 保留天数下限。定 30 是护栏：清理**删的是文件**、
+	// 找不回来，填 1 之类的小数字多半是手滑，后果是上个月的图全没了。
+	MinCleanupRetentionDays = 30
+	// MaxCleanupRetentionDays 保留天数上限（约十年）。再大和「不清理」没有区别，
+	// 直接关掉开关就是。
+	MaxCleanupRetentionDays = 3650
 )
+
+// CleanupCandidate 自动清理的一个候选（一张结果图或一个素材）。
+// repository 按保留天数筛出来，service 负责删文件 + 软删记录。
+type CleanupCandidate struct {
+	// ID 自增主键（软删时按它定位）。
+	ID int64
+	// ObjectKey 对象存储里的相对路径。
+	ObjectKey string
+	// ByteSize 记录里存的字节数，用来在日志里报「释放约多少」。
+	// 素材的预处理产物（variants）没有字节数列，不计入 —— 所以是「约」。
+	ByteSize int64
+}
 
 // ResolveKeepTransparency 把「请求传没传 keep_transparency」落成定值：
 // nil（没传）用 DefaultKeepTransparency，传了用传的。

@@ -65,6 +65,17 @@ type UpdateService struct {
 	githubClient   GitHubReleaseClient
 	currentVersion string
 	buildType      string // "source" for manual builds, "release" for CI builds
+
+	// designkit（2026-08-24）：true 时版本检查完全不出网——CheckUpdate 恒返回
+	// 「当前即最新」，回滚候选恒为空。装配点 wire.go 的 ProvideUpdateService
+	// 把它钉成 true，理由见那里的注释。不做成配置项：本仓库不存在
+	// 「需要检查上游 release」的场景，开关只留给单测。
+	remoteCheckDisabled bool
+}
+
+// DisableRemoteCheck 关闭对 GitHub 的版本检查（designkit 装配点调用，见 wire.go）。
+func (s *UpdateService) DisableRemoteCheck() {
+	s.remoteCheckDisabled = true
 }
 
 // NewUpdateService creates a new UpdateService
@@ -131,6 +142,16 @@ type GitHubAsset struct {
 
 // CheckUpdate checks for available updates
 func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInfo, error) {
+	// designkit：版本检查已关闭，不访问 GitHub、不读缓存，恒返回「当前即最新」。
+	if s.remoteCheckDisabled {
+		return &UpdateInfo{
+			CurrentVersion: s.currentVersion,
+			LatestVersion:  s.currentVersion,
+			HasUpdate:      false,
+			BuildType:      s.buildType,
+		}, nil
+	}
+
 	// Try cache first
 	if !force {
 		if cached, err := s.getFromCache(ctx); err == nil && cached != nil {
@@ -363,6 +384,12 @@ func (s *UpdateService) RollbackToVersion(ctx context.Context, version string) e
 // fetchRollbackCandidates fetches recent releases and keeps the newest
 // maxRollbackVersions entries strictly older than the current version.
 func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubRelease, error) {
+	// designkit：版本检查已关闭——没有候选。ListRollbackVersions 返回空表，
+	// RollbackToVersion 一律 ErrRollbackVersionNotAllowed。
+	if s.remoteCheckDisabled {
+		return nil, nil
+	}
+
 	releases, err := s.githubClient.FetchRecentReleases(ctx, githubRepo, rollbackFetchPageSize)
 	if err != nil {
 		return nil, err

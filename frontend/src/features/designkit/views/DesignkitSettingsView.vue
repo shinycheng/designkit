@@ -300,6 +300,61 @@
           </SettingsField>
         </SettingsSection>
 
+        <!-- ── 图片自动清理（决策 17）───────────────────── -->
+        <SettingsSection
+          :title="t('designkit.settings.sectionCleanup')"
+          :hint="t('designkit.settings.sectionCleanupHint')"
+          :disabled="saving"
+        >
+          <SettingsField
+            :label="t('designkit.settings.cleanupEnabledLabel')"
+            :hint="t('designkit.settings.cleanupEnabledHint')"
+            v-slot="{ fieldId }"
+          >
+            <label class="dk-settings-page__toggle">
+              <input
+                :id="fieldId"
+                v-model="form.cleanup_enabled"
+                type="checkbox"
+                class="dk-settings-page__checkbox"
+              />
+              <span>
+                {{
+                  form.cleanup_enabled
+                    ? t('designkit.settings.cleanupEnabledOn')
+                    : t('designkit.settings.cleanupEnabledOff')
+                }}
+              </span>
+            </label>
+          </SettingsField>
+
+          <!-- 勾上的那一刻就把后果亮出来，不等保存：删的是文件，找不回来。 -->
+          <div v-if="form.cleanup_enabled" class="dk-alert dk-alert--danger">
+            <p class="dk-text-strong">{{ t('designkit.settings.cleanupDangerTitle') }}</p>
+            <p class="dk-alert__sub">{{ t('designkit.settings.cleanupDangerScope') }}</p>
+            <p class="dk-alert__sub">{{ t('designkit.settings.cleanupDangerMoney') }}</p>
+            <p class="dk-alert__sub">{{ t('designkit.settings.cleanupDangerBackup') }}</p>
+          </div>
+
+          <SettingsField
+            :label="t('designkit.settings.cleanupDaysLabel')"
+            :hint="t('designkit.settings.cleanupDaysHint')"
+            :danger="t('designkit.settings.cleanupDaysDanger', { min: limits.cleanup_retention_days_min })"
+            :error="fieldErrors.cleanup_retention_days"
+            v-slot="{ fieldId }"
+          >
+            <input
+              :id="fieldId"
+              v-model.number="form.cleanup_retention_days"
+              type="number"
+              class="dk-input dk-settings-page__number"
+              :min="limits.cleanup_retention_days_min"
+              :max="limits.cleanup_retention_days_max"
+              step="1"
+            />
+          </SettingsField>
+        </SettingsSection>
+
         <!-- ── 灵感库同步（只读）───────────────────────── -->
         <SettingsSection
           :title="t('designkit.settings.sectionSync')"
@@ -401,6 +456,8 @@ const form = reactive<DesignkitSettingsForm>({
   max_dimension: 0,
   worker_concurrency: 0,
   admin_contact: '',
+  cleanup_enabled: false,
+  cleanup_retention_days: 0,
   unit_prices: {},
   rate_multiplier: '',
 })
@@ -431,6 +488,7 @@ const fieldErrors = reactive<{
   max_dimension: string
   worker_concurrency: string
   admin_contact: string
+  cleanup_retention_days: string
   rate_multiplier: string
   unit_prices: Record<string, string>
 }>({
@@ -441,6 +499,7 @@ const fieldErrors = reactive<{
   max_dimension: '',
   worker_concurrency: '',
   admin_contact: '',
+  cleanup_retention_days: '',
   rate_multiplier: '',
   unit_prices: {},
 })
@@ -466,6 +525,8 @@ const limits = computed<DesignkitSettingsLimits>(
       ratios_max: 12,
       model_max_length: 64,
       admin_contact_max_length: 200,
+      cleanup_retention_days_min: 30,
+      cleanup_retention_days_max: 3650,
       tiers: [],
       unit_price_max: '10',
       rate_multiplier_min: '0.01',
@@ -556,6 +617,7 @@ function clearFieldErrors(): void {
   fieldErrors.max_dimension = ''
   fieldErrors.worker_concurrency = ''
   fieldErrors.admin_contact = ''
+  fieldErrors.cleanup_retention_days = ''
   fieldErrors.rate_multiplier = ''
   fieldErrors.unit_prices = {}
 }
@@ -655,6 +717,17 @@ function validate(): boolean {
   if (f.admin_contact.trim().length > l.admin_contact_max_length) {
     fieldErrors.admin_contact = t('designkit.settings.adminContactTooLong', {
       max: l.admin_contact_max_length,
+    })
+    ok = false
+  }
+
+  // 保留天数：开关关着也查 —— 这个数字会原样存进去，等哪天开开关时直接生效。
+  if (
+    !checkInt(f.cleanup_retention_days, l.cleanup_retention_days_min, l.cleanup_retention_days_max)
+  ) {
+    fieldErrors.cleanup_retention_days = t('designkit.settings.cleanupDaysRange', {
+      min: l.cleanup_retention_days_min,
+      max: l.cleanup_retention_days_max,
     })
     ok = false
   }
@@ -788,6 +861,22 @@ onUnmounted(() => {
 
 .dk-settings-page__currency {
   color: var(--dk-text-secondary);
+}
+
+/* 自动清理的开关：勾选框 + 当前状态一句话，点整行都能切换 */
+.dk-settings-page__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dk-space-2);
+  cursor: pointer;
+  color: var(--dk-text);
+}
+
+.dk-settings-page__checkbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--dk-accent);
+  cursor: pointer;
 }
 
 .dk-settings-page__footer {

@@ -43,6 +43,9 @@ export interface DesignkitSettingsLimits {
   ratios_max: number
   model_max_length: number
   admin_contact_max_length: number
+  /** 图片保留天数的允许范围（默认 30~3650）。 */
+  cleanup_retention_days_min: number
+  cleanup_retention_days_max: number
   /** 单价表有哪几档，从便宜到贵，例如 ['1K','2K','4K']。 */
   tiers: string[]
   unit_price_max: string
@@ -71,6 +74,10 @@ export interface DesignkitSettings {
   max_dimension: number
   worker_concurrency: number
   admin_contact: string
+  /** 图片自动清理开关。默认 false = 图片永久保留。 */
+  cleanup_enabled: boolean
+  /** 图片保留天数。开关开着时，超过这个天数的结果图和商品图会被删除。 */
+  cleanup_retention_days: number
   /**
    * 计费档 → 单价（美元，十进制字符串）。
    * **只包含已经填了的档**；没填的档根本不在这个对象里 = 价格待确认。
@@ -95,6 +102,8 @@ export interface DesignkitSettingsPatch {
   max_dimension?: number
   worker_concurrency?: number
   admin_contact?: string
+  cleanup_enabled?: boolean
+  cleanup_retention_days?: number
   /** 整份替换。空串的档表示「还没测出来」，后端会把它剔掉。 */
   unit_prices?: Record<string, string>
   rate_multiplier?: string
@@ -109,6 +118,8 @@ export interface DesignkitSettingsForm {
   max_dimension: number
   worker_concurrency: number
   admin_contact: string
+  cleanup_enabled: boolean
+  cleanup_retention_days: number
   /** 档位 → 输入框里的原文。空串 = 这一档还没填。 */
   unit_prices: Record<string, string>
   /** 输入框里的原文。空串 = 没填，按 1 算。 */
@@ -171,6 +182,8 @@ export function toSettingsForm(settings: DesignkitSettings): DesignkitSettingsFo
     max_dimension: settings.max_dimension,
     worker_concurrency: settings.worker_concurrency,
     admin_contact: settings.admin_contact,
+    cleanup_enabled: settings.cleanup_enabled,
+    cleanup_retention_days: settings.cleanup_retention_days,
     unit_prices: prices,
     rate_multiplier: settings.rate_multiplier,
   }
@@ -207,6 +220,12 @@ export function buildSettingsPatch(
   }
   if (form.admin_contact.trim() !== server.admin_contact.trim()) {
     patch.admin_contact = form.admin_contact.trim()
+  }
+  if (form.cleanup_enabled !== server.cleanup_enabled) {
+    patch.cleanup_enabled = form.cleanup_enabled
+  }
+  if (form.cleanup_retention_days !== server.cleanup_retention_days) {
+    patch.cleanup_retention_days = form.cleanup_retention_days
   }
   if (!sameUnitPrices(form.unit_prices, server.unit_prices, server.limits.tiers)) {
     // 整份替换。空串原样传上去，后端会把那一档剔掉（= 价格待确认）。
@@ -253,6 +272,9 @@ function normalizeSettings(data: DesignkitSettings): DesignkitSettings {
   return {
     ...data,
     ratios: data.ratios ?? [],
+    // 老后端没有这两个字段时按「关 / 默认 180 天」兜底，别让页面白屏。
+    cleanup_enabled: data.cleanup_enabled ?? false,
+    cleanup_retention_days: data.cleanup_retention_days ?? 180,
     unit_prices: data.unit_prices ?? {},
     rate_multiplier: data.rate_multiplier ?? '',
     warnings: data.warnings ?? [],

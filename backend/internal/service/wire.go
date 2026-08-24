@@ -43,8 +43,16 @@ func ProvidePricingService(cfg *config.Config, remoteClient PricingRemoteClient)
 }
 
 // ProvideUpdateService creates UpdateService with BuildInfo
+//
+// designkit（2026-08-24 拍板）：版本检查彻底关闭。这套机制查的是上游
+// Wei-Shaw/sub2api 的 release，对本仓库没有意义；在线升级/回滚更危险——
+// 会把系统整个换成上游版本。关闭后 CheckUpdate 恒返回「当前即最新」，
+// 管理员端点还在但不再出网；行为由 update_service_designkit_test.go 钉住。
+// Codex 版本同步（OpenAICodexVersionSyncService）是另一回事，不受影响。
 func ProvideUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, buildInfo BuildInfo) *UpdateService {
-	return NewUpdateService(cache, githubClient, buildInfo.Version, buildInfo.BuildType)
+	svc := NewUpdateService(cache, githubClient, buildInfo.Version, buildInfo.BuildType)
+	svc.DisableRemoteCheck()
+	return svc
 }
 
 // ProvideEmailQueueService creates EmailQueueService with default worker count

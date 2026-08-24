@@ -617,6 +617,30 @@ export default {
       adminContactTooLong: '"Administrator contact" too long (max {max} characters).',
       adminContactEmptyWarn: 'No contact configured. Filling it in is recommended.',
 
+      sectionCleanup: 'Automatic image cleanup',
+      sectionCleanupHint:
+        'When disk runs low, periodically delete images older than the retention period. Off by default — images are kept forever.',
+
+      cleanupEnabledLabel: 'Automatic cleanup',
+      cleanupEnabledHint:
+        'When on, runs daily: generated images and product photos past the retention period have their files deleted and records marked deleted. Photos used by unfinished batches are kept. Takes effect on save, no restart.',
+      cleanupEnabledOn: 'On: images past the retention period will be deleted',
+      cleanupEnabledOff: 'Off: images are kept forever',
+
+      cleanupDangerTitle: 'Read before enabling',
+      cleanupDangerScope:
+        'It deletes the image files themselves (results, product photos and their processed copies) — unrecoverable; records are only marked deleted.',
+      cleanupDangerMoney:
+        'No money involved: billing and usage records are all kept; charged fees are neither refunded nor charged again.',
+      cleanupDangerBackup:
+        'Confirm backups work before enabling (configuration manual, step 10) — expired images can only be recovered from backups.',
+
+      cleanupDaysLabel: 'Retention (days)',
+      cleanupDaysHint:
+        'Images generated or uploaded longer ago than this are deleted on the next cleanup run. Default 180.',
+      cleanupDaysDanger: 'Too small deletes last month\'s images too. At least {min} days.',
+      cleanupDaysRange: '"Retention (days)" must be an integer between {min} and {max}.',
+
       sectionSync: 'Prompt library sync',
       sectionSyncHint: 'Whether syncing goes through a proxy.',
       syncProxyLabel: 'Proxy used for syncing',

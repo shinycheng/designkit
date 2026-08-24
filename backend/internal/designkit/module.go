@@ -160,6 +160,14 @@ type Module struct {
 	// 没有跨实例的领取锁，跟 worker 的 Locker=nil 是同一份约束。
 	upscale *dkservice.UpscaleService
 
+	// cleanup 图片自动清理（决策 17 的开关落地）：开关开着时每天一次
+	// 删掉超过保留天数的结果图和素材（文件真删、记录软删）。
+	//
+	// 允许为 nil：它要数据库和对象存储，缺任意一个就不建。缺席的唯一后果是
+	// 「开着开关也不清理」——开关默认是关的，不值得为它记降级。
+	// **单实例约束**：没有跨实例锁，跟 worker 的 Locker=nil 同一份约束。
+	cleanup *dkservice.CleanupService
+
 	// jobs 批次的报价 / 提交 / 查询 / 停止排队 / 重试。
 	// 它是整条链路的入口：没有它，运营界面上没有任何按钮能让一张图开始出。
 	jobs *dkservice.JobService
@@ -440,6 +448,26 @@ func NewModule(
 	// ---- 8. 后台队列 ----
 	m.worker = m.newWorker()
 
+	// ---- 8·b. 图片自动清理（决策 17）----
+	//
+	// 只要数据库和对象存储：出图网关坏着的时候硬盘照样会满，清理照常该跑。
+	// 建不出来**不记降级**：开关默认是关的，绝大多数部署根本用不到它，
+	// 为一个关着的功能把健康检查染黄不成比例。
+	if m.repo != nil && m.store != nil {
+		if cleanup, cleanupErr := dkservice.NewCleanupService(dkservice.CleanupServiceDeps{
+			Store:    dkrepository.NewCleanupRepo(db),
+			Objects:  m.store,
+			Settings: m.repo,
+		}); cleanupErr != nil {
+			slog.Warn("designkit 图片自动清理没建起来：开着开关也不会清理",
+				slog.Any("error", cleanupErr))
+		} else {
+			m.cleanup = cleanup
+		}
+	} else {
+		slog.Warn("designkit 图片自动清理未装配（缺数据库或对象存储）：「商品图设置」里的清理开关开了也不会动")
+	}
+
 	// ---- 9. 灵感库同步用的代理 ----
 	//
 	// 建不出来只影响「管理员能不能在下拉框里选代理」，同步直连照跑，
@@ -685,6 +713,7 @@ func (m *Module) logStartupSummary() {
 		slog.Bool("worker", m.worker != nil),
 		slog.Bool("jobs", m.jobs != nil),
 		slog.Bool("upscale", m.upscale != nil),
+		slog.Bool("cleanup", m.cleanup != nil),
 		// 灵感库两项：浏览只要数据库在就有；同步器还没装配时「立即同步」不可用，
 		// 但同步状态和代理设置照常给得出来（见 promptSyncAdapter）。
 		slog.Bool("prompt_library", m.services.Prompts != nil),
@@ -789,7 +818,17 @@ func (m *Module) Start(ctx context.Context) error {
 	m.started = true
 	w := m.worker
 	inspiration := m.inspiration
+	cleanup := m.cleanup
 	m.mu.Unlock()
+
+	// 图片自动清理独立于出图队列：网关坏着硬盘照样会满。
+	// 开关关着时它每轮空跑（不动任何数据），起着没有成本。
+	if cleanup != nil {
+		if err := cleanup.Start(ctx); err != nil {
+			// 只记不返：清理起不来不该拦住出图。
+			slog.Error("designkit 图片自动清理定时器启动失败：开着开关也不会清理", slog.Any("error", err))
+		}
+	}
 
 	// 灵感库自动同步先起：它跟出图队列**没有任何依赖关系**，
 	// 出图那边缺依赖（没配图像服务之类）时，灵感库照样该定时更新 ——
@@ -831,7 +870,16 @@ func (m *Module) Close() error {
 		w := m.worker
 		inspiration := m.inspiration
 		upscale := m.upscale
+		cleanup := m.cleanup
 		m.mu.Unlock()
+
+		// 图片自动清理先停：它自带收尾预算（3 秒），被打断的那一轮
+		// 删到哪算哪——文件删除幂等、软删带守卫，下一轮从断点接着清。
+		if cleanup != nil {
+			if err := cleanup.Close(); err != nil {
+				slog.Warn("designkit 图片自动清理关停时出错", slog.Any("error", err))
+			}
+		}
 
 		// 高清放大队列先停：cancel 之后在放的那张立刻中断。被打断的任务
 		// 留在 running（刻意不写失败），下次启动的重启恢复会把它重置回
@@ -2557,17 +2605,19 @@ func (a settingsServiceAdapter) GetSettings(ctx context.Context) (*dkhandler.Set
 	}
 
 	view := &dkhandler.SettingsView{
-		Ratios:              a.readRatios(ctx),
-		Model:               a.readString(ctx, dkdomain.SettingKeyModel, dkdomain.DefaultModel),
-		MaxBatchItems:       a.readInt(ctx, dkdomain.SettingKeyMaxBatchItems, dkdomain.DefaultMaxBatchItems),
-		ItemTimeoutSeconds:  a.readInt(ctx, dkdomain.SettingKeyItemTimeoutSeconds, dkdomain.DefaultItemTimeoutSeconds),
-		MaxDimension:        a.readInt(ctx, dkdomain.SettingKeyMaxDimension, dkdomain.DefaultMaxDimension),
-		WorkerConcurrency:   a.readInt(ctx, dkdomain.SettingKeyWorkerConcurrency, dkdomain.DefaultWorkerConcurrency),
-		AdminContact:        a.readString(ctx, dkdomain.SettingKeyAdminContact, ""),
-		UnitPrices:          a.readUnitPrices(ctx),
-		RateMultiplier:      a.readRateMultiplier(ctx),
-		PromptSyncProxyID:   nil,
-		PromptSyncProxyName: "",
+		Ratios:               a.readRatios(ctx),
+		Model:                a.readString(ctx, dkdomain.SettingKeyModel, dkdomain.DefaultModel),
+		MaxBatchItems:        a.readInt(ctx, dkdomain.SettingKeyMaxBatchItems, dkdomain.DefaultMaxBatchItems),
+		ItemTimeoutSeconds:   a.readInt(ctx, dkdomain.SettingKeyItemTimeoutSeconds, dkdomain.DefaultItemTimeoutSeconds),
+		MaxDimension:         a.readInt(ctx, dkdomain.SettingKeyMaxDimension, dkdomain.DefaultMaxDimension),
+		WorkerConcurrency:    a.readInt(ctx, dkdomain.SettingKeyWorkerConcurrency, dkdomain.DefaultWorkerConcurrency),
+		AdminContact:         a.readString(ctx, dkdomain.SettingKeyAdminContact, ""),
+		CleanupEnabled:       a.readBool(ctx, dkdomain.SettingKeyCleanupEnabled, false),
+		CleanupRetentionDays: a.readInt(ctx, dkdomain.SettingKeyCleanupRetentionDays, dkdomain.DefaultCleanupRetentionDays),
+		UnitPrices:           a.readUnitPrices(ctx),
+		RateMultiplier:       a.readRateMultiplier(ctx),
+		PromptSyncProxyID:    nil,
+		PromptSyncProxyName:  "",
 	}
 
 	// 灵感库同步的代理：这一页**只读**，改要去灵感库那一页。
@@ -2633,6 +2683,16 @@ func (a settingsServiceAdapter) PutSettings(ctx context.Context, in dkhandler.Se
 			return nil, err
 		}
 	}
+	if in.CleanupEnabled != nil {
+		if err := a.putJSON(ctx, dkdomain.SettingKeyCleanupEnabled, *in.CleanupEnabled); err != nil {
+			return nil, err
+		}
+	}
+	if in.CleanupRetentionDays != nil {
+		if err := a.putJSON(ctx, dkdomain.SettingKeyCleanupRetentionDays, *in.CleanupRetentionDays); err != nil {
+			return nil, err
+		}
+	}
 	if in.UnitPrices != nil {
 		// handler 已经把「留空的档」剔掉了。这里原样写：
 		// 空 map 写成 {}，报价那边读到 len==0 就走「价格待确认」。
@@ -2689,6 +2749,21 @@ func (a settingsServiceAdapter) readString(ctx context.Context, key, def string)
 		return def
 	}
 	return strings.TrimSpace(value)
+}
+
+// readBool 读一个布尔配置项。读不到、存的不是布尔时返回 def。
+func (a settingsServiceAdapter) readBool(ctx context.Context, key string, def bool) bool {
+	raw, ok := a.settingRaw(ctx, key)
+	if !ok {
+		return def
+	}
+	var value bool
+	if err := json.Unmarshal(raw, &value); err != nil {
+		slog.Warn("designkit 设置页：这一项存的不是开关值，本次显示默认值",
+			slog.String("key", key), slog.String("value", string(raw)))
+		return def
+	}
+	return value
 }
 
 func (a settingsServiceAdapter) readInt(ctx context.Context, key string, def int) int {

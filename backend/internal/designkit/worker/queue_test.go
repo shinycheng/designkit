@@ -190,7 +190,7 @@ func TestHandleItem_ReusesExistingVariant(t *testing.T) {
 // TestHandleItem_KeepTransparencyPerJob keep_transparency 按批生效（9004 起）。
 //
 // true 那一支同时守两件事：① 预处理请求里带的是**批次行**的值，不是全局配置
-//（全局配置字段已删，这条测试就是防它被加回来）；② 已有的 keep=false 产物
+// （全局配置字段已删，这条测试就是防它被加回来）；② 已有的 keep=false 产物
 // **不能**被 keep=true 的批次复用——variant 唯一键里有 keep_transparency 这一维，
 // 复用了运营要透明底拿到的就是白底，钱照扣。
 func TestHandleItem_KeepTransparencyPerJob(t *testing.T) {

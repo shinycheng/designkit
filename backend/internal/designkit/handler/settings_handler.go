@@ -136,6 +136,11 @@ type SettingsView struct {
 	// AdminContact 管理员联系方式；空串表示没配。
 	AdminContact string
 
+	// CleanupEnabled 图片自动清理开关（决策 17）。默认 false = 图片永久保留。
+	CleanupEnabled bool
+	// CleanupRetentionDays 图片保留天数。清理任务每一轮现读，改完不用重启。
+	CleanupRetentionDays int
+
 	// UnitPrices 计费档 → 十进制字符串金额（美元）。
 	//
 	// **没测出来的档不要出现在这个 map 里**，也不要放空串或 "0" ——
@@ -157,13 +162,15 @@ type SettingsView struct {
 // 整份覆盖的话，任何一次前端漏传字段都会把那一项悄悄清空 ——
 // 表现是「昨天还好好的，今天出图比例少了一个」，而页面上看不出任何异常。
 type SettingsInput struct {
-	Ratios             []dkdomain.Ratio
-	Model              *string
-	MaxBatchItems      *int
-	ItemTimeoutSeconds *int
-	MaxDimension       *int
-	WorkerConcurrency  *int
-	AdminContact       *string
+	Ratios               []dkdomain.Ratio
+	Model                *string
+	MaxBatchItems        *int
+	ItemTimeoutSeconds   *int
+	MaxDimension         *int
+	WorkerConcurrency    *int
+	AdminContact         *string
+	CleanupEnabled       *bool
+	CleanupRetentionDays *int
 	// UnitPrices 非 nil 表示整份替换单价表。map 里只放**填了值**的档。
 	UnitPrices map[string]string
 	// RateMultiplier 十进制字符串。
@@ -193,6 +200,11 @@ type settingsDTO struct {
 	MaxDimension       int      `json:"max_dimension"`
 	WorkerConcurrency  int      `json:"worker_concurrency"`
 	AdminContact       string   `json:"admin_contact"`
+
+	// CleanupEnabled / CleanupRetentionDays 图片自动清理（决策 17）。
+	// 开关默认关；两项改完都**立刻生效**（清理任务每一轮现读），不进 RestartNote。
+	CleanupEnabled       bool `json:"cleanup_enabled"`
+	CleanupRetentionDays int  `json:"cleanup_retention_days"`
 
 	// UnitPrices 只包含**已经填了**的档。没填的档不出现在这里，
 	// 前端据此显示「价格待确认」。**永远不要在这里放 0。**
@@ -239,6 +251,9 @@ type settingsLimitsDTO struct {
 	RatiosMax             int `json:"ratios_max"`
 	ModelMaxLength        int `json:"model_max_length"`
 	AdminContactMaxLength int `json:"admin_contact_max_length"`
+	// CleanupRetentionDaysMin / Max 图片保留天数的允许范围。
+	CleanupRetentionDaysMin int `json:"cleanup_retention_days_min"`
+	CleanupRetentionDaysMax int `json:"cleanup_retention_days_max"`
 	// Tiers 单价表有哪几档，从便宜到贵。
 	Tiers []string `json:"tiers"`
 	// UnitPriceMax 单张单价的上限（十进制字符串）。
@@ -297,15 +312,17 @@ func newSettingsDTO(v *SettingsView, warnings []string, restartNote string) sett
 	}
 
 	return settingsDTO{
-		Ratios:             ratios,
-		Model:              v.Model,
-		MaxBatchItems:      v.MaxBatchItems,
-		ItemTimeoutSeconds: v.ItemTimeoutSeconds,
-		MaxDimension:       v.MaxDimension,
-		WorkerConcurrency:  v.WorkerConcurrency,
-		AdminContact:       v.AdminContact,
-		UnitPrices:         prices,
-		RateMultiplier:     strings.TrimSpace(v.RateMultiplier),
+		Ratios:               ratios,
+		Model:                v.Model,
+		MaxBatchItems:        v.MaxBatchItems,
+		ItemTimeoutSeconds:   v.ItemTimeoutSeconds,
+		MaxDimension:         v.MaxDimension,
+		WorkerConcurrency:    v.WorkerConcurrency,
+		AdminContact:         v.AdminContact,
+		CleanupEnabled:       v.CleanupEnabled,
+		CleanupRetentionDays: v.CleanupRetentionDays,
+		UnitPrices:           prices,
+		RateMultiplier:       strings.TrimSpace(v.RateMultiplier),
 		PromptSync: settingsPromptSyncDTO{
 			ProxyID:   v.PromptSyncProxyID,
 			ProxyName: v.PromptSyncProxyName,
@@ -314,22 +331,24 @@ func newSettingsDTO(v *SettingsView, warnings []string, restartNote string) sett
 			EditPath:  promptSyncEditPath,
 		},
 		Limits: settingsLimitsDTO{
-			MaxBatchItemsMin:      SettingsMinBatchItems,
-			MaxBatchItemsMax:      SettingsMaxBatchItems,
-			ItemTimeoutSecondsMin: SettingsMinItemTimeoutSeconds,
-			ItemTimeoutSecondsMax: SettingsMaxItemTimeoutSeconds,
-			MaxDimensionMin:       SettingsMinDimension,
-			MaxDimensionMax:       SettingsMaxDimension,
-			WorkerConcurrencyMin:  SettingsMinConcurrency,
-			WorkerConcurrencyMax:  SettingsMaxConcurrency,
-			WorkerConcurrencySafe: SettingsSafeConcurrency,
-			RatiosMax:             SettingsMaxRatios,
-			ModelMaxLength:        SettingsMaxModelLen,
-			AdminContactMaxLength: SettingsMaxAdminContactLen,
-			Tiers:                 dkdomain.AllBillingTiers(),
-			UnitPriceMax:          settingsMaxUnitPrice,
-			RateMultiplierMin:     settingsMinRateMultiplier,
-			RateMultiplierMax:     settingsMaxRateMultiplier,
+			MaxBatchItemsMin:        SettingsMinBatchItems,
+			MaxBatchItemsMax:        SettingsMaxBatchItems,
+			ItemTimeoutSecondsMin:   SettingsMinItemTimeoutSeconds,
+			ItemTimeoutSecondsMax:   SettingsMaxItemTimeoutSeconds,
+			MaxDimensionMin:         SettingsMinDimension,
+			MaxDimensionMax:         SettingsMaxDimension,
+			WorkerConcurrencyMin:    SettingsMinConcurrency,
+			WorkerConcurrencyMax:    SettingsMaxConcurrency,
+			WorkerConcurrencySafe:   SettingsSafeConcurrency,
+			RatiosMax:               SettingsMaxRatios,
+			ModelMaxLength:          SettingsMaxModelLen,
+			AdminContactMaxLength:   SettingsMaxAdminContactLen,
+			CleanupRetentionDaysMin: dkdomain.MinCleanupRetentionDays,
+			CleanupRetentionDaysMax: dkdomain.MaxCleanupRetentionDays,
+			Tiers:                   dkdomain.AllBillingTiers(),
+			UnitPriceMax:            settingsMaxUnitPrice,
+			RateMultiplierMin:       settingsMinRateMultiplier,
+			RateMultiplierMax:       settingsMaxRateMultiplier,
 		},
 		Warnings:    warnings,
 		RestartNote: restartNote,
@@ -404,15 +423,17 @@ func (h *SettingsHandler) Update(c *gin.Context) {
 // 普通结构体做不到 —— 没传 max_batch_items 和传了 0 都是 0，
 // 于是「前端漏传一个字段」会被当成「管理员要把批量上限改成 0」，谁也提交不了图。
 type settingsBody struct {
-	Ratios             *[]string          `json:"ratios"`
-	Model              *string            `json:"model"`
-	MaxBatchItems      *int               `json:"max_batch_items"`
-	ItemTimeoutSeconds *int               `json:"item_timeout_seconds"`
-	MaxDimension       *int               `json:"max_dimension"`
-	WorkerConcurrency  *int               `json:"worker_concurrency"`
-	AdminContact       *string            `json:"admin_contact"`
-	UnitPrices         *map[string]string `json:"unit_prices"`
-	RateMultiplier     *string            `json:"rate_multiplier"`
+	Ratios               *[]string          `json:"ratios"`
+	Model                *string            `json:"model"`
+	MaxBatchItems        *int               `json:"max_batch_items"`
+	ItemTimeoutSeconds   *int               `json:"item_timeout_seconds"`
+	MaxDimension         *int               `json:"max_dimension"`
+	WorkerConcurrency    *int               `json:"worker_concurrency"`
+	AdminContact         *string            `json:"admin_contact"`
+	CleanupEnabled       *bool              `json:"cleanup_enabled"`
+	CleanupRetentionDays *int               `json:"cleanup_retention_days"`
+	UnitPrices           *map[string]string `json:"unit_prices"`
+	RateMultiplier       *string            `json:"rate_multiplier"`
 }
 
 // decodeSettingsBody 解请求体。返回 false 时已经写好错误响应。
@@ -453,6 +474,10 @@ func settingsFieldLabel(field string) string {
 		return "同时出几张"
 	case "admin_contact":
 		return "管理员联系方式"
+	case "cleanup_enabled":
+		return "图片自动清理"
+	case "cleanup_retention_days":
+		return "图片保留天数"
 	case "unit_prices":
 		return "出图单价"
 	case "rate_multiplier":
@@ -615,6 +640,33 @@ func (b *settingsBody) validate(c *gin.Context) (SettingsInput, []string, bool, 
 		}
 		in.AdminContact = &contact
 		changed["admin_contact"] = true
+	}
+
+	// ---- 图片自动清理（决策 17）----
+	//
+	// 开关本身没有非法值；真正要拦的是保留天数。两项都**立刻生效**
+	// （清理任务每一轮从数据库现读），所以不进 settingsRestartKeys。
+	if b.CleanupRetentionDays != nil {
+		value := *b.CleanupRetentionDays
+		if value < dkdomain.MinCleanupRetentionDays || value > dkdomain.MaxCleanupRetentionDays {
+			abortWithDesignkitError(c, settingsValidationError("cleanup_retention_days",
+				"要填 "+strconv.Itoa(dkdomain.MinCleanupRetentionDays)+" 到 "+strconv.Itoa(dkdomain.MaxCleanupRetentionDays)+" 之间的整数。"+
+					"填得太小，上个月出的图会被删掉，而且删了找不回来。"))
+			return in, nil, false, false
+		}
+		in.CleanupRetentionDays = &value
+		changed["cleanup_retention_days"] = true
+	}
+	if b.CleanupEnabled != nil {
+		value := *b.CleanupEnabled
+		in.CleanupEnabled = &value
+		changed["cleanup_enabled"] = true
+		if value {
+			// 开启是删文件的动作，保存成功后把后果再说一遍。
+			warnings = append(warnings,
+				"「图片自动清理」已开启：超过保留天数的结果图和商品图会被删除，删了找不回来。"+
+					"账目和消费记录保留，已扣的费用不退也不多扣。开启前先确认备份正常（配置手册第 10 步）。")
+		}
 	}
 
 	// ---- 三档单价 ----

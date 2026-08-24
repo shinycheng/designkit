@@ -13,6 +13,7 @@
 #   designkit/bin/dk-nas.sh logs [服务名]  看日志
 #   designkit/bin/dk-nas.sh build         同步 + 只编译后端（最快的对错检查）
 #   designkit/bin/dk-nas.sh test          同步 + 跑单元测试
+#   designkit/bin/dk-nas.sh ci            推送前必跑，完整预演 CI（gofmt+vet → golangci-lint → 单测 → 前端 lint/类型/关键 vitest）
 #   designkit/bin/dk-nas.sh rebuild       改了代码之后：重新构建镜像并替换容器
 #   designkit/bin/dk-nas.sh restart       改了「商品图设置」之后：重启后端让配置生效
 #   designkit/bin/dk-nas.sh sh            开一个 NAS 上的 shell
@@ -84,6 +85,10 @@ BUILD_ENV="DEV_BIND=127.0.0.1 SERVER_BIND=0.0.0.0 VITE_DEV_PORT=13000 SERVER_POR
 # 报出来的错跟「镜像没拉」八竿子打不着，所以在这里先自己查一遍。
 BASE_IMAGES="docker/dockerfile:1.7 node:24-alpine golang:1.26.6-alpine alpine:3.21 postgres:18-alpine python:3.12-slim-bookworm"
 
+# ci 子命令用的 golangci-lint 镜像。版本必须跟 CI 一致
+# （.github/workflows/backend-ci.yml 里 golangci-lint-action 钉的是 v2.9）。
+GOLANGCI_IMAGE="golangci/golangci-lint:v2.9"
+
 cd "$(git rev-parse --show-toplevel)"
 
 # ---- 取 sudo 密码，只放进内存 ----
@@ -143,6 +148,52 @@ do_sync() {
     nas_plain "find $REMOTE_DIR -name '._*' -delete 2>/dev/null; true"
   fi
   echo "✓ 同步完成"
+  check_sync_drift
+}
+
+# ---- 反向清单对照（2026-08-24 加）：抓「本地已删、NAS 上还留着」的幽灵文件 ----
+# tar 管道只添加不删除，本地删掉的文件会在 NAS 上一直活着；而 //go:embed 和
+# go test 不看 git、只看目录里有什么——幽灵文件会被编进产物、让测试时好时坏。
+# rsync --delete 那条路径理论上没这个问题，但两条路径都核一遍，顺手的事。
+#
+# 判定「幽灵」要过两道：① 不在本地 git ls-files 清单里（含未跟踪未忽略的新文件）；
+# ② 本地磁盘上确实不存在。第二道不能省——被 .gitignore 吞掉但本地还在的文件
+# （CLAUDE.md 第一节说的 scripts/tests 陷阱）只过得了第一道，删了它下次同步
+# 又会传上去，白折腾还吓人。
+check_sync_drift() {
+  # 这些是 NAS 侧构建自然产生的产物目录，不是「本地删了没同步」的幽灵，
+  # 永远排除（web 构建把前端打进 backend/internal/web/dist）：
+  local DRIFT_EXCLUDE="backend/internal/web/dist/"
+  local scope="backend/internal frontend/src designkit"
+  local local_list nas_list ghosts f
+  # shellcheck disable=SC2086  # scope 特意按空格拆成多个路径参数
+  local_list=$(git ls-files --cached --others --exclude-standard -- $scope | LC_ALL=C sort)
+  # 两端都用 LC_ALL=C 排序：Mac 和 NAS 的 locale 排序规则不一样，comm 会被带偏。
+  # ssh 偶发失败时清单为空 → 本次跳过对照，不让它把刚成功的同步整个报废。
+  nas_list=$( { nas_plain "cd $REMOTE_DIR 2>/dev/null && find $scope -type f 2>/dev/null; true" || true; } | LC_ALL=C sort )
+  [ -n "$nas_list" ] || return 0
+
+  ghosts=""
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    case "$f" in *..*|/*) continue ;; esac   # 防御：绝对路径或带 .. 的一律不碰
+    case "$f" in "$DRIFT_EXCLUDE"*) continue ;; esac   # 构建产物目录，见上
+    [ -e "$f" ] && continue                  # 本地还在（哪怕被 git 忽略）→ 不是幽灵
+    ghosts="${ghosts}${f}"$'\n'
+  done < <(comm -13 <(printf '%s\n' "$local_list") <(printf '%s\n' "$nas_list"))
+
+  [ -n "$ghosts" ] || return 0
+
+  if [ "${DK_SYNC_PRUNE:-0}" = "1" ]; then
+    echo "→ DK_SYNC_PRUNE=1：删除 NAS 侧幽灵文件（只删下面逐个列出的文件，绝不 rm -rf 目录）"
+    printf '%s' "$ghosts" | nas_plain "cd $REMOTE_DIR && while IFS= read -r f; do rm -f -- \"\$f\" && echo \"  已删除 \$f\" || echo \"  ✗ 删不掉 \$f\"; done"
+    echo "✓ 幽灵文件清完（空目录会留下，无害）"
+  else
+    echo "⚠ NAS 侧幽灵文件（本地已删，NAS 还留着；go build / go:embed / 测试会把它们当真）："
+    printf '%s' "$ghosts" | sed 's/^/    /'
+    echo "  确认后加环境变量重跑一次即可删除（只删上面这些文件）："
+    echo "    DK_SYNC_PRUNE=1 designkit/bin/dk-nas.sh sync"
+  fi
 }
 
 # 在 NAS 上用一次性 Go 容器跑命令（本机没有 Go）。
@@ -156,7 +207,7 @@ do_sync() {
 #   goproxy.cn → 200，proxy.golang.org → 000（不通）。
 #   用 Go 默认的 proxy.golang.org 会卡到超时。
 go_in_container() {
-  local goflags="-e GOPROXY=https://goproxy.cn,direct -e GOSUMDB=off -e GOFLAGS=-mod=mod"
+  local goflags="-e GOPROXY=https://goproxy.cn,direct -e GOFLAGS=-mod=mod"
   if [ -n "${DK_PROXY:-}" ]; then
     goflags="$goflags -e ALL_PROXY=$DK_PROXY -e HTTPS_PROXY=$DK_PROXY -e HTTP_PROXY=$DK_PROXY"
   fi
@@ -169,6 +220,99 @@ go_in_container() {
     -v /volume3/docker/designkit-dev/gomod:/go/pkg/mod \
     $goflags \
     golang:1.26.6 bash -c '$1'"
+}
+
+# ---- 下面几个是 check / ci 共用的步骤（2026-08-24 抽出来，供 ci 完整预演 CI）----
+
+# gofmt + go vet。2026-08-24 起真的会失败（原来只打印退出码然后装没事）：
+# CI 会卡这两项，本地也该卡住，不然「check 过了、CI 红了」这种事还会再来。
+run_gofmt_vet() {
+  echo "→ gofmt（CI 的 formatters 检查会卡这个）"
+  go_in_container "bad=\$(gofmt -l ./internal/designkit/ ./internal/server/router.go); if [ -n \"\$bad\" ]; then echo \"这些文件需要 gofmt -w：\"; echo \"\$bad\"; exit 1; fi" || return 1
+  echo "→ go vet"
+  go_in_container "go vet ./internal/designkit/... 2>&1 | grep -v \"^go: downloading\" | head -40; exit \${PIPESTATUS[0]}" || return 1
+}
+
+# golangci-lint，跟 CI 完全同版（v2.9）、同参数（--timeout=30m）、同范围（backend 全仓）。
+run_golangci() {
+  if ! nas_sudo "$DOCKER image inspect $GOLANGCI_IMAGE >/dev/null 2>&1"; then
+    echo "✗ NAS 上没有 golangci-lint 镜像（约 1GB，只拉一次）。先 pull 再重跑："
+    echo "    sudo docker pull $GOLANGCI_IMAGE"
+    echo "  ci 不代拉：拉镜像要好几分钟，代拉会让「预演 CI」看起来像卡死。"
+    return 1
+  fi
+  # 缓存挂 /volume3/docker/designkit-dev/golangci：go build 缓存和 lint 缓存都在
+  # 容器的 /root/.cache 下面，挂这一个目录就都保住了，第二次跑快一个数量级。
+  # gomod 复用 go_in_container 的那个卷，模块不用重下。
+  nas_sudo "mkdir -p /volume3/docker/designkit-dev/golangci && \
+    $DOCKER run --rm \
+    -v $REMOTE_DIR:/src -w /src/backend \
+    -v /volume3/docker/designkit-dev/golangci:/root/.cache \
+    -v /volume3/docker/designkit-dev/gomod:/go/pkg/mod \
+    -e GOPROXY=https://goproxy.cn,direct -e GOFLAGS=-mod=mod \
+    $GOLANGCI_IMAGE golangci-lint run --timeout=30m" || return 1
+}
+
+# 单元测试，跟 CI 的 make test-unit 相同（go test -tags=unit ./...）。
+# 跟 test 子命令的区别：失败会真的失败（test 只打印退出码，方便人眼看；
+# ci 要靠退出码停下来）。引号规矩见 test 子命令的注释：只能用转义双引号。
+run_unit_tests_strict() {
+  echo "→ 在 NAS 上跑单元测试（-tags=unit，跟 CI 的 make test-unit 相同）"
+  go_in_container "go test -tags=unit ./... 2>&1 | grep -v \"^go: downloading\" | grep -v \"^ok  \" | grep -v \"no test files\" | head -60; exit \${PIPESTATUS[0]}"
+}
+
+# CI 的「关键 vitest」清单以根 Makefile 的 FRONTEND_CRITICAL_VITEST 为准，
+# 运行时解析，不在这里抄一份——抄了就会漂移，CI 加测试这里不知道。
+frontend_critical_specs() {
+  awk '
+    /^FRONTEND_CRITICAL_VITEST[ \t]*:=/ { grab = 1; sub(/^[^=]*=[ \t]*/, "") }
+    grab {
+      more = /\\[ \t]*$/
+      gsub(/\\[ \t]*$/, "")
+      gsub(/^[ \t]+|[ \t]+$/, "")
+      if ($0 != "") printf "%s ", $0
+      if (!more) exit
+    }
+  ' Makefile
+}
+
+# 前端三件套，跟 CI 的 make test-frontend 相同：lint:check → typecheck → 关键 vitest。
+# 容器手法照 web 子命令（node:22-alpine + npx pnpm@9 + npmmirror + pnpm 缓存卷）。
+run_web_ci() {
+  local specs
+  specs="$(frontend_critical_specs)"
+  if [ -z "${specs// /}" ]; then
+    echo "✗ 没能从根 Makefile 解析出 FRONTEND_CRITICAL_VITEST 清单（Makefile 改了格式？）。"
+    echo "  不猜清单，直接停。修好解析或清单后重跑。"
+    return 1
+  fi
+  echo "→ 前端 lint:check + typecheck + 关键 vitest（跟 make test-frontend 相同）"
+  nas_sudo "mkdir -p /volume3/docker/designkit-dev/pnpm && \
+    $DOCKER run --rm \
+    -v $REMOTE_DIR:/src -w /src/frontend \
+    -v /volume3/docker/designkit-dev/pnpm:/pnpm-store \
+    -e npm_config_registry=https://registry.npmmirror.com \
+    --entrypoint sh \
+    node:22-alpine -c '
+      set -e -o pipefail
+      export PNPM_HOME=/pnpm-store
+      npx --yes pnpm@9 config set store-dir /pnpm-store >/dev/null 2>&1 || true
+      echo \"--- 装依赖 ---\"
+      npx --yes pnpm@9 install --frozen-lockfile 2>&1 | tail -6
+      echo \"--- eslint（lint:check）---\"
+      npx --yes pnpm@9 run lint:check
+      echo \"--- vue-tsc（typecheck）---\"
+      npx --yes pnpm@9 run typecheck
+      echo \"--- 关键 vitest（清单取自根 Makefile 的 FRONTEND_CRITICAL_VITEST）---\"
+      npx --yes pnpm@9 exec vitest run $specs
+    '" || return 1
+}
+
+ci_fail() {
+  echo
+  echo "✗ CI 预演挂在这一步：$1（后面的步骤没有跑）"
+  echo "  修完重跑：designkit/bin/dk-nas.sh ci"
+  exit 1
 }
 
 case "${1:-up}" in
@@ -218,13 +362,33 @@ case "${1:-up}" in
       '"
     ;;
 
-  # 推送前必跑：CI 会卡这三项（编译 / 格式 / vet）
+  # 最快的推送前检查（格式 / vet）。完整预演 CI 用 ci。
   check)
     do_sync
-    echo "→ gofmt（CI 的 formatters 检查会卡这个）"
-    go_in_container "gofmt -l ./internal/designkit/ ./internal/server/router.go"
-    echo "→ go vet"
-    go_in_container "go vet ./internal/designkit/... 2>&1 | head -40; echo \"退出码=\${PIPESTATUS[0]}\""
+    run_gofmt_vet
+    ;;
+
+  # 推送前必跑：完整预演 CI（.github/workflows/backend-ci.yml 的主体），
+  # 任何一步挂了就地停下并指明是哪一步。
+  # 没覆盖的三个 CI job（只在 GitHub 上跑）：integration 测试（testcontainers）、
+  # imgsvc selfcheck、deploy 脚本检查。
+  ci)
+    do_sync
+    echo
+    echo "==== [1/4] gofmt + go vet ===="
+    run_gofmt_vet || ci_fail "gofmt / go vet"
+    echo
+    echo "==== [2/4] golangci-lint（${GOLANGCI_IMAGE}，跟 CI 同版同参数）===="
+    run_golangci || ci_fail "golangci-lint"
+    echo
+    echo "==== [3/4] 后端单元测试 ===="
+    run_unit_tests_strict || ci_fail "后端单元测试"
+    echo
+    echo "==== [4/4] 前端 lint / 类型检查 / 关键 vitest ===="
+    run_web_ci || ci_fail "前端 lint / 类型检查 / 关键 vitest"
+    echo
+    echo "✓ CI 预演全部通过。"
+    echo "  （未含 GitHub CI 上才跑的：integration 测试、imgsvc selfcheck、deploy 脚本检查）"
     ;;
 
   config)
@@ -292,7 +456,7 @@ case "${1:-up}" in
     ;;
 
   *)
-    sed -n '3,30p' "$0"
+    sed -n '3,31p' "$0"
     exit 1
     ;;
 esac
